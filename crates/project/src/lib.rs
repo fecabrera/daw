@@ -4,6 +4,7 @@ mod generated_media;
 pub mod midi_input;
 pub mod midi_recording;
 pub mod recovery;
+mod stem_export;
 pub use bounce::{BounceError, BounceProgress, PreparedBounce};
 mod normalize;
 pub use normalize::{NormalizeMode, NormalizeOptions, NormalizeProgress};
@@ -28,6 +29,7 @@ pub use history::{HistoryMemory, SessionHistory};
 mod audio_merge;
 mod clip_audio;
 mod compound_audio;
+mod export_destination;
 mod file_publish;
 mod relative_path;
 use relative_path::relative_path;
@@ -35,6 +37,7 @@ mod sampler;
 pub mod source_collection;
 mod source_save;
 mod source_storage;
+mod write_guard;
 use daw_core::{Asset, Clip, Id, Project, Source};
 use daw_engine::RenderPlan;
 use daw_media::{AudioData, AudioEncoder, ExportEncoder, ExportFormat, ExportSettings, WavCodec};
@@ -44,6 +47,7 @@ use std::{
     fs,
     path::{Component, Path, PathBuf},
 };
+pub use write_guard::{ManifestRevision, ProjectWriteGuard};
 
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
@@ -252,6 +256,14 @@ impl Session {
     pub fn open_document(folder: &Path) -> Result<ProjectDocument> {
         let folder = absolute(folder)?;
         let (project, previous_stretch_revision) = inspection::load_manifest(&folder)?;
+        Self::document_from_manifest(folder, project, previous_stretch_revision)
+    }
+
+    fn document_from_manifest(
+        folder: PathBuf,
+        project: Project,
+        previous_stretch_revision: Option<u32>,
+    ) -> Result<ProjectDocument> {
         let mut session = Self {
             plugin_host: None,
             plugin_states: Default::default(),
@@ -577,6 +589,27 @@ impl Session {
         path: &Path,
         overwrite: bool,
         settings: ExportSettings,
+        progress: impl FnMut(u64, u64),
+    ) -> Result<Vec<String>> {
+        self.export_interval(path, overwrite, settings, None, progress)
+    }
+
+    /// Render an exact slice of the offline mix, including processing history before the start.
+    pub fn export_range(
+        &self,
+        path: &Path,
+        settings: ExportSettings,
+        range: std::ops::Range<u64>,
+    ) -> Result<Vec<String>> {
+        self.export_interval(path, false, settings, Some(range), |_, _| {})
+    }
+
+    fn export_interval(
+        &self,
+        path: &Path,
+        overwrite: bool,
+        settings: ExportSettings,
+        range: Option<std::ops::Range<u64>>,
         mut progress: impl FnMut(u64, u64),
     ) -> Result<Vec<String>> {
         self.project.validate().map_err(error)?;
@@ -584,28 +617,17 @@ impl Session {
         if arranged_end == 0 {
             return Err(error("Cannot export a project with no clips"));
         }
-        let path = absolute(path)?;
-        for asset in &self.project.assets {
-            if !asset.is_file_audio() {
-                continue;
-            }
-            let source = self.source_path(asset)?;
-            if same_file(&path, &source) {
-                return Err(error("Export cannot overwrite a source audio file"));
-            }
-        }
-        if self
-            .folder
+        if range
             .as_ref()
-            .is_some_and(|f| same_file(&path, &f.join("project.json")))
+            .is_some_and(|range| range.start >= range.end || range.end > arranged_end)
         {
-            return Err(error("Export cannot overwrite project.json"));
-        }
-        if path.exists() && !overwrite {
             return Err(error(
-                "Output already exists; confirm overwrite or use --overwrite",
+                "Export range must be inside the arrangement and have positive length",
             ));
         }
+        let requested = absolute(path)?;
+        let path = file_publish::canonical_entry(&requested).map_err(error)?;
+        self.check_export_destination(&path, overwrite)?;
         let parent = path.parent().ok_or_else(|| error("Invalid output path"))?;
         let temp = parent.join(format!(".export-{}.tmp", Id::new_v4()));
         let result = (|| {
@@ -618,16 +640,23 @@ impl Session {
             plan.external.publish = false;
             let mut renderer = daw_engine::Renderer::try_new(plan).map_err(error)?;
             renderer.try_seek(0).map_err(error)?;
-            let requested_tail = renderer.offline_tail_frames();
+            let start = range.as_ref().map_or(0, |range| range.start);
+            let requested_tail = if range.is_some() {
+                0
+            } else {
+                renderer.offline_tail_frames()
+            };
             let tail_cap = daw_engine::offline_tail_cap(self.project.sample_rate_hz);
-            let end = arranged_end
+            let end = range
+                .as_ref()
+                .map_or(arranged_end, |range| range.end)
                 .checked_add(requested_tail.min(tail_cap))
                 .ok_or_else(|| error("Export duration exceeds the supported frame range"))?;
             let cutoff_check_start = (requested_tail > tail_cap).then(|| {
                 end - u64::from(self.project.sample_rate_hz) * EXPORT_TAIL_WARNING_WINDOW_MS / 1000
             });
             let mut audible_cutoff = false;
-            progress(0, end);
+            progress(0, end - start);
             let mut encoder =
                 ExportEncoder::at_sample_rate(&temp, settings, self.project.sample_rate_hz)
                     .map_err(error)?;
@@ -655,12 +684,19 @@ impl Session {
                         .flatten()
                         .any(|sample| sample.abs() >= EXPORT_TAIL_WARNING_PEAK);
                 }
-                encoder.write_frames(&block[..count]).map_err(error)?;
+                let skip = start.saturating_sub(position).min(count as u64) as usize;
+                if skip < count {
+                    encoder.write_frames(&block[skip..count]).map_err(error)?;
+                }
                 position += count as u64;
-                progress(position, end);
+                progress(position.saturating_sub(start), end - start);
             }
             let clipped = encoder.clipped();
             encoder.finish().map_err(error)?;
+            if file_publish::canonical_entry(&requested).map_err(error)? != path {
+                return Err(error("Output folder changed during export"));
+            }
+            self.check_export_destination(&path, overwrite)?;
             if overwrite {
                 replace_file(&temp, &path)?;
             } else {

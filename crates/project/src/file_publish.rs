@@ -32,7 +32,7 @@ fn ordinary_file(path: &Path, optional: bool) -> io::Result<()> {
     }
 }
 
-fn canonical_entry(path: &Path) -> io::Result<PathBuf> {
+pub(crate) fn canonical_entry(path: &Path) -> io::Result<PathBuf> {
     let parent = fs::canonicalize(path.parent().ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "Missing publication folder")
     })?)?;
@@ -80,6 +80,53 @@ pub(crate) fn create(source: &Path, target: &Path) -> io::Result<()> {
     // justify removing the destination another process may already be reading.
     let _ = fs::remove_file(source);
     Ok(())
+}
+
+/// Move a completed directory into place without replacing an existing entry.
+pub(super) fn create_directory(source: &Path, target: &Path) -> io::Result<()> {
+    let source = canonical_entry(source)?;
+    let target = canonical_entry(target)?;
+    let metadata = fs::symlink_metadata(&source)?;
+    if source.parent() != target.parent() || !metadata.is_dir() || is_reparse(&metadata) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Invalid directory publication",
+        ));
+    }
+    #[cfg(windows)]
+    return windows::create_directory(&source, &target);
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        use std::{ffi::CString, os::unix::ffi::OsStrExt};
+        let source = CString::new(source.as_os_str().as_bytes())?;
+        let target = CString::new(target.as_os_str().as_bytes())?;
+        // SAFETY: The terminated strings stay live for the synchronous system call.
+        let result = unsafe {
+            #[cfg(target_os = "macos")]
+            {
+                libc::renamex_np(source.as_ptr(), target.as_ptr(), libc::RENAME_EXCL)
+            }
+            #[cfg(target_os = "linux")]
+            {
+                libc::renameat2(
+                    libc::AT_FDCWD,
+                    source.as_ptr(),
+                    libc::AT_FDCWD,
+                    target.as_ptr(),
+                    libc::RENAME_NOREPLACE,
+                )
+            }
+        };
+        if result != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "Atomic directory publication is unavailable",
+    ))
 }
 
 #[cfg(test)]

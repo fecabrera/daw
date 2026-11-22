@@ -11,7 +11,11 @@ pub fn inspect_project(folder: &Path) -> Result<Project> {
 
 pub(crate) fn load_manifest(folder: &Path) -> Result<(Project, Option<u32>)> {
     let content = std::fs::read(folder.join("project.json")).map_err(error)?;
-    let mut project: Project = serde_json::from_slice(&content).map_err(error)?;
+    parse_manifest(&content)
+}
+
+pub(crate) fn parse_manifest(content: &[u8]) -> Result<(Project, Option<u32>)> {
+    let mut project: Project = serde_json::from_slice(content).map_err(error)?;
     // Share the loader's one-way legacy revision normalization. Inspection never
     // writes it; Session::open rebuilds prepared audio before publishing a session.
     let previous_revision = (project.stretch_engine.id == daw_core::StretchEngineId::Integrated

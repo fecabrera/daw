@@ -17,9 +17,24 @@ const EVENT_LIMIT: usize = 1_000_000;
 const JOURNAL_LIMIT: u64 = 256 * 1024 * 1024;
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum CaptureAction {
-    Route { track: Id, enabled: bool },
-    Attack { token: Id, pitch: u8, velocity: u8 },
-    Release { token: Id },
+    Route {
+        track: Id,
+        enabled: bool,
+    },
+    Attack {
+        token: Id,
+        pitch: u8,
+        velocity: u8,
+    },
+    ChannelAttack {
+        token: Id,
+        pitch: u8,
+        velocity: u8,
+        channel: u8,
+    },
+    Release {
+        token: Id,
+    },
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct CaptureEvent {
@@ -91,6 +106,9 @@ impl MidiCapture {
                 return Err(error("MIDI take reached its recording limit"));
             }
             if let CaptureAction::Attack {
+                pitch, velocity, ..
+            }
+            | CaptureAction::ChannelAttack {
                 pitch, velocity, ..
             } = event.action
             {
@@ -170,7 +188,20 @@ impl MidiCapture {
                 token,
                 pitch,
                 velocity,
+            }
+            | CaptureAction::ChannelAttack {
+                token,
+                pitch,
+                velocity,
+                ..
             } => {
+                let channel = match event.action {
+                    CaptureAction::ChannelAttack { channel, .. } if channel < 16 => Some(channel),
+                    CaptureAction::ChannelAttack { .. } => {
+                        return Err(error("Invalid captured MIDI channel"));
+                    }
+                    _ => None,
+                };
                 if pitch > 127 || !(1..=127).contains(&velocity) {
                     return Err(error("Invalid captured MIDI note"));
                 }
@@ -182,9 +213,14 @@ impl MidiCapture {
                 {
                     return Err(error("MIDI capture ownership limit reached"));
                 }
-                for track in &self.routes {
+                for track in &self.base.project.tracks {
+                    if !self.routes.contains(&track.id)
+                        || !track.midi_options.accepts_channel(channel)
+                    {
+                        continue;
+                    }
                     self.open.insert(
-                        (*track, token),
+                        (track.id, token),
                         OpenNote {
                             start: event.frame,
                             pitch,

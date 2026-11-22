@@ -4908,12 +4908,14 @@ fn per_track_midi_options_survive_save_reopen_save_as_and_legacy_loading() {
         root: Some(9),
         scale: MidiScale::Minor,
         snap: true,
+        ..Default::default()
     };
     // Preserve the selected scale and snap preference while Root is Off.
     let second_options = MidiOptions {
         root: None,
         scale: MidiScale::Blues,
         snap: true,
+        ..Default::default()
     };
     session
         .project

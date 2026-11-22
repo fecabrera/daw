@@ -1838,10 +1838,23 @@ impl Renderer {
             && !self.live_midi_active()
     }
     pub fn live_midi_note(&mut self, token: Id, attack: Option<(u8, u8)>) -> bool {
+        self.live_midi_note_on_channel(token, attack, None)
+    }
+    pub fn live_midi_note_on_channel(
+        &mut self,
+        token: Id,
+        attack: Option<(u8, u8)>,
+        channel: Option<u8>,
+    ) -> bool {
         let mut ready = true;
-        for runtime in self.midi.iter_mut().flatten() {
+        for (track, runtime) in self.plan.project.tracks.iter().zip(&mut self.midi) {
+            let Some(runtime) = runtime else { continue };
+            let options = track.midi_options;
+            if attack.is_some() && !options.accepts_channel(channel) {
+                continue;
+            }
             runtime.set_live_tempo(self.clock.tempo_at(self.playhead));
-            ready &= runtime.live_note(token, attack);
+            ready &= runtime.live_note(token, attack, options.monitor);
         }
         ready
     }

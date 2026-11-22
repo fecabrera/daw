@@ -53,7 +53,7 @@ impl Identity {
     }
 }
 
-fn open_entry(path: &Path, directory: bool) -> io::Result<File> {
+pub(crate) fn open_entry(path: &Path, directory: bool) -> io::Result<File> {
     let metadata = fs::symlink_metadata(path)?;
     if crate::file_publish::is_reparse(&metadata)
         || metadata.is_dir() != directory

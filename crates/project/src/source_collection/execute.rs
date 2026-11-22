@@ -165,7 +165,7 @@ impl Control<'_> {
     fn check_current(&self) -> Result<()> {
         self.check_cancel()?;
         if !(self.current)(self.plan.snapshot()) {
-            return Err(error("Source collection plan is stale"));
+            return Err(error("stale-project: Source collection plan is stale"));
         }
         Ok(())
     }
@@ -255,7 +255,9 @@ fn check_manifest(store: &Store, control: &Control<'_>) -> Result<()> {
         SourceRevision::read(&store.root.join("project.json"), &|| (control.cancelled)())
             .map_err(error)?;
     if revision != control.plan.manifest_revision() {
-        return Err(error("Saved project changed since collection preflight"));
+        return Err(error(
+            "stale-project: Saved project changed since collection preflight",
+        ));
     }
     Ok(())
 }

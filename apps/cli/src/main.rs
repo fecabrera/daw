@@ -1,5 +1,8 @@
+mod canonical;
 mod collect_sources;
+mod expansion;
 mod plugins;
+mod report;
 mod tracks;
 use clap::{Parser, Subcommand};
 use daw_media::{ExportFormat, ExportSettings, Mp3Bitrate, WavCodec};
@@ -53,31 +56,113 @@ enum Command {
         project: PathBuf,
     },
     Render {
-        /// Render missing/quarantined plugins as delayed dry effects or silent instruments.
-        #[arg(long)]
-        allow_missing_plugins: bool,
         #[arg(long)]
         project: PathBuf,
-        #[arg(long)]
-        output: PathBuf,
-        #[arg(long)]
-        overwrite: bool,
-        #[arg(long, value_parser = ["wav", "mp3", "aac"])]
-        format: Option<String>,
-        #[arg(long, value_parser = ["pcm16", "pcm24", "float32"])]
-        codec: Option<String>,
-        #[arg(long, value_parser = clap::value_parser!(u16))]
-        bitrate: Option<u16>,
+        #[command(flatten)]
+        options: MixOptions,
     },
 }
-fn main() {
-    daw_plugin_host::dispatch_embedded_scan();
-    daw_media::configure_preparation_cache(daw_media::preparation_cache_directory());
+
+#[derive(clap::Args)]
+struct MixOptions {
+    /// Render missing/quarantined plugins as delayed dry effects or silent instruments.
+    #[arg(long)]
+    allow_missing_plugins: bool,
+    /// Destination audio file.
+    #[arg(long)]
+    output: PathBuf,
+    /// Replace an existing eligible output file.
+    #[arg(long)]
+    overwrite: bool,
+    /// Output format. Defaults to inference from the filename.
+    #[arg(long, value_parser = ["wav", "mp3", "aac"])]
+    format: Option<String>,
+    /// WAV sample format. Defaults to pcm24.
+    #[arg(long, value_parser = ["pcm16", "pcm24", "float32"])]
+    codec: Option<String>,
+    /// MP3 or AAC bitrate in kbps. Defaults to 192.
+    #[arg(long, value_parser = clap::value_parser!(u16))]
+    bitrate: Option<u16>,
+}
+
+impl MixOptions {
+    fn settings(&self) -> ExportSettings {
+        export_settings(
+            &self.output,
+            self.format.as_deref(),
+            self.codec.as_deref(),
+            self.bitrate,
+        )
+        .unwrap_or_else(|error| {
+            clap::Error::raw(clap::error::ErrorKind::InvalidValue, error.to_string()).exit()
+        })
+    }
+
+    fn export(
+        &self,
+        project: &std::path::Path,
+        settings: ExportSettings,
+        warn: impl Fn(&str),
+    ) -> daw_project::Result<()> {
+        let session = daw_project::Session::open(project)?;
+        for warning in &session.warnings {
+            warn(warning);
+        }
+        let warnings = plugins::render(
+            session.clone(),
+            &self.output,
+            self.overwrite,
+            settings,
+            self.allow_missing_plugins,
+            &warn,
+        )?;
+        for warning in warnings
+            .iter()
+            .filter(|warning| !session.warnings.contains(warning))
+        {
+            warn(warning);
+        }
+        Ok(())
+    }
+}
+
+fn initialize(prepares_audio: bool) {
+    if prepares_audio {
+        daw_media::configure_preparation_cache(daw_media::preparation_cache_directory());
+    }
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    let result = match Args::parse().command {
+}
+
+fn main() {
+    daw_plugin_host::dispatch_embedded_scan();
+    let argv: Vec<_> = std::env::args_os().collect();
+    let legacy = canonical::is_legacy(&argv[1..]);
+    let result = if legacy {
+        run_legacy(Args::parse_from(argv).command)
+    } else {
+        canonical::run(&argv)
+    };
+    if let Err(error) = result {
+        use std::io::Write;
+        let message = if legacy {
+            error.to_string()
+        } else {
+            report::escaped(&error.to_string())
+        };
+        let _ = writeln!(std::io::stderr().lock(), "Error: {message}");
+        std::process::exit(1);
+    }
+}
+
+fn run_legacy(command: Command) -> daw_project::Result<()> {
+    initialize(matches!(
+        command,
+        Command::CollectSources { .. } | Command::Validate { .. } | Command::Render { .. }
+    ));
+    match command {
         Command::Plugins(args) => plugins::run(args),
         Command::Tracks {
             project,
@@ -113,49 +198,26 @@ fn main() {
                 session.project.tracks.len()
             );
         }),
-        Command::Render {
-            allow_missing_plugins,
-            project,
-            output,
-            overwrite,
-            format,
-            codec,
-            bitrate,
-        } => {
-            let settings = export_settings(&output, format.as_deref(), codec.as_deref(), bitrate)
-                .unwrap_or_else(|error| {
-                    clap::Error::raw(clap::error::ErrorKind::InvalidValue, error.to_string()).exit()
-                });
-            daw_project::Session::open(&project)
-                .and_then(|session| {
-                    for warning in &session.warnings {
-                        eprintln!("Warning: {warning}");
-                    }
-                    plugins::render(
-                        session.clone(),
-                        &output,
-                        overwrite,
-                        settings,
-                        allow_missing_plugins,
-                    )
-                    .map(|warnings| {
-                        warnings
-                            .into_iter()
-                            .filter(|w| !session.warnings.contains(w))
-                            .collect::<Vec<_>>()
-                    })
+        Command::Render { project, options } => {
+            let settings = options.settings();
+            options
+                .export(&project, settings, |warning| {
+                    eprintln!("Warning: {warning}")
                 })
-                .map(|warnings| {
-                    for warning in warnings {
-                        eprintln!("Warning: {warning}");
+                .map(|()| {
+                    use std::io::Write;
+                    if let Err(error) = writeln!(
+                        std::io::stdout().lock(),
+                        "Exported {}",
+                        options.output.display()
+                    ) && error.kind() != std::io::ErrorKind::BrokenPipe
+                    {
+                        report::warning(&format!(
+                            "Export finished, but result output failed: {error}"
+                        ));
                     }
-                    println!("Exported {}", output.display());
                 })
         }
-    };
-    if let Err(e) = result {
-        eprintln!("Error: {e}");
-        std::process::exit(1);
     }
 }
 

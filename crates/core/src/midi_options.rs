@@ -75,11 +75,31 @@ impl MidiScale {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MidiMonitor {
+    #[default]
+    Auto,
+    On,
+    Off,
+}
+
+impl MidiMonitor {
+    fn is_auto(&self) -> bool {
+        *self == Self::Auto
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MidiOptions {
     pub root: Option<u8>,
     pub scale: MidiScale,
     pub snap: bool,
+    /// Zero-based live input channel. None follows all channels allowed by the device settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_channel: Option<u8>,
+    #[serde(skip_serializing_if = "MidiMonitor::is_auto")]
+    pub monitor: MidiMonitor,
 }
 impl MidiOptions {
     pub fn is_default(&self) -> bool {
@@ -92,7 +112,14 @@ impl MidiOptions {
                 "MIDI scale root must be Off or a pitch class from 0 to 11".into(),
             ));
         }
+        if self.input_channel.is_some_and(|channel| channel > 15) {
+            return Err(Error("MIDI channel must be between 1 and 16".into()));
+        }
         Ok(())
+    }
+
+    pub fn accepts_channel(self, channel: Option<u8>) -> bool {
+        channel.is_none_or(|channel| self.input_channel.is_none_or(|input| input == channel))
     }
 
     pub fn contains_pitch(self, pitch: u8) -> bool {
@@ -128,6 +155,7 @@ mod tests {
                     root: Some(root),
                     scale,
                     snap: true,
+                    ..Default::default()
                 };
                 for pitch in 0..=127 {
                     let next = options.snap_pitch(pitch, 0..=127, false);

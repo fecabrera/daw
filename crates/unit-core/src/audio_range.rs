@@ -68,6 +68,15 @@ impl ClipLoop {
         }
     }
 
+    /// Invert a position within one cycle to its first local frame.
+    pub fn first_local_frame(self, position: u64) -> u64 {
+        if position >= self.phase_frame {
+            position - self.phase_frame
+        } else {
+            self.length_frames - (self.phase_frame - position)
+        }
+    }
+
     pub fn shifted(self, frames: i128) -> Self {
         let length = i128::from(self.length_frames);
         Self {

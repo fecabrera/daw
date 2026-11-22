@@ -325,7 +325,7 @@ fn marker_in_window(
     stretch: Option<daw_core::ClipStretch>,
 ) -> bool {
     let mapped = |frame| stretch.map_or(frame, |ratio| ratio.scale(frame).unwrap_or(u64::MAX));
-    waveforms::source_windows(clip, local, count)
+    clip.source_windows(local, count)
         .into_iter()
         .any(|(start, count)| {
             if count == 0 {

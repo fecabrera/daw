@@ -74,7 +74,7 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Editing history:** [undo and redo](docs/editing/undo-redo.md) for project edits.
 - **Projects:** open the editor while audio prepares in the background, reuse saved audio caches, save projects, [collect media sources](docs/projects/README.md#collect-project-sources), and configure audio processing settings.
 - **Appearance:** Dark, Light, and Mist themes, accent colors, and colored clips.
-- **Export and CLI:** export stereo WAV, MP3, or AAC files; inspect tracks, validate projects, collect sources and render audio with the [CLI](docs/cli/README.md).
+- **Export and CLI.** Export stereo WAV, MP3, or AAC. The [CLI](docs/cli/README.md) edits saved projects, manages plugins and sources, and exports mixes, ranges, and stems.
 - **Standalone audio tools:** experimental offline time stretching and pitch shifting, with three-engine comparisons.
 
 Audio, MIDI and Beat workflows are available in three views: **Timeline**, **Instrument**, and **Mixer**. The [Timeline editor pane](docs/views/editor.md) edits audio, MIDI, and beat clips.
@@ -100,7 +100,7 @@ Pending feature work includes audio recording and monitoring, timeline automatio
 ## Documentation
 
 - [User guide](docs/README.md): working with clips, instruments, modulation, and effects.
-- [CLI guide](docs/cli/README.md): track inspection, project validation, source collection, export and standalone WAV processing.
+- [CLI guide](docs/cli/README.md) for the command catalog, project editing, export, and standalone WAV processing.
 - [Development guides](docs/development/README.md): platform setup, build and run steps, packaging, plugin builds, and CI downloads.
 - [Features and roadmap](docs/roadmap.md), including current limits and planned capabilities.
 - [Reusable audio analysis](crates/audio-analysis/README.md): portable energy/spectral transient detection.

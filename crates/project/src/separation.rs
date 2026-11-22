@@ -119,10 +119,34 @@ impl Session {
             daw_separation::separate(samples, models, directory, progress).map_err(error)
         })
     }
+    /// Keep generated media in owned staging until a guarded save relocates it.
+    pub fn separate_clip_for_save(
+        &self,
+        clip_id: Id,
+        models: &SeparationModels,
+        progress: &SeparationProgress,
+    ) -> Result<PreparedSeparation> {
+        if !crate::SEPARATION_AVAILABLE {
+            return Err(error(crate::SEPARATION_UNAVAILABLE_REASON));
+        }
+        self.separate_clip_in(clip_id, progress, None, |samples, directory| {
+            daw_separation::separate(samples, models, directory, progress).map_err(error)
+        })
+    }
+
     fn separate_clip_with(
         &self,
         clip_id: Id,
         progress: &SeparationProgress,
+        run: impl FnOnce(&[[f32; 2]], &Path) -> Result<daw_separation::Output>,
+    ) -> Result<PreparedSeparation> {
+        self.separate_clip_in(clip_id, progress, self.folder.as_deref(), run)
+    }
+    fn separate_clip_in(
+        &self,
+        clip_id: Id,
+        progress: &SeparationProgress,
+        destination: Option<&Path>,
         run: impl FnOnce(&[[f32; 2]], &Path) -> Result<daw_separation::Output>,
     ) -> Result<PreparedSeparation> {
         progress.check().map_err(error)?;
@@ -169,15 +193,12 @@ impl Session {
         let input = resampled;
         let input_memory =
             daw_media::AudioReservation::new(input.len() as u64, 0).map_err(error)?;
-        let temporary = self
-            .folder
+        let temporary = destination
             .is_none()
             .then(TemporaryStems::new)
             .transpose()?
             .map(std::sync::Arc::new);
-        let folder = self
-            .folder
-            .as_deref()
+        let folder = destination
             .or_else(|| temporary.as_ref().map(|directory| directory.0.as_path()))
             .expect("Saved folder or owned temporary storage");
         let directory = reserve_directory(&folder.join("stems"), &clip.name)?;
@@ -239,7 +260,7 @@ impl Session {
                 .find(|a| a.id == stem.asset_id)
                 .unwrap();
             asset.source.kind = "generated".into();
-            if self.folder.is_some() {
+            if destination.is_some() {
                 asset.source.path = path
                     .strip_prefix(folder)
                     .map_err(error)?

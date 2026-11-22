@@ -1,17 +1,15 @@
 # Inspect tracks
 
 ```sh
-daw-cli tracks
-daw-cli tracks "Bass synth"
-daw-cli tracks --project examples/demo
-daw-cli tracks "Bass synth" --project examples/demo
+daw-cli --project examples/demo track.list
+daw-cli --project examples/demo track.list --name "Bass synth"
+daw-cli --project examples/demo track.show --track "name:Bass synth"
 ```
 
-Without `--project`, the command reads `project.json` in the current directory. Use `--project` to inspect another project folder.
-
-Without a name, `tracks` lists all audio, MIDI, beat and group tracks in saved order, including children of collapsed groups. Each row shows its position, ID, type, name, parent group ID (or Master), clip count, track effect count, mute and solo settings. An empty project reports **No tracks.** Master is the output bus and is not listed as a track.
-
-A name selects exact, case-sensitive matches. Names that contain spaces need quotes. If several tracks share the name, the command shows every match in saved order, each with its ID. A name with no match returns exit code 1.
+`track.list` shows the saved order, including collapsed Group descendants and
+Return tracks. The name filter returns every exact, case-sensitive match.
+`track.show` requires one match. Use `--track id:UUID` to select a track by ID
+when names are repeated. Master is the output bus and has no track ID.
 
 Track details include the parent name and ID, saved gain in dB, pan (−1 left, 0 center, +1 right), mute and solo settings, track effect count, clip count and project rate in Hz. MIDI tracks include their instrument layer count. Beat tracks include subtrack names/IDs, source-layer counts, trigger pitches and output gain/pan. Their subtracks are not separate project tracks. Groups include their direct children. Clip details show IDs, asset IDs, gain in dB, mute settings, and start, exclusive end and length in frames and seconds.
 
@@ -30,26 +28,28 @@ Save and close the desktop project before using this command. It changes the
 saved project and has no synchronization with an open desktop session.
 
 ```sh
-daw-cli tracks --add "New audio" --type audio --project ./Song
-daw-cli tracks --add "New MIDI" --type midi --project ./Song
-daw-cli tracks --add "New beat" --type beat --project ./Song
+daw-cli --project ./Song track.add --type audio --name "New audio"
+daw-cli --project ./Song track.add --type midi --name "New MIDI"
+daw-cli --project ./Song track.add --type beat --name "New beat"
 ```
 
-Both `--add` and `--type` are required together. Types are `audio`, `midi` and
-`beat`. The command appends an empty root-level track with a new ID and the
-standard defaults, then saves the project. A MIDI track starts with a sine-wave
-Oscillator in Layer 1. The command creates no clips, patterns or recordings.
-Duplicate names are allowed. Names must contain text and cannot
-contain control characters. You cannot combine `--add` with an inspection name.
-Without `--project`, it edits the project in the current directory. A missing
-project is an error; this command does not create a new project. Success prints
-the added track's name and ID. Failure to load, validate or save returns exit 1;
-invalid arguments return exit 2. The operation has no desktop Undo entry.
+Supply both `--name` and `--type`. The command appends an empty root track
+and saves its new ID and default settings. MIDI tracks start with a sine-wave
+Oscillator. Duplicate names are allowed. A new name must contain text and no
+control characters. Track commands work with an existing saved project.
 
-The following inspection behavior applies when `--add` is absent.
+## Rename a track
 
-Names appear in quotes. Control characters are escaped so they cannot change the terminal display. Mute and solo are saved controls; they do not describe the combined audible state of parent buses and other tracks.
+```sh
+daw-cli --project ./Song track.rename --track "name:New MIDI" --name "Lead"
+```
 
-Inspection reads and validates project metadata only. It does not change the project, open media, prepare audio or report missing sources. Use [validate](validate.md) to check referenced audio.
+A rename preserves the track ID, clips and routing. Setting the current name
+again succeeds without writing the manifest. List tracks first if you need an
+ID to disambiguate a name. Use `track.rename --help` for the options.
+
+The legacy `tracks [NAME] [--project FOLDER]` command still defaults to the
+current folder and shows all name matches. Add with
+`tracks --add NAME --type TYPE [--project FOLDER]` in legacy scripts.
 
 [CLI commands](README.md)

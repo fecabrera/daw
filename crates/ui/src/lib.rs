@@ -1,6 +1,7 @@
 mod hosted_panel;
 mod hosting;
 mod plugin_settings;
+pub use daw_project::recovery::default_root as midi_recovery_root;
 pub use hosting::{PluginRequest, PluginSnapshot};
 mod midi;
 mod midi_service;

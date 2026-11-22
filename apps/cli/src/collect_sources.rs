@@ -1,6 +1,6 @@
 //! Headless collection over the same verified plan and commit boundary as desktop.
 use daw_project::{
-    Error, Result, Session,
+    Error, ProjectWriteGuard, Result, Session,
     source_collection::{CollectionPreflight, CollectionStatus},
 };
 use std::{
@@ -11,17 +11,49 @@ use std::{
 };
 
 pub fn run(project: &Path, dry_run: bool) -> Result<()> {
-    let session = Session::open(project)?;
+    collect(project, dry_run, true).map(|_| ())
+}
+
+pub(super) fn collect(
+    project: &Path,
+    dry_run: bool,
+    legacy: bool,
+) -> Result<crate::report::Outcome> {
+    use serde_json::json;
+    let prepare = |folder: &Path| {
+        let session = Session::open(folder)?;
+        let report = session
+            .source_collection_snapshot(None, 0)?
+            .preflight(None, &|| false)?;
+        Ok::<_, Error>((session, report))
+    };
+    let (mut session, mut report) = prepare(project)?;
+    let guard = if dry_run || !report.is_ready() {
+        None
+    } else {
+        let guard = ProjectWriteGuard::acquire(project)?;
+        (session, report) = prepare(guard.folder())?;
+        Some(guard)
+    };
+    let warn = |message: &str| {
+        if legacy {
+            warn(message);
+        } else {
+            crate::report::warning(message);
+        }
+    };
     for warning in &session.warnings {
         warn(warning);
     }
-    // The CLI owns one immutable loaded session and has no in-memory edit history.
-    // External filesystem/manifest changes are rechecked by the shared executor.
-    let snapshot = session.source_collection_snapshot(None, 0)?;
-    let report = snapshot.preflight(None, &|| false)?;
-    write_output(&summary(&session, &report))
-        .map_err(|e| Error(format!("Cannot write collection preflight: {e}")))?;
+    let preflight = summary(&session, &report);
+    if legacy {
+        write_output(&preflight)
+            .map_err(|e| Error(format!("Cannot write collection preflight: {e}")))?;
+    }
     if !report.is_ready() {
+        if !legacy {
+            let _ = write!(io::stderr().lock(), "{preflight}");
+        }
         for diagnostic in report.diagnostics() {
             let owners = diagnostic
                 .owners
@@ -38,7 +70,11 @@ pub fn run(project: &Path, dry_run: bool) -> Result<()> {
                 io::stderr().lock(),
                 "Source problem: {:?}: {}\nAssets: {}",
                 diagnostic.path,
-                diagnostic.message,
+                if legacy {
+                    diagnostic.message.clone()
+                } else {
+                    crate::report::escaped(&diagnostic.message)
+                },
                 owners
             );
         }
@@ -47,13 +83,27 @@ pub fn run(project: &Path, dry_run: bool) -> Result<()> {
             report.diagnostics().len()
         )));
     }
+    let stats = report.summary();
+    let result = json!({
+        "dry_run": dry_run,
+        "files_to_copy": stats.files_to_copy,
+        "files_already_included": stats.files_already_included,
+        "additional_bytes": stats.additional_bytes,
+    });
     if dry_run {
-        return write_output("Dry run complete; project unchanged.\n")
-            .map_err(|e| Error(format!("Cannot write collection result: {e}")));
+        let complete = "Dry run complete; project unchanged.\n";
+        if legacy {
+            write_output(complete)
+                .map_err(|e| Error(format!("Cannot write collection result: {e}")))?;
+        }
+        return Ok(crate::report::Outcome::read(preflight + complete, result));
     }
     let plan = report.into_plan()?;
     let outcome = plan.execute(
-        &|snapshot| snapshot.is_current(&session, None, 0),
+        &|snapshot| {
+            guard.as_ref().is_some_and(|guard| guard.check().is_ok())
+                && snapshot.is_current(&session, None, 0)
+        },
         &|| false,
         &mut |_| Ok(()),
     )?;
@@ -62,7 +112,7 @@ pub fn run(project: &Path, dry_run: bool) -> Result<()> {
     }
     if outcome.status() == CollectionStatus::RecoveryRequired {
         return Err(Error(format!(
-            "Collection commit could not be confirmed. Keep all project media and candidate manifest {:?} for recovery. No collection success was confirmed.",
+            "uncertain-commit: Collection commit could not be confirmed. Keep all project media and candidate manifest {:?} for recovery. No collection success was confirmed.",
             outcome
                 .recovery_manifest()
                 .map(|path| path.as_os_str())
@@ -72,15 +122,23 @@ pub fn run(project: &Path, dry_run: bool) -> Result<()> {
     let progress = outcome.progress();
     // The manifest is already committed. A reporting error cannot turn that into
     // a failed collection or trigger another write/rollback attempt.
-    if let Err(e) = write_output(&format!(
+    let complete = format!(
         "Collected files: {}\nCopied bytes: {}\nProject sources collected and saved.\n",
         progress.files_copied, progress.copied_bytes
-    )) {
+    );
+    if legacy && let Err(e) = write_output(&complete) {
         warn(&format!(
             "Project sources were collected and saved, but result output failed: {e}"
         ));
     }
-    Ok(())
+    let mut result = result;
+    result["files_copied"] = json!(progress.files_copied);
+    result["copied_bytes"] = json!(progress.copied_bytes);
+    result["committed"] = json!(true);
+    Ok(crate::report::Outcome::committed(
+        preflight + &complete,
+        result,
+    ))
 }
 fn summary(session: &Session, report: &CollectionPreflight) -> String {
     let s = report.summary();

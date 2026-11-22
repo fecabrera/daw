@@ -2059,9 +2059,15 @@ impl MidiTrackRuntime {
     pub fn set_live_tempo(&mut self, bpm: f32) {
         self.live_tempo_bpm = bpm;
     }
-    pub fn live_note(&mut self, token: Id, attack: Option<(u8, u8)>) -> bool {
+    pub fn live_note(
+        &mut self,
+        token: Id,
+        attack: Option<(u8, u8)>,
+        monitor: daw_core::MidiMonitor,
+    ) -> bool {
         if let Some((pitch, velocity)) = attack {
-            if !self.live_enabled
+            if (monitor == daw_core::MidiMonitor::Auto && !self.live_enabled)
+                || monitor == daw_core::MidiMonitor::Off
                 || !self
                     .live_ready
                     .get(usize::from(pitch))
@@ -3359,7 +3365,7 @@ mod external_input_tests {
         runtime.prepare_live();
         runtime.live_route(true);
         let token = Id::from_u128(7);
-        assert!(runtime.live_note(token, Some((60, 100))));
+        assert!(runtime.live_note(token, Some((60, 100)), daw_core::MidiMonitor::Auto));
         for frame in 0..500 {
             runtime.sample(frame);
         }
@@ -3386,8 +3392,8 @@ mod external_input_tests {
         let mut runtime = MidiTrackRuntime::new(&project, &project.tracks[0]).unwrap();
         runtime.prepare_live();
         runtime.live_route(true);
-        assert!(!runtime.live_note(Id::new_v4(), Some((60, 127))));
-        assert!(!runtime.live_note(Id::new_v4(), Some((255, 127))));
+        assert!(!runtime.live_note(Id::new_v4(), Some((60, 127)), daw_core::MidiMonitor::Auto));
+        assert!(!runtime.live_note(Id::new_v4(), Some((255, 127)), daw_core::MidiMonitor::Auto));
         assert!(!runtime.live_active());
     }
 }

@@ -128,3 +128,13 @@ pub(super) fn replace(source: &Path, target: &Path) -> io::Result<()> {
         Ok(())
     }
 }
+
+pub(super) fn create_directory(source: &Path, target: &Path) -> io::Result<()> {
+    let source = wide(source)?;
+    let target = wide(target)?;
+    // SAFETY: The terminated buffers stay live for the synchronous operation.
+    if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), MOVEFILE_WRITE_THROUGH) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}

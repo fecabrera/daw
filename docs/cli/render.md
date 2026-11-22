@@ -1,10 +1,10 @@
 # Export a project
 
 ```sh
-daw-cli render --project examples/demo --output mix.wav
-daw-cli render --project examples/demo --output mix.wav --codec float32 --overwrite
-daw-cli render --project examples/demo --output mix.mp3 --bitrate 320
-daw-cli render --project examples/demo --output mix.aac --bitrate 192
+daw-cli --project examples/demo project.export.mix --output mix.wav
+daw-cli --project examples/demo project.export.mix --output mix.wav --codec float32 --overwrite
+daw-cli --project examples/demo project.export.mix --output mix.mp3 --bitrate 320
+daw-cli --project examples/demo project.export.mix --output mix.aac --bitrate 192
 ```
 
 `--project` and `--output` are required. Choose your own output path. Export uses the saved project mix, including track, group and Master processing. It does not save project changes.

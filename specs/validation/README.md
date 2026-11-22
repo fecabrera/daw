@@ -19,6 +19,27 @@ Dated records that name the standalone Editor describe the layout tested at the 
 
 - [Live MIDI and recording — 2026-11-15](live-midi-2026-11-15.md): multiple targets, recording, recovery, UI controls and native acceptance limits.
 
+## Namespaced CLI — 2026-11-21
+
+The legacy CLI smoke check passed for source collection, track inspection,
+compound audio, Opus import, WAV/MP3/AAC, overwrite protection, warnings and
+exit codes. The command was `python3 tools/check_cli.py` after a locked offline
+CLI build. Local CLI documentation links and `git diff --check` passed.
+
+The namespaced executable tests passed for project-free help, exact
+selectors, duplicate names, guarded track writes, closed stdout after save,
+collection receipts, legacy render parity and protected export destinations.
+They include a hard-link alias created during rendering. Strict workspace
+Clippy passed. The local macOS debug app passed signature verification.
+
+- Debug workspace passed 3,677 tests with 22 ignored.
+  `cargo test --locked --offline --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`
+- Release workspace passed 3,677 tests with 22 ignored.
+  `cargo test --locked --offline --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`
+
+Both runs excluded sandbox-limited Audio Unit registration. Windows and
+Linux native filesystem checks remain pending.
+
 ## Saved lower editor height — 2026-11-21
 
 The project display tests passed for manifest round trips, invalid heights
@@ -15224,3 +15245,35 @@ Formatting, strict workspace Clippy and the CLI smoke check passed. The debug
 and release workspace suites each passed 3,655 tests, with 22 ignored and
 the native Audio Unit registration test filtered out. The local macOS
 release bundle was rebuilt and passed strict signature verification.
+
+## Full dotted CLI catalog — 2026-11-21
+
+The CLI registers 131 dotted commands, including 122 commands beyond the
+launch set. The CLI integration tests compare namespace discovery with the
+documented catalog and run both help forms for every command without opening
+a project. They cover one-save edit batches and byte-for-byte rollback,
+per-track MIDI options, MIDI notes, Beat steps, component modulation
+cleanup, clip edits, exact-range export within PCM24 dither tolerance,
+atomic stem publication, and copying generated bounce audio.
+
+- The debug workspace suite passed with 3,679 tests. It skipped the known
+  `native_audio_component_registration_and_host_calls` check. Focused CLI
+  tests passed on the final source.
+- The workspace release run skipped the same native check. Two CLI help tests
+  failed because the sidechain choice group lacked its `--clear` argument.
+  Both passed after the fix in the final release CLI suite, which passed all
+  21 tests. All other workspace release targets passed.
+- Formatting, strict workspace Clippy, and `git diff --check` passed.
+- The CLI build, `tools/check_cli.py`, and a temporary end-to-end project
+  workflow passed. The workflow exercised grouping, sends, conductor edits,
+  source relink, clip processing, modulation, bounce, and project copy.
+- Temporary fixtures verified recovery lease handling, copying a verified
+  generation with generated media, and retaining the recovery entry.
+  They verified saved hosted instance listing, sidechain clearing, and
+  removal. A native CLAP fixture verified isolated scan, installation,
+  parameter flush, and opaque state capture through the shared host service.
+  A synthetic renderer fixture verified channel filtering and all three
+  monitor modes.
+- The signed local macOS debug application built and passed strict
+  signature verification. Physical MIDI and audio devices, Windows, Linux,
+  and separation with a supplied model were outside this check.

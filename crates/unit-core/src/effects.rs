@@ -571,29 +571,34 @@ impl EffectSettings {
 
     /// Mutable routes for identity remapping during host editing operations.
     pub fn modulations_mut(&mut self) -> &mut [crate::Modulation] {
+        self.modulation_routes_mut()
+            .map_or(&mut [], Vec::as_mut_slice)
+    }
+
+    pub fn modulation_routes_mut(&mut self) -> Option<&mut Vec<crate::Modulation>> {
         match self {
-            Self::Hosted(s) => &mut s.modulations,
-            Self::AutoFilter(s) => &mut s.modulations,
-            Self::Filter(s) => &mut s.modulations,
-            Self::Drive(s) => &mut s.modulations,
-            Self::DriveV2(s) => &mut s.modulations,
-            Self::MultibandEq(s) => &mut s.modulations,
-            Self::HarmonicLift(s) => &mut s.modulations,
-            Self::Exciter(s) => &mut s.modulations,
-            Self::MultibandCompressor(s) => &mut s.modulations,
-            Self::Eq3(s) => &mut s.modulations,
-            Self::Compressor(s) => &mut s.modulations,
-            Self::Limiter(s) => &mut s.modulations,
-            Self::DirectionMixer(s) => &mut s.modulations,
-            Self::StereoSpread(s) => &mut s.modulations,
-            Self::Saturator(s) => &mut s.modulations,
-            Self::Bitcrusher(s) => &mut s.modulations,
-            Self::Chorus(s) => &mut s.modulations,
-            Self::AmbientReverb(s) => &mut s.modulations,
-            Self::ShimmerReverb(s) => &mut s.modulations,
-            Self::PlateReverb(s) => &mut s.modulations,
-            Self::Ott(s) => &mut s.modulations,
-            _ => &mut [],
+            Self::Hosted(s) => Some(&mut s.modulations),
+            Self::AutoFilter(s) => Some(&mut s.modulations),
+            Self::Filter(s) => Some(&mut s.modulations),
+            Self::Drive(s) => Some(&mut s.modulations),
+            Self::DriveV2(s) => Some(&mut s.modulations),
+            Self::MultibandEq(s) => Some(&mut s.modulations),
+            Self::HarmonicLift(s) => Some(&mut s.modulations),
+            Self::Exciter(s) => Some(&mut s.modulations),
+            Self::MultibandCompressor(s) => Some(&mut s.modulations),
+            Self::Eq3(s) => Some(&mut s.modulations),
+            Self::Compressor(s) => Some(&mut s.modulations),
+            Self::Limiter(s) => Some(&mut s.modulations),
+            Self::DirectionMixer(s) => Some(&mut s.modulations),
+            Self::StereoSpread(s) => Some(&mut s.modulations),
+            Self::Saturator(s) => Some(&mut s.modulations),
+            Self::Bitcrusher(s) => Some(&mut s.modulations),
+            Self::Chorus(s) => Some(&mut s.modulations),
+            Self::AmbientReverb(s) => Some(&mut s.modulations),
+            Self::ShimmerReverb(s) => Some(&mut s.modulations),
+            Self::PlateReverb(s) => Some(&mut s.modulations),
+            Self::Ott(s) => Some(&mut s.modulations),
+            _ => None,
         }
     }
 

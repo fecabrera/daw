@@ -7326,6 +7326,7 @@ fn per_track_midi_options_mark_dirty_support_history_and_switch_without_inheriti
         root: Some(2),
         scale: daw_core::MidiScale::Dorian,
         snap: false,
+        ..Default::default()
     };
     app.session.project.tracks[0].midi_options = first_options;
     app.session.project.tracks[1].midi_options = second_options;

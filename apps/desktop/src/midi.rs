@@ -1,7 +1,6 @@
 //! MIDI device ownership stays outside portable project/rendering crates.
 use daw_ui::{MidiBackend, MidiDevice, MidiIngress};
 use midir::{MidiInput, MidiInputConnection};
-use std::path::PathBuf;
 #[derive(Default)]
 pub struct NativeMidi {
     connection: Option<MidiInputConnection<()>>,
@@ -48,15 +47,4 @@ impl MidiBackend for NativeMidi {
         self.connection = None;
     }
 }
-pub fn recovery_root() -> Option<PathBuf> {
-    #[cfg(target_os = "macos")]
-    let root =
-        std::env::var_os("HOME").map(|p| PathBuf::from(p).join("Library/Application Support"));
-    #[cfg(target_os = "windows")]
-    let root = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
-    #[cfg(target_os = "linux")]
-    let root = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".local/state")));
-    root.map(|p| p.join("DAW/recovery"))
-}
+pub use daw_ui::midi_recovery_root as recovery_root;

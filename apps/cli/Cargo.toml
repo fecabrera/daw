@@ -10,6 +10,7 @@ daw-core.workspace = true
 daw-project.workspace = true
 daw-media.workspace = true
 daw-plugin-host.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 clap.workspace = true
 tracing.workspace = true

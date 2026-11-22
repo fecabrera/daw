@@ -35,7 +35,9 @@ pub use time_signature::TimeSignature;
 pub use timing::{
     ArrangementMarker, MusicalClock, SignatureEvent, TIMING_EVENT_LIMIT, TempoEvent, TimingMap,
 };
+mod builtin_effects;
 mod effect_owners;
+pub use builtin_effects::{BUILTIN_EFFECTS, EffectCategory, EffectDescriptor};
 pub use daw_unit_core::{
     HARMONIC_BAND_NAMES, HARMONIC_FREQUENCY_DEFAULTS, HARMONIC_FREQUENCY_RANGES,
     HARMONIC_LIFT_STATE_VERSION, HARMONIC_LIFT_TYPE_ID, HarmonicBand, HarmonicLiftSettings,
@@ -102,7 +104,7 @@ pub use daw_unit_core::{
 pub use midi::{
     MIDI_TICKS_PER_BEAT, MidiNote, MidiPattern, MidiPatternBounds, TrackKind, transposed_midi_pitch,
 };
-pub use midi_options::{MidiOptions, MidiScale};
+pub use midi_options::{MidiMonitor, MidiOptions, MidiScale};
 mod audio_quality;
 mod audio_settings;
 pub use audio_quality::{AudioQuality, SampleFormat};
@@ -516,6 +518,39 @@ impl Clip {
     /// Map a timeline position inside a validated clip to its source frame.
     pub fn source_frame(&self, local: u64) -> u64 {
         self.source_offset_frame + self.repeat.map_or(local, |repeat| repeat.position(local))
+    }
+
+    /// Source windows covered by a local interval, with at most one wrap.
+    pub fn source_windows(&self, local: u64, count: u64) -> [(u64, u64); 2] {
+        let count = count.min(self.length_frames.saturating_sub(local));
+        if count == 0 {
+            return [(0, 0); 2];
+        }
+        let Some(repeat) = self.repeat else {
+            return [(self.source_frame(local), count), (0, 0)];
+        };
+        if count >= repeat.length_frames {
+            return [(self.source_offset_frame, repeat.length_frames), (0, 0)];
+        }
+        let first = count.min(repeat.length_frames - repeat.position(local));
+        [
+            (self.source_frame(local), first),
+            (self.source_offset_frame, count - first),
+        ]
+    }
+
+    /// First local frame and repeat period for a source frame inside the clip.
+    pub fn source_occurrence(&self, source: u64) -> Option<(u64, Option<u64>)> {
+        let offset = source.checked_sub(self.source_offset_frame)?;
+        let (first, period) = match self.repeat {
+            Some(repeat) if offset < repeat.length_frames => {
+                let first = repeat.first_local_frame(offset);
+                (first, Some(repeat.length_frames))
+            }
+            Some(_) => return None,
+            None => (offset, None),
+        };
+        (first < self.length_frames).then_some((first, period))
     }
 
     /// Restore the original base at one copy, or unwrap a contiguous partial range.
@@ -1149,6 +1184,18 @@ impl Project {
                 options.validate()?;
                 track.midi_options = options;
             }
+            Edit::SetTrackName { track_id, name } => {
+                if name.trim().is_empty() || name.chars().any(char::is_control) {
+                    return Err(Error(
+                        "Track name must contain text and no control characters".into(),
+                    ));
+                }
+                self.tracks
+                    .iter_mut()
+                    .find(|track| track.id == track_id)
+                    .ok_or_else(|| Error("Track not found".into()))?
+                    .name = name;
+            }
             Edit::SetTrackMuted { track_id, muted } => {
                 self.tracks
                     .iter_mut()
@@ -1471,6 +1518,10 @@ pub enum Edit {
     SetMidiOptions {
         track_id: Id,
         options: MidiOptions,
+    },
+    SetTrackName {
+        track_id: Id,
+        name: String,
     },
     SetTrackMuted {
         track_id: Id,

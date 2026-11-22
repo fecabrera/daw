@@ -10,10 +10,27 @@ use std::time::Instant;
 
 #[derive(Clone, Copy, Debug)]
 pub enum MidiAction {
-    Route { track: Id, enabled: bool },
-    Attack { token: Id, pitch: u8, velocity: u8 },
-    Release { token: Id },
-    Record { count_in_frames: u64 },
+    Route {
+        track: Id,
+        enabled: bool,
+    },
+    Attack {
+        token: Id,
+        pitch: u8,
+        velocity: u8,
+    },
+    ChannelAttack {
+        token: Id,
+        pitch: u8,
+        velocity: u8,
+        channel: u8,
+    },
+    Release {
+        token: Id,
+    },
+    Record {
+        count_in_frames: u64,
+    },
     Seal,
     Stop,
     Pause,
@@ -132,7 +149,10 @@ impl MidiSender {
         let capture_frame = if playing
             && matches!(
                 action,
-                MidiAction::Attack { .. } | MidiAction::Release { .. } | MidiAction::Route { .. }
+                MidiAction::Attack { .. }
+                    | MidiAction::ChannelAttack { .. }
+                    | MidiAction::Release { .. }
+                    | MidiAction::Route { .. }
             ) {
             Some(
                 ((i128::from(frame) + frames + i128::from(self.recording_offset_frames))
@@ -303,6 +323,18 @@ impl Receiver {
                     velocity,
                 } => {
                     renderer.live_midi_note(token, Some((pitch, velocity)));
+                }
+                MidiAction::ChannelAttack {
+                    token,
+                    pitch,
+                    velocity,
+                    channel,
+                } => {
+                    renderer.live_midi_note_on_channel(
+                        token,
+                        Some((pitch, velocity)),
+                        Some(channel),
+                    );
                 }
                 MidiAction::Release { token } => {
                     renderer.live_midi_note(token, None);

@@ -9,6 +9,16 @@ pub(super) enum AddType {
     Beat,
 }
 
+impl AddType {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Audio => "audio",
+            Self::Midi => "midi",
+            Self::Beat => "beat",
+        }
+    }
+}
+
 pub(super) fn parse_name(value: &str) -> Result<String, String> {
     if value.trim().is_empty() || value.chars().any(char::is_control) {
         Err("Track name must contain text and no control characters".into())
@@ -22,26 +32,8 @@ pub(super) fn add(
     name: &str,
     track_type: AddType,
 ) -> daw_project::Result<()> {
-    let mut session = daw_project::Session::open_document(folder)?.into_editor_session();
-    let id = match track_type {
-        AddType::Audio => session.project.add_track(),
-        AddType::Midi => session.project.add_midi_track(),
-        AddType::Beat => session.project.add_beat_track(),
-    }
-    .map_err(|error| daw_project::Error(error.to_string()))?;
-    session
-        .project
-        .tracks
-        .iter_mut()
-        .find(|track| track.id == id)
-        .unwrap()
-        .name = name.to_owned();
-    session
-        .project
-        .validate()
-        .map_err(|error| daw_project::Error(error.to_string()))?;
-    session.save(folder)?;
-    for warning in &session.warnings {
+    let (id, warnings) = create(folder, name, track_type)?;
+    for warning in warnings {
         eprintln!("Warning: {warning}");
     }
     // The save has committed. A closed output pipe must not turn that into a
@@ -53,6 +45,223 @@ pub(super) fn add(
         eprintln!("Warning: Track saved, but cannot write confirmation: {error}");
     }
     Ok(())
+}
+
+pub(super) fn create(
+    folder: &std::path::Path,
+    name: &str,
+    track_type: AddType,
+) -> daw_project::Result<(daw_core::Id, Vec<String>)> {
+    let guard = daw_project::ProjectWriteGuard::acquire(folder)?;
+    let (document, revision) = guard.open_document()?;
+    let mut session = document.into_editor_session();
+    let id = match track_type {
+        AddType::Audio => session.project.add_track(),
+        AddType::Midi => session.project.add_midi_track(),
+        AddType::Beat => session.project.add_beat_track(),
+    }
+    .map_err(|error| daw_project::Error(error.to_string()))?;
+    session
+        .project
+        .edit(daw_core::Edit::SetTrackName {
+            track_id: id,
+            name: name.to_owned(),
+        })
+        .map_err(|error| daw_project::Error(error.to_string()))?;
+    let saved = session
+        .save_snapshot(None)?
+        .save_guarded(&guard, &revision)?;
+    Ok((id, saved.session.warnings))
+}
+
+#[derive(Clone)]
+pub(super) enum Selector {
+    Id(daw_core::Id),
+    Name(String),
+}
+
+pub(super) fn parse_selector(value: &str) -> Result<Selector, String> {
+    if let Some(id) = value.strip_prefix("id:") {
+        return id
+            .parse()
+            .map(Selector::Id)
+            .map_err(|_| "Invalid track UUID".into());
+    }
+    if let Some(name) = value.strip_prefix("name:") {
+        return Ok(Selector::Name(name.into()));
+    }
+    Err("Use id:UUID or name:EXACT to select a track".into())
+}
+
+fn resolve<'a>(project: &'a Project, selector: &Selector) -> daw_project::Result<&'a Track> {
+    let mut matches = project.tracks.iter().filter(|track| match selector {
+        Selector::Id(id) => track.id == *id,
+        Selector::Name(name) => track.name == *name,
+    });
+    let Some(track) = matches.next() else {
+        return Err(daw_project::Error(
+            "target-not-found: track selector has no match".into(),
+        ));
+    };
+    let Some(second) = matches.next() else {
+        return Ok(track);
+    };
+    let candidates = [track, second]
+        .into_iter()
+        .chain(matches)
+        .map(|track| {
+            let owner = track
+                .group_id
+                .map_or_else(|| "master".into(), |id| id.to_string());
+            format!("{} (parent {owner})", track.id)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(daw_project::Error(format!(
+        "ambiguous-target: choose a track ID from {candidates}"
+    )))
+}
+
+pub(super) fn rename(
+    folder: &std::path::Path,
+    selector: &Selector,
+    name: &str,
+) -> daw_project::Result<crate::report::Outcome> {
+    use serde_json::json;
+    let guard = daw_project::ProjectWriteGuard::acquire(folder)?;
+    let (document, revision) = guard.open_document()?;
+    let mut session = document.into_editor_session();
+    let track = resolve(&session.project, selector)?;
+    let id = track.id;
+    if track.name == name {
+        return Ok(crate::report::Outcome::read(
+            format!("Track unchanged: {name:?} ({id})\n"),
+            json!({"id": id, "name": name, "changed": false}),
+        ));
+    }
+    session
+        .project
+        .edit(daw_core::Edit::SetTrackName {
+            track_id: id,
+            name: name.into(),
+        })
+        .map_err(|error| daw_project::Error(error.to_string()))?;
+    let saved = session
+        .save_snapshot(None)?
+        .save_guarded(&guard, &revision)?;
+    for warning in saved.session.warnings {
+        crate::report::warning(&warning);
+    }
+    Ok(crate::report::Outcome::committed(
+        format!("Renamed track: {name:?} ({id})\n"),
+        json!({"id": id, "name": name, "changed": true}),
+    ))
+}
+
+pub(super) fn list(
+    folder: &std::path::Path,
+    name: Option<&str>,
+) -> daw_project::Result<crate::report::Outcome> {
+    use serde_json::json;
+    let project = daw_project::inspect_project(folder)?;
+    let selected: Vec<_> = project
+        .tracks
+        .iter()
+        .enumerate()
+        .filter(|(_, track)| name.is_none_or(|name| track.name == name))
+        .collect();
+    let tracks: Vec<_> = selected
+        .iter()
+        .map(|(index, track)| {
+            let mut row = track_summary(track);
+            row["index"] = json!(index + 1);
+            row
+        })
+        .collect();
+    Ok(crate::report::Outcome::read(
+        list_text(&project, &selected),
+        json!({"project_id": project.project_id, "tracks": tracks}),
+    ))
+}
+
+pub(super) fn show(
+    folder: &std::path::Path,
+    selector: &Selector,
+) -> daw_project::Result<crate::report::Outcome> {
+    use serde_json::json;
+    let project = daw_project::inspect_project(folder)?;
+    let track = resolve(&project, selector)?;
+    let mut text = String::new();
+    detail(&mut text, &project, track);
+    let mut result = track_summary(track);
+    result["gain_db"] = json!(track.gain_db);
+    result["pan"] = json!(track.pan);
+    result["sample_rate_hz"] = json!(project.sample_rate_hz);
+    result["instrument_layer_count"] = json!(track.instrument.as_ref().map(|i| i.layers.len()));
+    result["children"] = json!(
+        project
+            .tracks
+            .iter()
+            .filter(|t| t.group_id == Some(track.id))
+            .map(track_summary)
+            .collect::<Vec<_>>()
+    );
+    result["clips"] = json!(track.clips.iter().map(|clip| {
+        let mut row = json!({
+            "id": clip.id, "asset_id": clip.asset_id, "name": clip.name,
+            "start_frame": clip.start_frame, "end_frame": clip.end(),
+            "length_frames": clip.length_frames, "gain_db": clip.gain_db, "muted": clip.muted,
+        });
+        if is_audio_clip(&project, clip) {
+            row["channels"] = json!({"left": clip.channels.left, "right": clip.channels.right,
+                "swapped": clip.channels.swapped, "inverted": clip.channels.inverted});
+            row["fades"] = json!({
+                "in": fade_summary(&project, clip, true),
+                "out": fade_summary(&project, clip, false)
+            });
+        }
+        row
+    }).collect::<Vec<_>>());
+    if let Some(beat) = &track.beat {
+        result["beat_subtracks"] = json!(
+            beat.subtracks
+                .iter()
+                .map(|row| json!({
+                    "id": row.id, "name": row.name, "layer_count": row.instrument.layers.len(),
+                    "trigger_pitch": row.trigger_pitch, "gain_db": row.instrument.main.gain_db,
+                    "pan": row.instrument.main.pan
+                }))
+                .collect::<Vec<_>>()
+        );
+    }
+    Ok(crate::report::Outcome::read(text, result))
+}
+
+fn track_summary(track: &Track) -> serde_json::Value {
+    serde_json::json!({"id": track.id, "name": track.name, "kind": kind(track).to_ascii_lowercase(),
+        "parent_id": track.group_id, "clip_count": track.clips.len(), "effect_count": track.effects.len(),
+        "muted": track.muted, "soloed": track.soloed})
+}
+
+fn is_audio_clip(project: &Project, clip: &daw_core::Clip) -> bool {
+    project
+        .assets
+        .iter()
+        .any(|asset| asset.id == clip.asset_id && asset.is_audio())
+}
+
+fn fade_summary(project: &Project, clip: &daw_core::Clip, left: bool) -> serde_json::Value {
+    let FadeInfo {
+        mode,
+        inactive,
+        saved,
+        effective,
+        shape,
+        position,
+    } = fade_info(project, clip, left);
+    serde_json::json!({"mode": mode.to_ascii_lowercase(), "inactive": inactive,
+        "length_frames": saved, "effective_length_frames": effective,
+        "shape_percent": shape, "position_percent": position})
 }
 
 fn kind(track: &Track) -> &'static str {
@@ -69,37 +278,10 @@ pub(super) fn describe(project: &Project, name: Option<&str>) -> daw_project::Re
     let mut text = String::new();
     match name {
         None => {
-            writeln!(text, "Project: {:?}", project.name).unwrap();
-            writeln!(text, "Tracks: {}", project.tracks.len()).unwrap();
-            if project.tracks.is_empty() {
-                writeln!(text, "No tracks.").unwrap();
-                return Ok(text);
-            }
-            writeln!(
-                text,
-                "#\tID\tType\tName\tParent\tClips\tEffects\tMuted\tSolo"
-            )
-            .unwrap();
-            for (index, track) in project.tracks.iter().enumerate() {
-                let parent = track
-                    .group_id
-                    .map_or_else(|| "Master".into(), |id| id.to_string());
-                // Debug-quoted names escape tabs, newlines and terminal control codes.
-                writeln!(
-                    text,
-                    "{}\t{}\t{}\t{:?}\t{}\t{}\t{}\t{}\t{}",
-                    index + 1,
-                    track.id,
-                    kind(track),
-                    track.name,
-                    parent,
-                    track.clips.len(),
-                    track.effects.len(),
-                    track.muted,
-                    track.soloed
-                )
-                .unwrap();
-            }
+            return Ok(list_text(
+                project,
+                &project.tracks.iter().enumerate().collect::<Vec<_>>(),
+            ));
         }
         Some(name) => {
             let matches: Vec<_> = project
@@ -121,6 +303,35 @@ pub(super) fn describe(project: &Project, name: Option<&str>) -> daw_project::Re
         }
     }
     Ok(text)
+}
+
+fn list_text(project: &Project, selected: &[(usize, &Track)]) -> String {
+    let mut text = format!("Project: {:?}\nTracks: {}\n", project.name, selected.len());
+    if selected.is_empty() {
+        text.push_str("No tracks.\n");
+        return text;
+    }
+    text.push_str("#\tID\tType\tName\tParent\tClips\tEffects\tMuted\tSolo\n");
+    for (index, track) in selected {
+        let parent = track
+            .group_id
+            .map_or_else(|| "Master".into(), |id| id.to_string());
+        writeln!(
+            text,
+            "{}\t{}\t{}\t{:?}\t{}\t{}\t{}\t{}\t{}",
+            index + 1,
+            track.id,
+            kind(track),
+            track.name,
+            parent,
+            track.clips.len(),
+            track.effects.len(),
+            track.muted,
+            track.soloed
+        )
+        .unwrap();
+    }
+    text
 }
 
 fn detail(text: &mut String, project: &Project, track: &Track) {
@@ -190,11 +401,7 @@ fn detail(text: &mut String, project: &Project, track: &Track) {
             clip.end(), project.seconds(clip.end()), clip.length_frames,
             project.seconds(clip.length_frames), clip.muted).unwrap();
         writeln!(text, "    Gain: {:.2} dB", clip.gain_db).unwrap();
-        if project
-            .assets
-            .iter()
-            .any(|asset| asset.id == clip.asset_id && asset.is_audio())
-        {
+        if is_audio_clip(project, clip) {
             writeln!(
                 text,
                 "    Channels: L={} R={} Swap L/R={}\n    Polarity: {}",
@@ -214,13 +421,21 @@ fn detail(text: &mut String, project: &Project, track: &Track) {
     }
 }
 
-fn fade_detail(text: &mut String, project: &Project, clip: &daw_core::Clip, left: bool) {
+struct FadeInfo {
+    mode: &'static str,
+    inactive: bool,
+    saved: u64,
+    effective: u64,
+    shape: f32,
+    position: f32,
+}
+
+fn fade_info(project: &Project, clip: &daw_core::Clip, left: bool) -> FadeInfo {
     let fade = if left {
         clip.fades.fade_in
     } else {
         clip.fades.fade_out
     };
-    let label = if left { "Fade in" } else { "Fade out" };
     let limit = project.clip_fade_limit(clip.id, left, fade.crossfade);
     let mode = if fade.length_frames == 0 {
         "Automatic"
@@ -229,7 +444,8 @@ fn fade_detail(text: &mut String, project: &Project, clip: &daw_core::Clip, left
     } else {
         "Fade"
     };
-    let effective = if fade.length_frames == 0 || (fade.crossfade && limit == 0) {
+    let inactive = fade.crossfade && fade.length_frames > 0 && limit == 0;
+    let effective = if fade.length_frames == 0 || inactive {
         (u64::from(project.sample_rate_hz) / 200)
             .max(1)
             .min(clip.length_frames / 2)
@@ -241,11 +457,29 @@ fn fade_detail(text: &mut String, project: &Project, clip: &daw_core::Clip, left
     } else {
         fade.midpoint_position
     };
-    writeln!(text, "    {label}: {mode}{}\n      Saved duration: {} frames ({:.3} ms)\n      Effective duration: {} frames ({:.3} ms)\n      Shape: {:+.2}%\n      Position: {:.2}%",
-        if fade.crossfade && fade.length_frames > 0 && limit == 0 { " (inactive; automatic boundary fade)" } else { "" },
-        fade.length_frames, project.seconds(fade.length_frames) * 1000.0,
-        effective, project.seconds(effective) * 1000.0,
-        (fade.midpoint - 0.5) * 200.0, position * 100.0).unwrap();
+    FadeInfo {
+        mode,
+        inactive,
+        saved: fade.length_frames,
+        effective,
+        shape: (fade.midpoint - 0.5) * 200.0,
+        position: position * 100.0,
+    }
+}
+
+fn fade_detail(text: &mut String, project: &Project, clip: &daw_core::Clip, left: bool) {
+    let FadeInfo {
+        mode,
+        inactive,
+        saved,
+        effective,
+        shape,
+        position,
+    } = fade_info(project, clip, left);
+    let label = if left { "Fade in" } else { "Fade out" };
+    writeln!(text, "    {label}: {mode}{}\n      Saved duration: {saved} frames ({:.3} ms)\n      Effective duration: {effective} frames ({:.3} ms)\n      Shape: {shape:+.2}%\n      Position: {position:.2}%",
+        if inactive { " (inactive; automatic boundary fade)" } else { "" },
+        project.seconds(saved) * 1000.0, project.seconds(effective) * 1000.0).unwrap();
 }
 
 #[cfg(test)]

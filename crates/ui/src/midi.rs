@@ -36,6 +36,7 @@ pub(super) struct State {
     output: usize,
     output_revision: Option<u64>,
     targets: Vec<Id>,
+    monitoring: Vec<Id>,
     project: Option<Id>,
     recoveries: Vec<daw_project::recovery::RecoveryEntry>,
     last_snapshot: std::time::Instant,
@@ -59,6 +60,7 @@ impl Default for State {
             output: 0,
             output_revision: None,
             targets: Vec::new(),
+            monitoring: Vec::new(),
             project: None,
             recoveries: Vec::new(),
             last_snapshot: std::time::Instant::now(),
@@ -226,6 +228,7 @@ impl DawUi {
             }
             self.midi.armed.clear();
             self.midi.targets.clear();
+            self.midi.monitoring.clear();
             self.midi.project = Some(project);
             self.midi.output = 0;
         }
@@ -393,8 +396,26 @@ impl DawUi {
             &self.midi.armed,
             self.selected_track,
         );
-        if targets != self.midi.targets && self.midi_send(Command::Routes(targets.clone())) {
+        let monitoring = self
+            .session
+            .project
+            .tracks
+            .iter()
+            .filter(|track| {
+                track.kind == daw_core::TrackKind::Midi
+                    && match track.midi_options.monitor {
+                        daw_core::MidiMonitor::On => true,
+                        daw_core::MidiMonitor::Off => false,
+                        daw_core::MidiMonitor::Auto => targets.contains(&track.id),
+                    }
+            })
+            .map(|track| track.id)
+            .collect::<Vec<_>>();
+        if (targets != self.midi.targets || monitoring != self.midi.monitoring)
+            && self.midi_send(Command::Routes(targets.clone(), monitoring.clone()))
+        {
             self.midi.targets = targets;
+            self.midi.monitoring = monitoring;
         }
         if self.dirty
             && !self.midi.busy()

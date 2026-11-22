@@ -12,6 +12,19 @@ use std::{
 
 const LIMIT: u64 = 512 * 1024 * 1024;
 const WORKSPACE_LIMIT: u64 = 20;
+pub fn default_root() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    let root =
+        std::env::var_os("HOME").map(|p| PathBuf::from(p).join("Library/Application Support"));
+    #[cfg(target_os = "windows")]
+    let root = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    #[cfg(target_os = "linux")]
+    let root = std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".local/state")));
+    root.map(|p| p.join("DAW/recovery"))
+}
+
 #[derive(Clone)]
 pub struct RecoveryStore {
     pub folder: PathBuf,
@@ -121,6 +134,13 @@ impl RecoveryStore {
     }
     /// A scan skips live instances and never follows links or touches unknown directories.
     pub fn scan(root: &Path) -> Result<Vec<RecoveryEntry>> {
+        Self::scan_entries(root, true)
+    }
+    /// Inspect already verified saved generations while leaving pending takes alone.
+    pub fn inspect(root: &Path) -> Result<Vec<RecoveryEntry>> {
+        Self::scan_entries(root, false)
+    }
+    fn scan_entries(root: &Path, recover_pending: bool) -> Result<Vec<RecoveryEntry>> {
         if !root.exists() {
             return Ok(Vec::new());
         }
@@ -138,7 +158,10 @@ impl RecoveryStore {
             {
                 continue;
             }
-            if fs::read(path.join("owner")).ok().as_deref() != Some(b"DAW recovery v1\n") {
+            if ordinary(&path.join("owner"), false).is_err()
+                || ordinary(&path.join("lease"), false).is_err()
+                || fs::read(path.join("owner")).ok().as_deref() != Some(b"DAW recovery v1\n")
+            {
                 continue;
             }
             let Ok(lease) = OpenOptions::new()
@@ -155,13 +178,19 @@ impl RecoveryStore {
                 folder: path.clone(),
                 _lease: Arc::new(lease),
             };
-            Self::cleanup_closed(&path)?;
+            if recover_pending {
+                Self::cleanup_closed(&path)?;
+            }
             if path.join("clean-exit").exists() && !path.join("active-take").exists() {
                 continue;
             }
-            let pending_error = crate::midi_recording::TakeJournal::recover_pending(&store)
-                .err()
-                .map(|e| e.to_string());
+            let pending_error = if recover_pending {
+                crate::midi_recording::TakeJournal::recover_pending(&store)
+                    .err()
+                    .map(|e| e.to_string())
+            } else {
+                None
+            };
             let mut entries = Self::entries(&path)?;
             entries.sort_by_key(|e| (e.project, e.order, e.revision, e.id));
             // Present one latest valid generation per project; corrupted newest entries
@@ -490,7 +519,8 @@ impl RecoveryStore {
         }
         Ok(())
     }
-    pub fn recover(entry: &RecoveryEntry) -> Result<Session> {
+    /// Claim a verified generation for the duration of a copy or recovery operation.
+    fn claim(entry: &RecoveryEntry) -> Result<Self> {
         let parent = entry
             .generation
             .parent()
@@ -511,6 +541,23 @@ impl RecoveryStore {
         if !valid {
             return Err(error("Recovery generation is unavailable or corrupt"));
         }
+        Ok(Self {
+            folder: parent.to_path_buf(),
+            _lease: Arc::new(lease),
+        })
+    }
+
+    pub fn copy_entry(entry: &RecoveryEntry, parent: &Path, name: &str) -> Result<Id> {
+        let _claim = Self::claim(entry)?;
+        let mut source = Session::open(&entry.generation)?;
+        source.project.project_id = Id::new_v4();
+        source.save_new(parent, name)?;
+        Ok(source.project.project_id)
+    }
+
+    pub fn recover(entry: &RecoveryEntry) -> Result<Session> {
+        let owner = Arc::new(Self::claim(entry)?);
+        let parent = &owner.folder;
         let source = Session::open_document(&entry.generation)?.into_editor_session();
         let pending =
             parent.join("active-take").exists() || parent.join("recovered-pending").exists();
@@ -542,10 +589,6 @@ impl RecoveryStore {
             entry.project.to_string().as_bytes(),
         )?;
         saved.apply(&mut session, history.as_mut())?;
-        let owner = Arc::new(Self {
-            folder: parent.to_path_buf(),
-            _lease: Arc::new(lease),
-        });
         session.recovery_owner = Some(owner.clone());
         if let Some(mut history) = history
             && let Some(mut before) = history.undo(&session)

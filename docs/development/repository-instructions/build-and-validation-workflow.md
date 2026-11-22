@@ -8,16 +8,16 @@ Follow the platform prerequisites, build steps, troubleshooting, and packaging i
 cargo run -p daw-desktop
 cargo run -p daw-desktop -- examples/demo
 cargo build -p daw-cli
-cargo run -p daw-cli -- validate --project examples/demo
-cargo run -p daw-cli -- render --project examples/demo --output work/mix.wav
-cargo run -p daw-cli -- render --project examples/demo --output work/mix.wav --overwrite
-cargo run -p daw-cli -- render --project examples/demo --output work/mix.wav --codec float32
-cargo run -p daw-cli -- render --project examples/demo --output work/mix.mp3 --format mp3 --bitrate 320
+cargo run -p daw-cli -- --project examples/demo project.validate
+cargo run -p daw-cli -- --project examples/demo project.export.mix --output work/mix.wav
+cargo run -p daw-cli -- --project examples/demo project.export.mix --output work/mix.wav --overwrite
+cargo run -p daw-cli -- --project examples/demo project.export.mix --output work/mix.wav --codec float32
+cargo run -p daw-cli -- --project examples/demo project.export.mix --output work/mix.mp3 --format mp3 --bitrate 320
 ```
 
 Create `work/` before using it as an output directory. If `work/cargo-home` contains the local dependency cache, prefix Cargo commands with `CARGO_HOME="$PWD/work/cargo-home"`. Add `--offline` only when the required dependencies are cached. Do not require this local cache on other machines.
 
-The CLI infers WAV or MP3 from the output extension unless `--format wav|mp3` is supplied. WAV accepts `--codec pcm16|pcm24|float32`; MP3 accepts `--bitrate 128|192|256|320`. Reject incompatible options and mismatched format extensions. The CLI must run without graphics or an audio device.
+The CLI infers WAV, MP3 or AAC from the output extension unless you specify `--format`. WAV accepts `--codec pcm16|pcm24|float32`. MP3 and AAC accept `--bitrate 128|192|256|320`. Reject incompatible options and mismatched format extensions. The CLI must run without graphics or an audio device.
 
 ## Validation
 

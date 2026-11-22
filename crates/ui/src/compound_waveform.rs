@@ -84,7 +84,7 @@ impl DawUi {
         if let Some(audio) = self.session.audio_for_clip(clip) {
             result = waveforms::extrema(audio, clip, local, count, input_channel);
         } else if let Some(view) = self.session.compound_views.get(&clip.asset_id) {
-            for (start, length) in waveforms::source_windows(clip, local, count) {
+            for (start, length) in clip.source_windows(local, count) {
                 if length == 0 {
                     continue;
                 }

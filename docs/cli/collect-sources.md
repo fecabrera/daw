@@ -3,14 +3,15 @@
 Copy original media into a saved project before moving or sharing its folder. Save and close the desktop project first. The command uses the saved project and runs without a confirmation prompt.
 
 ```sh
-daw-cli collect-sources [--project <folder>] [--dry-run]
+daw-cli --project <folder> project.source.collect [--dry-run]
 ```
 
-`--project` defaults to the current directory. Quote paths that contain spaces.
+Use `--project .` for the current folder. Quote paths that contain spaces.
+The legacy `collect-sources` command still defaults to the current folder.
 
 ```sh
-daw-cli collect-sources --project "My project" --dry-run
-daw-cli collect-sources --project "My project"
+daw-cli --project "My project" project.source.collect --dry-run
+daw-cli --project "My project" project.source.collect
 ```
 
 `--dry-run` checks sources and reports files to copy, files already included and additional bytes. It does not copy files or save changes. Allow extra space for temporary files; the command does not measure available disk space. A successful check does not guarantee that a later collection will succeed.

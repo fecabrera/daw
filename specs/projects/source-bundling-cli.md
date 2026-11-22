@@ -1,5 +1,7 @@
 # CLI project source collection
 
+See the [namespaced CLI contract](cli-namespaces.md) for the dotted interface and shared write safeguards.
+
 Status: implemented as a frontend over the shared Stage 1–3 backend. This extends the original desktop scope; it does not close the [Stage 5 native acceptance gates](source-bundling-stage5.md).
 
 ## Command and ownership
@@ -10,9 +12,9 @@ daw-cli collect-sources [--project <folder>] [--dry-run]
 
 The project defaults to `.`. No positional arguments or confirmation prompt are accepted. [`apps/cli/src/collect_sources.rs`](../../apps/cli/src/collect_sources.rs) owns command reporting only. Load through `Session::open`, capture `source_collection_snapshot(None, 0)`, run read-only preflight, then execute its sealed plan only if every diagnostic is clear. Reuse source verification, target reservations, copying, receipts, commit checks and cleanup without duplicate file/manifest logic. No new dependency or device/window initialization is added.
 
-Run blocking work on the headless command thread. The loaded Session is immutable during execution; use `SourceCollectionSnapshot::is_current` as its guard. Backend filesystem and manifest revision checks remain required. The process exits after disk publication, so it needs no live-session receipt application or renderer replacement.
+Run blocking work on the headless command thread. Repeat a ready apply preflight under the shared CLI project write guard. Keep the loaded Session immutable during execution and retain `SourceCollectionSnapshot::is_current` as a separate state check. Backend filesystem and manifest revision checks remain required. The process exits after disk publication, so it needs no live-session receipt application or renderer replacement.
 
-Inventory includes all saved audio assets, including unused assets and sample inputs. Embedded MIDI needs no file copy. This process has no desktop saved/pending/Undo/Redo roots. Require users to save and close the desktop project first; no cross-process editor lock or synchronization is provided. Opening prepares the sources currently on disk; this command cannot establish the identity of older imported bytes that are no longer available.
+Inventory includes all saved audio assets, including unused assets and sample inputs. Embedded MIDI needs no file copy. This process has no desktop saved/pending/Undo/Redo roots. Require users to save and close the desktop project first. The project write guard coordinates upgraded CLI writers. Opening prepares the sources currently on disk; this command cannot establish the identity of older imported bytes that are no longer available.
 
 ## Reporting and failure contract
 

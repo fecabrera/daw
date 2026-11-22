@@ -10,6 +10,7 @@ fn midi_options_round_trip_and_missing_fields_keep_legacy_defaults() {
             root: Some(11),
             scale,
             snap: true,
+            ..Default::default()
         };
         project
             .edit(Edit::SetMidiOptions {
@@ -57,6 +58,7 @@ fn options_are_independent_copy_with_tracks_and_never_modify_patterns() {
         root: Some(9),
         scale: MidiScale::Minor,
         snap: true,
+        ..Default::default()
     };
     project
         .edit(Edit::SetMidiOptions {

@@ -1,7 +1,7 @@
 # Validate a project
 
 ```sh
-daw-cli validate --project examples/demo
+daw-cli --project examples/demo project.validate
 ```
 
 `--project` is required and points to a folder containing `project.json`. Validation checks the saved project and opens referenced audio. It uses the same project loading and preparation as export.

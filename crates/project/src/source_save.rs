@@ -201,12 +201,34 @@ impl SaveSnapshot {
         result
     }
     pub fn save(self, folder: &Path) -> Result<SavedSession> {
+        self.save_inner(folder, None)
+    }
+
+    pub fn save_guarded(
+        self,
+        guard: &crate::ProjectWriteGuard,
+        revision: &crate::ManifestRevision,
+    ) -> Result<SavedSession> {
+        if self.session.folder.as_deref() != Some(guard.folder()) {
+            return Err(error(
+                "stale-project: save candidate belongs to a different folder",
+            ));
+        }
+        guard.check_manifest(revision)?;
+        self.save_inner(guard.folder(), Some((guard, revision)))
+    }
+
+    fn save_inner(
+        self,
+        folder: &Path,
+        expected: Option<(&crate::ProjectWriteGuard, &crate::ManifestRevision)>,
+    ) -> Result<SavedSession> {
         let folder = crate::absolute(folder)?;
         fs::create_dir_all(&folder).map_err(error)?;
         let canonical_folder = fs::canonicalize(&folder).map_err(error)?;
         let mut store = Store::new(&canonical_folder)?;
         store.ensure_directory(Path::new("assets"), &mut |_, _| Ok(()))?;
-        let result = self.write(&canonical_folder, &folder, &mut store);
+        let result = self.write(&canonical_folder, &folder, &mut store, expected);
         let cleanup = store.cleanup();
         match result {
             Ok(mut saved) => {
@@ -235,6 +257,7 @@ impl SaveSnapshot {
         folder: &Path,
         requested_folder: &Path,
         store: &mut Store,
+        expected: Option<(&crate::ProjectWriteGuard, &crate::ManifestRevision)>,
     ) -> Result<SavedSession> {
         self.session.project.validate().map_err(error)?;
         let mut states = self.session.plugin_states.clone();
@@ -485,6 +508,9 @@ impl SaveSnapshot {
             Err(e) => return Err(error(e)),
         };
         let candidate = SourceRevision::read(&store.files[index].path, &|| false).map_err(error)?;
+        if let Some((guard, revision)) = expected {
+            guard.check_manifest(revision)?;
+        }
         match crate::file_publish::replace(&store.files[index].path, &target) {
             Ok(()) => store.mode = CleanupMode::Committed,
             Err(e) => {
@@ -506,7 +532,7 @@ impl SaveSnapshot {
                 } else {
                     store.mode = CleanupMode::KeepAll;
                     return Err(error(format!(
-                        "Save commit could not be confirmed; retain media and {} for recovery: {e}",
+                        "uncertain-commit: Save commit could not be confirmed; retain media and {} for recovery: {e}",
                         store.files[index].path.display()
                     )));
                 }

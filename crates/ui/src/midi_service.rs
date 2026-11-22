@@ -70,7 +70,7 @@ impl MidiIngress {
 pub(super) enum Command {
     Connect(Option<String>, Option<u8>, i16),
     Output(MidiSender),
-    Routes(Vec<Id>),
+    Routes(Vec<Id>, Vec<Id>),
     Record(Session, u64, u64),
     Boundary(MidiAction),
     Snapshot(SaveSnapshot, u64, Option<PathBuf>),
@@ -230,6 +230,7 @@ fn run(
     let (mut ingress, mut raw) = RingBuffer::new(8192);
     let mut output: Option<MidiSender> = None;
     let mut routes = Vec::new();
+    let mut monitoring = Vec::new();
     let mut selected_device: Option<String> = None;
     let mut channel = None;
     let mut recording_offset_ms = 0;
@@ -333,9 +334,11 @@ fn run(
                                     pitch,
                                     velocity,
                                 } => {
-                                    let _ = messages.send(Message::Pitch(pitch, routes.clone()));
-                                    MidiAction::Attack {
+                                    let _ =
+                                        messages.send(Message::Pitch(pitch, monitoring.clone()));
+                                    MidiAction::ChannelAttack {
                                         token,
+                                        channel: packet.bytes[0] & 15,
                                         pitch,
                                         velocity,
                                     }
@@ -444,7 +447,7 @@ fn run(
                         output = Some(sender);
                         fault_handled = false;
                     }
-                    Command::Routes(next) => {
+                    Command::Routes(next, next_monitoring) => {
                         if let Some(o) = output.as_mut().filter(|_| selected_device.is_some()) {
                             for track in routes.iter().filter(|id| !next.contains(id)) {
                                 o.send_at(
@@ -466,6 +469,7 @@ fn run(
                             }
                         }
                         routes = next;
+                        monitoring = next_monitoring;
                     }
                     Command::Record(session, rev, count_in_frames) => {
                         if take_busy {

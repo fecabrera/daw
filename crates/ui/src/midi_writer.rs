@@ -259,6 +259,20 @@ impl Writer {
                                 velocity,
                             },
                         }),
+                        MidiAction::ChannelAttack {
+                            token,
+                            pitch,
+                            velocity,
+                            channel,
+                        } => journal.event(CaptureEvent {
+                            frame: receipt.frame,
+                            action: CaptureAction::ChannelAttack {
+                                token,
+                                pitch,
+                                velocity,
+                                channel,
+                            },
+                        }),
                         MidiAction::Release { token } => journal.event(CaptureEvent {
                             frame: receipt.frame,
                             action: CaptureAction::Release { token },
