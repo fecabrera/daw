@@ -134,7 +134,7 @@ impl Project {
         let mut solo: Vec<_> = self
             .tracks
             .iter()
-            .map(|t| t.kind != TrackKind::Return && t.soloed)
+            .map(|t| t.kind != TrackKind::Return && t.has_solo())
             .collect();
         for (i, t) in self.tracks.iter().enumerate().rev() {
             if let Some(parent) = t.group_id.and_then(|id| index.get(&id)) {
@@ -171,7 +171,7 @@ impl Project {
         let source_solo = self
             .tracks
             .iter()
-            .any(|t| t.kind != TrackKind::Return && t.soloed);
+            .any(|t| t.kind != TrackKind::Return && t.has_solo());
         for (i, t) in self.tracks.iter().enumerate() {
             if t.kind == TrackKind::Return {
                 gates[i] = mix_audible(t.muted, t.soloed, return_solo);

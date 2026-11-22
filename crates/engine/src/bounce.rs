@@ -56,6 +56,12 @@ impl BounceCapture {
         for track in &mut isolated.project.tracks[subtree.clone()] {
             track.clips.retain(|c| clips.contains(&c.id));
         }
+        // Compile local beat solo into the hit schedule before clearing monitoring gates.
+        let mut isolated = isolated.prepare_beats();
+        let subtree = isolated
+            .project
+            .track_subtree(target.track_id)
+            .map_err(|e| e.to_string())?;
         // Keep the mix inside the group. Its own and downstream monitoring
         // gates remain live on the replacement path.
         for (index, track) in isolated.project.tracks.iter_mut().enumerate() {

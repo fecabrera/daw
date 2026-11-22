@@ -13,15 +13,16 @@ selection. In track mode, selected ancestors cover selected descendants. A Group
 target's range and clip IDs come from its entire saved subtree, including
 collapsed and disabled clips. Track mode ignores clip/range/loop bounds; clip mode requires whole
 clips in the UI. Disabled-only targets produce warned silence. Target track
-monitoring does not suppress capture; authored clip, layer, source and bypass
-states remain effective. Original monitoring gates still govern external controls.
+monitoring does not suppress capture. Authored clip, layer, source and bypass
+states remain effective, including local beat-subtrack hit filtering. Original
+monitoring gates still govern external controls.
 
 `Edit::Bounce` installs every `BounceOutput` as one validated transaction. Originals
 retain identity and settings; only requested clip mute flags change. Each result
 is a fresh sibling after the source subtree, with the same parent/color and
-local Mute. The output starts soloed if the source or any of its descendants is
-soloed. It has fresh track/clip/asset/send IDs, a unique name, neutral
-processing and one merged clip. The output keeps internal gaps and starts at the
+local Mute. The output starts soloed if the source or any descendant, including
+a beat subtrack, is soloed. It has fresh track/clip/asset/send IDs, a unique name,
+neutral processing and one merged clip. The output keeps internal gaps and starts at the
 first requested clip, without stored leading silence. Invalid or incomplete output
 leaves the model unchanged. One history record covers every result and mute change.
 

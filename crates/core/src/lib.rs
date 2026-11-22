@@ -359,6 +359,18 @@ pub struct Track {
     pub soloed: bool,
     pub clips: Vec<Clip>,
 }
+
+impl Track {
+    /// A beat subtrack's solo also selects its parent branch in the project mix.
+    pub fn has_solo(&self) -> bool {
+        self.soloed
+            || self
+                .beat
+                .as_ref()
+                .is_some_and(|beat| beat.subtracks.iter().any(|row| row.soloed))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Clip {
     #[serde(default, skip_serializing_if = "ClipChannels::is_default")]

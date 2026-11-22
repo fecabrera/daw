@@ -175,7 +175,11 @@ impl Project {
             .any(|t| matches!(t.kind, TrackKind::Group | TrackKind::Return))
         {
             return self.tracks.iter().find(|t| t.id == id).is_some_and(|t| {
-                mix_audible(t.muted, t.soloed, self.tracks.iter().any(|t| t.soloed))
+                mix_audible(
+                    t.muted,
+                    t.has_solo(),
+                    self.tracks.iter().any(Track::has_solo),
+                )
             });
         }
         let gates = self.track_mix_audible();

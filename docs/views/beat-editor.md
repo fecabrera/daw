@@ -126,7 +126,11 @@ Instrument, including after selecting the final Output.
 - Double-click a name, or use its context menu, to rename it. In the beat editor, double-clicking the empty header area beside the name also starts renaming. Mix controls retain their own double-click actions. The name uses the same text input as track names and starts with the whole name selected. Enter accepts; Escape or moving focus elsewhere cancels.
 - Drag a selected name to reorder the selected subtracks together. Release over a subtrack in the same beat track and panel to apply the move. Only the panel where the drag started scrolls at its edges. Moving a subtrack to a different panel, beat track, project group or Master is rejected. Escape, focus loss, closing the originating panel or an outside release cancels it.
 - Use the name's context menu to delete selected subtracks. Delete/Backspace also removes them while a subtrack name has keyboard focus. Text, step and unit controls retain their own keyboard behavior.
-- Use Mute, Solo, Pan and Gain in the beat editor or Instrument. Solo applies within the beat instrument; parent track and group controls still apply to the complete output.
+- Use Mute, Solo, Pan and Gain in the beat editor or Instrument. Solo a
+  subtrack to hear it through the beat parent and any enclosing groups. The
+  regular track Solo rules exclude unrelated branches and keep sends from
+  soloed branches feeding their Returns. Within the beat track, only soloed
+  subtracks can play. A muted beat subtrack stays silent when soloed.
 
 Deleting a subtrack removes its stop links. Its old pattern steps remain dormant and do not transfer to a newly added subtrack. Track duplication copies processing settings into fresh subtrack identities and starts with no clips, like audio and MIDI track duplication.
 

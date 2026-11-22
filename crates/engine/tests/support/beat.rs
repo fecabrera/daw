@@ -51,6 +51,92 @@ fn beat_plan(rate: u32, sample: bool, stop: bool) -> RenderPlan {
 }
 
 #[test]
+fn beat_subtrack_solo_follows_group_and_send_gates_during_playback_and_export() {
+    let mut song = beat_plan(48_000, false, false);
+    let beat_id = song.project.tracks[0].id;
+    let mut expected = song.clone();
+    let mut other = plan(Waveform::Square, 48_000);
+    let other_id = other.project.tracks[0].id;
+    let other_clip = other.project.tracks[0].clips[0].clone();
+    song.project.tracks.append(&mut other.project.tracks);
+    song.project.assets.append(&mut other.project.assets);
+    let group = Id::new_v4();
+    song.project
+        .edit(Edit::GroupTracks {
+            track_ids: vec![beat_id, other_id],
+            group_id: group,
+            name: "Group".into(),
+        })
+        .unwrap();
+    let mut outside = plan(Waveform::Square, 48_000);
+    song.project.tracks.append(&mut outside.project.tracks);
+    song.project.assets.append(&mut outside.project.assets);
+    let return_id = song.project.add_return_track().unwrap();
+    let other = song
+        .project
+        .tracks
+        .iter_mut()
+        .find(|t| t.id == other_id)
+        .unwrap();
+    let mut send = daw_core::TrackSend::new(return_id);
+    send.tap = daw_core::SendTap::PreFader;
+    send.gain_db = 0.0;
+    other.sends.push(send);
+
+    let mut reference = [[0.0; 2]; 2048];
+    let mut actual = [[0.0; 2]; 2048];
+    expected.render(0, &mut reference);
+    song.render(0, &mut actual);
+    assert!(
+        actual
+            .iter()
+            .zip(reference)
+            .any(|(a, b)| (a[0] - b[0]).abs() > 0.01)
+    );
+
+    let beat = song
+        .project
+        .tracks
+        .iter_mut()
+        .find(|t| t.id == beat_id)
+        .unwrap();
+    beat.beat.as_mut().unwrap().subtracks[0].soloed = true;
+    assert!(!beat.soloed);
+    let gates = song.project.track_send_audible();
+    for (track, audible) in song.project.tracks.iter().zip(gates) {
+        assert_eq!(audible, track.id == beat_id || track.id == group);
+    }
+
+    expected.project.tracks[0].beat.as_mut().unwrap().subtracks[0].soloed = true;
+    expected.render(0, &mut reference);
+    assert!(reference.iter().any(|sample| sample[0].abs() > 0.01));
+    song.render(0, &mut actual);
+    assert_eq!(actual, reference);
+
+    let mut live = Renderer::new(song.clone());
+    live.play();
+    for (frame, expected) in reference.into_iter().enumerate() {
+        let actual = live.next_sample();
+        if frame >= 240 {
+            assert!((actual[0] - expected[0]).abs() < 1e-6, "frame {frame}");
+        }
+    }
+
+    // Isolated capture still renders the selected track while the beat is soloed.
+    let mut capture = daw_engine::BounceCapture::new(
+        song,
+        &daw_core::BounceTarget {
+            track_id: other_id,
+            clip_ids: vec![other_clip.id],
+            start_frame: other_clip.start_frame,
+            end_frame: other_clip.end(),
+        },
+    )
+    .unwrap();
+    assert!((0..2048).any(|_| capture.next_frame().unwrap().unwrap().main[0].abs() > 0.01));
+}
+
+#[test]
 fn beat_retrigger_during_stop_fade_preserves_continuity_and_bus_processing() {
     for rate in SAMPLE_RATES {
         for compression in [4, 8] {

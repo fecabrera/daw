@@ -122,6 +122,7 @@ impl RenderPlan {
         let mut tracks = Vec::new();
         let originals = std::mem::take(&mut self.project.tracks);
         for mut parent in originals {
+            parent.soloed = parent.has_solo();
             let Some(beat) = parent.beat.take() else {
                 tracks.push(parent);
                 continue;

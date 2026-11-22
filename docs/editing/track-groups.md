@@ -53,7 +53,7 @@ Child source → child effects → child gain/pan
 
 Group effects process the combined child sound. For example, one group compressor reacts to the combined level. Meters show each track or group's output after its own gain and pan. Muting a group silences its output; its child processing and meters continue.
 
-Solo selects siblings at each level. A soloed child opens the path through its parent groups and excludes other branches. Soloing a group includes its children, subject to their own Mute and Solo controls. Solo takes precedence over Mute on the same track or group.
+Solo selects siblings at each level. A soloed child opens the path through its parent groups and excludes other branches. Soloing a beat subtrack opens the same path through its beat parent. Soloing a group includes its children, subject to their own Mute and Solo controls. Solo takes precedence over Mute on the same track or group.
 
 Effects with latency remain aligned across children, nested groups, other tracks, and Master. Playback and export use the same routing. Changing group membership during playback can require background preparation before the change becomes audible.
 

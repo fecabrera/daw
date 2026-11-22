@@ -2,7 +2,7 @@
 use crate::{Session, error, generated_media::GeneratedDirectory};
 use daw_core::{
     Asset, BounceOutput, BounceRequest, Clip, ClipFades, Id, RenderedAudio, RenderedFeed,
-    RenderedReturnFeed, Source, SourceMetadata, SourceStorage, TrackKind,
+    RenderedReturnFeed, Source, SourceMetadata, SourceStorage, Track, TrackKind,
 };
 use daw_media::{AudioEncoder, AudioReservation, WavCodec, WavEncoder};
 use std::sync::{
@@ -256,7 +256,7 @@ impl Session {
             track.id = Id::new_v4();
             track.kind = TrackKind::Audio;
             track.group_collapsed = false;
-            track.soloed = originals.iter().any(|t| t.soloed);
+            track.soloed = originals.iter().any(Track::has_solo);
             track.midi_options = Default::default();
             track.instrument = None;
             track.beat = None;

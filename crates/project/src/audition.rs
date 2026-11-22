@@ -7,13 +7,20 @@ enum BeatPreview {
 }
 
 impl Session {
-    fn isolated_audition(&self) -> Self {
+    fn isolated_audition(&self, target: Id) -> Self {
         let mut session = self.clone();
         // Preserve routing and referenced owners, including Returns and sidechains.
         // Only the preview adds scheduled clips; unrelated solos cannot gate it.
         for track in &mut session.project.tracks {
             track.clips.clear();
             track.soloed = false;
+            if track.id != target
+                && let Some(beat) = &mut track.beat
+            {
+                for row in &mut beat.subtracks {
+                    row.soloed = false;
+                }
+            }
         }
         session.project.transport.playhead_frame = 0;
         session.project.transport.r#loop.enabled = false;
@@ -135,7 +142,7 @@ impl Session {
             .beat(track)
             .filter(|beat| beat.subtracks.iter().any(|row| row.id == subtrack))
             .ok_or_else(|| error("Beat subtrack not found"))?;
-        let mut session = self.isolated_audition();
+        let mut session = self.isolated_audition(track);
         // Keep local solo eligibility, but prevent other continuous sources from sounding.
         for row in &mut session
             .project
@@ -232,7 +239,7 @@ impl Session {
         if cancelled() {
             return Err(error("MIDI audition cancelled"));
         }
-        let mut session = self.isolated_audition();
+        let mut session = self.isolated_audition(track);
         let frames = session.project.midi_frame(pattern.length_ticks);
         let clip_id = session.project.add_midi_pattern(track, 0).map_err(error)?;
         session
@@ -784,6 +791,19 @@ mod tests {
                     kind: ChordKind::Minor,
                 }],
             )
+            .unwrap();
+        let beat = session.project.add_beat_track().unwrap();
+        let mut subtrack = daw_core::BeatSubtrack::new("Solo".into());
+        subtrack.soloed = true;
+        session
+            .project
+            .edit(daw_core::Edit::Beat {
+                track_id: beat,
+                edit: daw_core::BeatEdit::Add {
+                    subtrack: Box::new(subtrack),
+                    index: 0,
+                },
+            })
             .unwrap();
         let group = Id::new_v4();
         session

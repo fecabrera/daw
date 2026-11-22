@@ -2,6 +2,18 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Beat-subtrack Solo routing — 2026-11-22
+
+The renderer test checks a soloed beat subtrack inside a group, alongside a
+sibling source, an unrelated root source and a pre-fader send to a Return.
+Live rendering and offline export match the isolated beat reference. The test
+also checks that an isolated bounce can capture an excluded track. All nine
+audition tests passed, including a chord preview with an unrelated beat solo.
+Formatting, strict workspace Clippy, the CLI smoke test and the signed macOS
+bundle check passed. The debug and release workspace suites each passed 3,682
+tests with the known macOS Audio Unit registration case excluded. Live
+renderer tests ran without an audio device.
+
 ## White dialog button text — 2026-11-22
 
 The shared footer test checks white glyphs on an Amber accent button. The
