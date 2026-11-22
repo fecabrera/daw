@@ -288,7 +288,6 @@ fn settings_dialog_fields_share_left_and_right_edges() {
                 app.settings_open = true;
                 vec![
                     theme.name(),
-                    app.settings.accent.name(),
                     #[cfg(any(target_os = "macos", target_os = "windows"))]
                     app.settings.titlebar.name(),
                 ]

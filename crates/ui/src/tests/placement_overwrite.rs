@@ -80,7 +80,7 @@ fn moving_into_a_clip_previews_both_survivors_and_commits_only_on_release() {
                     &preview.clip,
                     preview.clip.start_frame
                 ),
-                theme::ACCENT
+                theme::accent(&ctx)
             ));
         }
         assert_eq!(format!("{:?}", app.session.project), original);
@@ -214,7 +214,7 @@ fn file_drop_previews_middle_split_and_publishes_all_ranges_after_import_succeed
         assert!(has_preview_outline(
             &shapes,
             app.clip_block(lane, piece, piece.start_frame),
-            theme::ACCENT
+            theme::accent(&ctx)
         ));
     }
     assert_eq!(format!("{:?}", app.session.project), before);

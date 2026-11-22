@@ -93,6 +93,11 @@ Settings groups controls into six categories:
 
 Choose **Dark**, **Light**, **Mist**, or **Midnight** under **Appearance > Theme**. Light uses near-white backgrounds and white panels, with darker grey for buttons, knobs, unit headers, and separators. Text fields and meter backgrounds use a cool grey. Mist uses cool grey backgrounds and pale panels. Midnight uses charcoal with a subtle cool tint. All themes keep your selected accent and clip colors.
 
+Choose an **Accent color** by clicking its swatch in **Settings > Appearance**.
+The ring marks the current choice. Hover over a swatch to see its name. Red
+is the default. Previously saved accents stay active until you choose
+a new one.
+
 To edit a theme while the app is running:
 
 1. Open **Settings > Appearance** and click the **Open folder** icon. Use the adjacent square-text icon to copy the folder path.

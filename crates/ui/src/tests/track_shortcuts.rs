@@ -90,7 +90,7 @@ fn panel_multi_selection_toggles_with_shift_or_command_without_changing_clips() 
             assert!(!has_preview_outline(
                 &shapes,
                 panel(&app, *id),
-                theme::ACCENT
+                theme::accent(&ctx)
             ));
         }
         let shapes = click_panel(&mut app, &ctx, tracks[1], modifiers, false);
@@ -99,19 +99,19 @@ fn panel_multi_selection_toggles_with_shift_or_command_without_changing_clips() 
         assert!(!has_preview_outline(
             &shapes,
             panel(&app, tracks[1]),
-            theme::ACCENT
+            theme::accent(&ctx)
         ));
         let shapes = click_panel(&mut app, &ctx, tracks[2], Default::default(), true);
         assert_eq!(app.selected_tracks, HashSet::from([tracks[2]]));
         assert!(!has_preview_outline(
             &shapes,
             panel(&app, tracks[2]),
-            theme::ACCENT
+            theme::accent(&ctx)
         ));
         assert!(!has_preview_outline(
             &shapes,
             panel(&app, tracks[0]),
-            theme::ACCENT
+            theme::accent(&ctx)
         ));
         click_panel(&mut app, &ctx, tracks[2], modifiers, false);
         assert!(app.selected_tracks.is_empty() && app.selected_track.is_none());

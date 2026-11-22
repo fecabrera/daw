@@ -145,7 +145,7 @@ fn modifier_edges_stretch_all_selected_clips_after_release_and_processing() {
                             &preview.clip,
                             preview.clip.start_frame
                         ),
-                        theme::ACCENT
+                        theme::accent(&ctx)
                     ));
                 }
                 assert_eq!(format!("{:?}", app.session.project), project);
@@ -494,7 +494,7 @@ fn stretch_neighbor_previews_commit_trims_and_removals_after_release_and_process
                     &trimmed.clip,
                     trimmed.clip.start_frame
                 ),
-                theme::ACCENT
+                theme::accent(&ctx)
             ));
             assert!(
                 previews
@@ -703,7 +703,7 @@ fn live_edge_modifier_repaints_group_and_release_uses_current_mode() {
                                 &preview.clip,
                                 preview.clip.start_frame
                             ),
-                            theme::ACCENT,
+                            theme::accent(&ctx),
                         ));
                     }
                     assert_eq!(format!("{:?}", app.session.project), before);

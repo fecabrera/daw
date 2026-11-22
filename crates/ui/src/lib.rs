@@ -6795,7 +6795,7 @@ mod tests {
                 assert!(has_preview_outline(
                     &shapes,
                     app.clip_block(lane, &preview.clip, preview.clip.start_frame),
-                    theme::ACCENT
+                    theme::accent(&ctx)
                 ));
                 assert_eq!(app.session.project.tracks[0].clips[0].stretch, None);
                 assert!(!app.dirty);
@@ -7354,7 +7354,7 @@ mod tests {
                                 &preview.clip,
                                 preview.clip.start_frame,
                             );
-                            assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+                            assert!(has_preview_outline(&shapes, block, theme::accent(&ctx)));
                             let colors = theme::clip_colors(
                                 daw_core::default_track_color(preview.track_index),
                                 preview.clip.color,
@@ -7694,7 +7694,7 @@ mod tests {
                             preview.clip.start_frame
                         ),
                         if valid {
-                            theme::ACCENT
+                            theme::accent(&ctx)
                         } else {
                             theme::palette(&ctx).error
                         }
@@ -7849,7 +7849,7 @@ mod tests {
                                 &preview.clip,
                                 preview.clip.start_frame
                             ),
-                            theme::ACCENT
+                            theme::accent(&ctx)
                         ));
                     }
                     assert_eq!(app.selected_clip_snapshots().len(), 3);
@@ -7976,7 +7976,7 @@ mod tests {
                             &preview.clip,
                             preview.clip.start_frame
                         ),
-                        theme::ACCENT
+                        theme::accent(&ctx)
                     ));
                 }
                 let mut output = ctx.run_ui(
@@ -9211,7 +9211,7 @@ mod tests {
             );
             assert_eq!(app.track_drag, Some(tracks[source]));
             assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment { points, stroke }
-                if points[0].y == line_y && points[1].y == line_y && stroke.color == theme::ACCENT && stroke.width == 2.0)));
+                if points[0].y == line_y && points[1].y == line_y && stroke.color == theme::accent(&ctx) && stroke.width == 2.0)));
             assert_eq!(format!("{:?}", app.session.project), format!("{before:?}"));
             assert!(!app.dirty);
             assert!(app.track_name_edit.is_none());
@@ -9465,7 +9465,7 @@ mod tests {
             );
             assert_eq!(app.selected_track, Some(second), "{name}");
             assert!(
-                !has_preview_outline(&shapes, panel, theme::ACCENT),
+                !has_preview_outline(&shapes, panel, theme::accent(&ctx)),
                 "{name}"
             );
             assert_eq!(app.selected_clips, HashSet::from([clip]));
@@ -9874,7 +9874,7 @@ mod tests {
                     assert!(has_preview_outline(
                         &shapes,
                         app.clip_block(lane, &preview.clip, preview.clip.start_frame),
-                        theme::ACCENT
+                        theme::accent(&ctx)
                     ));
                     assert_eq!(
                         app.session.project.tracks[0].clips[0].length_frames,
@@ -11940,7 +11940,7 @@ mod tests {
             point - Vec2::new(0.0, 12.0),
             Vec2::new(140.0, app.track_row_height()),
         );
-        assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+        assert!(has_preview_outline(&shapes, block, theme::accent(&ctx)));
         assert!(shapes.iter().any(
             |shape| matches!(&shape.shape, egui::Shape::LineSegment {stroke, ..}
             if stroke.color == theme::clip_colors(app.session.project.tracks[1].color, None).waveform.gamma_multiply(0.75))
@@ -12042,7 +12042,7 @@ mod tests {
                                 app.track_row_height(),
                             ),
                         );
-                        assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+                        assert!(has_preview_outline(&shapes, block, theme::accent(&ctx)));
                         let samples = app
                             .file_hover
                             .as_ref()
@@ -12177,7 +12177,7 @@ mod tests {
                 lane.min - Vec2::new(scroll as f32 * zoom, 0.0),
                 Vec2::new(zoom, app.track_row_height()),
             );
-            assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+            assert!(has_preview_outline(&shapes, block, theme::accent(&ctx)));
             assert!(app.session.project.tracks[1].clips.is_empty());
             assert!(!app.dirty);
 
@@ -12216,7 +12216,7 @@ mod tests {
                 Vec2::new(70.0, app.track_row_height()),
             );
             let colors = theme::clip_colors(daw_core::default_track_color(index), None);
-            assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+            assert!(has_preview_outline(&shapes, block, theme::accent(&ctx)));
             assert!(
                 shapes
                     .iter()
@@ -12259,7 +12259,7 @@ mod tests {
             lane.min + Vec2::new(70.0, 0.0),
             Vec2::new(70.0, app.track_row_height()),
         );
-        assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+        assert!(has_preview_outline(&shapes, block, theme::accent(&ctx)));
         frame(&mut app, &ctx, vec![]);
         assert!(app.file_hover.is_none());
         assert!(app.file_drop_target.is_none());
@@ -12477,7 +12477,7 @@ mod tests {
                                 &preview.clip,
                                 preview.clip.start_frame
                             ),
-                            theme::ACCENT
+                            theme::accent(&ctx)
                         ));
                         assert_eq!(
                             app.session.project.tracks[0].clips[0].start_frame,
@@ -12610,7 +12610,7 @@ mod tests {
                     &preview.clip,
                     preview.clip.start_frame
                 ),
-                theme::ACCENT
+                theme::accent(&ctx)
             ));
             let mut output = ctx.run_ui(
                 egui::RawInput {
@@ -12690,7 +12690,7 @@ mod tests {
                 lane.min + Vec2::new((3.25 - scroll as f32) * zoom, 0.0),
                 Vec2::new(10.0 * zoom, app.track_row_height()),
             );
-            assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+            assert!(has_preview_outline(&shapes, block, theme::accent(&ctx)));
             assert_eq!(
                 app.session.project.tracks[0].clips[0].start_frame,
                 original.start_frame
@@ -12777,7 +12777,7 @@ mod tests {
                             &preview.clip,
                             preview.clip.start_frame,
                         );
-                        assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+                        assert!(has_preview_outline(&shapes, block, theme::accent(&ctx)));
                         assert_eq!(
                             app.session.project.tracks[0].clips[0].start_frame,
                             original.start_frame
@@ -12942,7 +12942,7 @@ mod tests {
             assert_eq!(preview.clip.start_frame, 0);
             assert!(preview.valid);
             let block = Rect::from_min_size(lane.min, Vec2::new(700.0, app.track_row_height()));
-            assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+            assert!(has_preview_outline(&shapes, block, theme::accent(&ctx)));
             assert_eq!(
                 app.session.project.tracks[0].clips[0].start_frame,
                 frames(2.0)
@@ -12993,7 +12993,7 @@ mod tests {
             lane.min + Vec2::new(70.0, 0.0),
             Vec2::new(700.0, app.track_row_height()),
         );
-        assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+        assert!(has_preview_outline(&shapes, block, theme::accent(&ctx)));
         assert!(app.error.is_none());
         assert!(!app.dirty);
         frame(&mut app, &ctx, vec![button(end, false)]);
@@ -13329,7 +13329,7 @@ mod tests {
             assert!(has_preview_outline(
                 &shapes,
                 app.clip_block(lane, &clip, frames(2.0)),
-                theme::ACCENT
+                theme::accent(&ctx)
             ));
             frame(&mut app, &ctx, vec![button(end, false)]);
             assert_eq!(app.session.project.tracks[0].clips[0].color, custom);
@@ -13546,7 +13546,7 @@ mod tests {
                     }
                 }
                 let block = app.clip_block(lane, &preview.clip, preview.clip.start_frame);
-                assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+                assert!(has_preview_outline(&shapes, block, theme::accent(&ctx)));
                 let colors = theme::clip_colors(app.session.project.tracks[0].color, None);
                 let extension_x = if left {
                     block.left() + 5.0
@@ -13832,7 +13832,7 @@ mod tests {
                 assert!(has_preview_outline(
                     &shapes,
                     app.clip_block(lane, &preview.clip, preview.clip.start_frame),
-                    theme::ACCENT
+                    theme::accent(&ctx)
                 ));
                 frame(&mut app, &ctx, vec![button(end, false)]);
                 let placed = &app.session.project.tracks[0].clips[0];
@@ -14026,7 +14026,7 @@ mod tests {
                 );
                 assert_eq!(preview.clip.length_frames, frames(0.25));
                 let block = app.clip_block(lane, &preview.clip, preview.clip.start_frame);
-                assert!(has_preview_outline(&shapes, block, theme::ACCENT));
+                assert!(has_preview_outline(&shapes, block, theme::accent(&ctx)));
                 assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::LineSegment { stroke, .. } if stroke.color == theme::clip_colors(app.session.project.tracks[0].color, None).waveform.gamma_multiply(0.75))));
                 let unchanged = &app.session.project.tracks[0].clips[0];
                 assert_eq!(
@@ -14147,7 +14147,7 @@ mod tests {
             assert!(has_preview_outline(
                 &shapes,
                 app.clip_block(lane, clip, clip.start_frame),
-                theme::ACCENT
+                theme::accent(&ctx)
             ));
             assert!(!app.dirty);
             frame(&mut app, &ctx, vec![button(end, false)]);
@@ -14219,7 +14219,7 @@ mod tests {
             assert!(has_preview_outline(
                 &shapes,
                 app.clip_block(lane, &preview.clip, preview.clip.start_frame),
-                theme::ACCENT
+                theme::accent(&ctx)
             ));
             frame(&mut app, &ctx, vec![button(end, false)]);
             assert!(app.error.is_none());

@@ -90,7 +90,7 @@ fn selected_header_edges_loop_every_clip_with_shared_preview_and_repeat_snapping
                         &preview.clip,
                         preview.clip.start_frame
                     ),
-                    theme::ACCENT
+                    theme::accent(&ctx)
                 ));
             }
             shift_release(&mut app, &ctx, end, shift);
@@ -155,7 +155,7 @@ fn group_loop_overlap_trims_selected_and_unselected_neighbors() {
                         &preview.clip,
                         preview.clip.start_frame
                     ),
-                    theme::ACCENT
+                    theme::accent(&ctx)
                 ));
             }
             assert_eq!(format!("{:?}", app.session.project), original);

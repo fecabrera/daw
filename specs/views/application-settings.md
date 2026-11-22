@@ -72,6 +72,20 @@ device selection and MIDI-note split interaction, theme/accent behavior, smaller
 windows and persistent Close/sidebar visibility. Separate native observations
 from headless geometry/interaction checks.
 
+## Accent color
+
+Show eight circular Material 500 swatches in a single row to the right of
+the Accent color label. Order them Red, Deep Orange, Amber, Green, Indigo,
+Deep Purple, Pink, and Blue Grey. Reduce their spacing and diameter together
+when the content narrows. Give the selected swatch a contrasting ring.
+Each swatch has a tooltip, an accessible name and selection state, and
+supports keyboard activation.
+
+Apply the chosen color immediately through the shared appearance settings.
+Use Red for new settings. Continue to load any previously saved
+accent. When the saved accent is outside the current palette, show its name
+on label hover and leave the swatches unselected until the user picks one.
+
 ## JSON themes
 
 Load embedded Dark, Light, Mist and Midnight templates and discover user overrides from

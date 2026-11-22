@@ -1,5 +1,5 @@
 pub use daw_engine::CacheProfile;
-use egui::{Color32, Context, Pos2, Rect, Stroke, StrokeKind, Vec2};
+use egui::{Color32, Context, Rect, Stroke, Vec2};
 use serde::{Deserialize, Serialize};
 
 pub const STORAGE_KEY: &str = "daw.settings";
@@ -8,9 +8,9 @@ pub const STORAGE_KEY: &str = "daw.settings";
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AccentColor {
+    #[default]
     Red,
     Pink,
-    #[default]
     Purple,
     DeepPurple,
     Indigo,
@@ -50,6 +50,17 @@ impl AccentColor {
         Self::DeepOrange,
         Self::Brown,
         Self::Grey,
+        Self::BlueGrey,
+    ];
+
+    const CHOICES: [Self; 8] = [
+        Self::Red,
+        Self::DeepOrange,
+        Self::Amber,
+        Self::Green,
+        Self::Indigo,
+        Self::DeepPurple,
+        Self::Pink,
         Self::BlueGrey,
     ];
 
@@ -271,17 +282,58 @@ impl AppSettings {
     }
 }
 
-fn swatch(ui: &egui::Ui, rect: Rect, color: Color32) {
-    ui.painter().rect_filled(rect, 2.0, color);
-    ui.painter().rect_stroke(
-        rect,
-        2.0,
-        Stroke::new(
-            1.0,
-            crate::theme::palette(ui.ctx()).text.gamma_multiply(0.4),
-        ),
-        StrokeKind::Inside,
+const ACCENT_ROW_HEIGHT: f32 = 28.0;
+
+fn accent_swatches(ui: &mut egui::Ui, current: AccentColor) -> AccentColor {
+    let height = ACCENT_ROW_HEIGHT;
+    let pitch = (ui.available_width() / AccentColor::CHOICES.len() as f32).min(height);
+    let width = pitch * AccentColor::CHOICES.len() as f32;
+    let (row, _) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), height),
+        egui::Sense::hover(),
     );
+    let palette = crate::theme::palette(ui.ctx());
+    let radius = (pitch * 0.5 - 3.0).max(0.0);
+    let mut choice = current;
+    for (index, accent) in AccentColor::CHOICES.into_iter().enumerate() {
+        let center = egui::pos2(
+            row.right() - width + pitch * (index as f32 + 0.5),
+            row.center().y,
+        );
+        let rect = Rect::from_center_size(center, Vec2::new(pitch, height));
+        let id = ui.make_persistent_id(("accent-color", accent.name()));
+        let response = ui
+            .interact(rect, id, egui::Sense::click())
+            .on_hover_text(accent.name());
+        let selected = current == accent;
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::RadioButton,
+                ui.is_enabled(),
+                selected,
+                accent.name(),
+            )
+        });
+        ui.painter().circle(
+            center,
+            radius,
+            accent.color(),
+            Stroke::new(1.0, palette.border),
+        );
+        if selected || response.has_focus() || response.hovered() {
+            let color = if selected {
+                palette.text
+            } else {
+                palette.secondary
+            };
+            ui.painter()
+                .circle_stroke(center, radius + 1.5, Stroke::new(1.0, color));
+        }
+        if response.clicked() {
+            choice = accent;
+        }
+    }
+    choice
 }
 
 pub struct ModelAction {
@@ -499,57 +551,21 @@ fn appearance(
             }
         },
     );
-    let swatch_color = settings.accent.color();
-    crate::rows::field(
+    let accent = crate::rows::field_with_height(
         ui,
         label_width,
+        ACCENT_ROW_HEIGHT,
         |ui| {
-            ui.label("Accent color");
-            let (rect, _) = ui.allocate_exact_size(Vec2::splat(14.0), egui::Sense::hover());
-            swatch(ui, rect, swatch_color);
+            ui.label("Accent color")
+                .on_hover_text(settings.accent.name());
         },
-        |ui| {
-            crate::menus::Dropdown::from_id_salt("accent_color")
-                .selected_text(settings.accent.name())
-                .width(ui.available_width())
-                .height(300.0)
-                .show_ui(ui, |ui| {
-                    for accent in AccentColor::ALL {
-                        let selected = settings.accent == accent;
-                        let response = ui.add(
-                            egui::Button::new("")
-                                .selected(selected)
-                                .min_size(Vec2::new(165.0, crate::toolbars::CONTROL_HEIGHT)),
-                        );
-                        let rect = Rect::from_center_size(
-                            Pos2::new(response.rect.left() + 13.0, response.rect.center().y),
-                            Vec2::splat(14.0),
-                        );
-                        swatch(ui, rect, accent.color());
-                        ui.painter().text(
-                            Pos2::new(rect.right() + 8.0, rect.center().y),
-                            egui::Align2::LEFT_CENTER,
-                            accent.name(),
-                            egui::TextStyle::Body.resolve(ui.style()),
-                            crate::theme::palette(ui.ctx()).text,
-                        );
-                        response.widget_info(|| {
-                            egui::WidgetInfo::selected(
-                                egui::WidgetType::Button,
-                                ui.is_enabled(),
-                                selected,
-                                accent.name(),
-                            )
-                        });
-                        if response.clicked() {
-                            settings.accent = accent;
-                            apply_appearance(ctx, settings, controls.themes);
-                            ui.close();
-                        }
-                    }
-                });
-        },
-    );
+        |ui| accent_swatches(ui, settings.accent),
+    )
+    .inner;
+    if accent != settings.accent {
+        settings.accent = accent;
+        apply_appearance(ctx, settings, controls.themes);
+    }
     if let Some(runtime) = controls.themes {
         theme_actions(ui, settings, runtime, &mut controls.theme_action);
     }
@@ -1129,7 +1145,7 @@ pub(super) fn show_surface(
                             "Recording offset"
                         })
                         .max(label_text("Split MIDI notes"))
-                        .max(label_text("Accent color") + ui.spacing().item_spacing.x + 14.0)
+                        .max(label_text("Accent color"))
                         .min(ui.available_width() * 0.44);
                         ui.strong(group.label());
                         match group {
@@ -1235,6 +1251,7 @@ pub(super) fn show(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use egui::Pos2;
 
     fn frame(
         ctx: &Context,
@@ -1286,6 +1303,10 @@ mod tests {
                 _ => None,
             })
             .unwrap_or_else(|| panic!("Missing label: {label}"));
+        click_at(ctx, settings, point)
+    }
+
+    fn click_at(ctx: &Context, settings: &mut AppSettings, point: Pos2) -> bool {
         let button = |pressed| egui::Event::PointerButton {
             pos: point,
             button: egui::PointerButton::Primary,
@@ -1499,6 +1520,7 @@ mod tests {
 
     #[test]
     fn preferences_round_trip_all_colors_and_recover_from_missing_or_invalid_data() {
+        assert_eq!(AppSettings::from_json(None).accent, AccentColor::Red);
         for accent in AccentColor::ALL {
             for theme in ColorTheme::ALL {
                 for titlebar in [TitlebarStyle::Custom, TitlebarStyle::Native] {
@@ -1649,65 +1671,60 @@ mod tests {
     fn dropdown_foregrounds_keep_the_selected_accent_after_release_and_pointer_exit() {
         for theme in ColorTheme::ALL {
             for accent in [AccentColor::DeepOrange, AccentColor::Teal] {
-                for label in [theme.name(), accent.name()] {
-                    let ctx = Context::default();
-                    crate::theme::configure(&ctx);
-                    let mut settings = AppSettings {
+                let label = theme.name();
+                let ctx = Context::default();
+                crate::theme::configure(&ctx);
+                let mut settings = AppSettings {
+                    accent,
+                    theme,
+                    ..Default::default()
+                };
+                crate::theme::apply(&ctx, settings.clone());
+                for _ in 0..12 {
+                    frame(&ctx, &mut settings, vec![]);
+                }
+                let button_pos = frame(&ctx, &mut settings, vec![])
+                    .1
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == label => Some(text.pos),
+                        _ => None,
+                    })
+                    .unwrap();
+                click(&ctx, &mut settings, label);
+                assert!(egui::Popup::is_any_open(&ctx));
+                for _ in 0..12 {
+                    frame(&ctx, &mut settings, vec![]);
+                }
+                for events in [vec![], vec![egui::Event::PointerMoved(Pos2::ZERO)]] {
+                    let shapes = frame(&ctx, &mut settings, events).1;
+                    // Locate the button even when the popup opens above it.
+                    let text = shapes
+                        .iter()
+                        .filter_map(|shape| match &shape.shape {
+                            egui::Shape::Text(text) if text.galley.text() == label => Some(text),
+                            _ => None,
+                        })
+                        .min_by(|a, b| {
+                            a.pos
+                                .distance_sq(button_pos)
+                                .total_cmp(&b.pos.distance_sq(button_pos))
+                        })
+                        .unwrap();
+                    assert_eq!(text.fallback_color, accent.color(), "{theme:?} / {label}");
+                }
+                assert_eq!(
+                    ctx.global_style().visuals.widgets.open.fg_stroke.color,
+                    accent.color()
+                );
+                assert_eq!(
+                    settings,
+                    AppSettings {
                         accent,
                         theme,
                         ..Default::default()
-                    };
-                    crate::theme::apply(&ctx, settings.clone());
-                    for _ in 0..12 {
-                        frame(&ctx, &mut settings, vec![]);
                     }
-                    let button_pos = frame(&ctx, &mut settings, vec![])
-                        .1
-                        .iter()
-                        .find_map(|shape| match &shape.shape {
-                            egui::Shape::Text(text) if text.galley.text() == label => {
-                                Some(text.pos)
-                            }
-                            _ => None,
-                        })
-                        .unwrap();
-                    click(&ctx, &mut settings, label);
-                    assert!(egui::Popup::is_any_open(&ctx));
-                    for _ in 0..12 {
-                        frame(&ctx, &mut settings, vec![]);
-                    }
-                    for events in [vec![], vec![egui::Event::PointerMoved(Pos2::ZERO)]] {
-                        let shapes = frame(&ctx, &mut settings, events).1;
-                        // Locate the button even when the popup opens above it.
-                        let text = shapes
-                            .iter()
-                            .filter_map(|shape| match &shape.shape {
-                                egui::Shape::Text(text) if text.galley.text() == label => {
-                                    Some(text)
-                                }
-                                _ => None,
-                            })
-                            .min_by(|a, b| {
-                                a.pos
-                                    .distance_sq(button_pos)
-                                    .total_cmp(&b.pos.distance_sq(button_pos))
-                            })
-                            .unwrap();
-                        assert_eq!(text.fallback_color, accent.color(), "{theme:?} / {label}");
-                    }
-                    assert_eq!(
-                        ctx.global_style().visuals.widgets.open.fg_stroke.color,
-                        accent.color()
-                    );
-                    assert_eq!(
-                        settings,
-                        AppSettings {
-                            accent,
-                            theme,
-                            ..Default::default()
-                        }
-                    );
-                }
+                );
             }
         }
     }
@@ -1788,11 +1805,8 @@ mod tests {
             }
         }
         assert!(shapes.iter().any(|s| has_panel(&s.shape)));
-        click(&ctx, &mut settings, "Teal");
-        for _ in 0..12 {
-            frame(&ctx, &mut settings, vec![]);
-        }
-        click(&ctx, &mut settings, "Red");
+        let red = accent_centers(&frame(&ctx, &mut settings, vec![]).1)[0];
+        click_at(&ctx, &mut settings, red);
         assert_eq!(settings.accent, AccentColor::Red);
         assert_eq!(crate::theme::accent(&ctx), AccentColor::Red.color());
         click(&ctx, &mut settings, "Light");
@@ -1801,38 +1815,51 @@ mod tests {
         assert_eq!(crate::theme::accent(&ctx), AccentColor::Red.color());
         let other = Context::default();
         crate::theme::configure(&other);
-        assert_eq!(crate::theme::accent(&other), AccentColor::Purple.color());
+        assert_eq!(crate::theme::accent(&other), AccentColor::default().color());
+    }
+
+    fn accent_centers(shapes: &[egui::epaint::ClippedShape]) -> [Pos2; 8] {
+        AccentColor::CHOICES.map(|accent| {
+            shapes
+                .iter()
+                .find_map(|clipped| match &clipped.shape {
+                    egui::Shape::Circle(circle) if circle.fill == accent.color() => {
+                        assert!(clipped.clip_rect.contains_rect(Rect::from_center_size(
+                            circle.center,
+                            Vec2::splat(circle.radius * 2.0)
+                        )));
+                        Some(circle.center)
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("Missing swatch {}", accent.name()))
+        })
     }
 
     #[test]
-    fn dropdown_paints_named_swatches_on_the_left_and_updates_the_accent() {
+    fn accent_swatches_fit_one_row_and_apply_each_choice_on_click() {
         let ctx = Context::default();
         crate::theme::configure(&ctx);
         crate::fonts::configure(&ctx);
         let mut settings = AppSettings::default();
-        frame(&ctx, &mut settings, vec![]);
-        assert!(!click(&ctx, &mut settings, "Purple"));
         for _ in 0..12 {
             frame(&ctx, &mut settings, vec![]);
         }
         let shapes = frame(&ctx, &mut settings, vec![]).1;
-        for accent in AccentColor::ALL {
-            let label = shapes
-                .iter()
-                .rev()
-                .find_map(|shape| match &shape.shape {
-                    egui::Shape::Text(text) if text.galley.text() == accent.name() => Some(text),
-                    _ => None,
-                })
-                .unwrap_or_else(|| panic!("Missing option: {}", accent.name()));
-            assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect)
-                if rect.fill == accent.color() && rect.rect.size() == Vec2::splat(14.0)
-                && rect.rect.right() < label.pos.x && (rect.rect.center().y - (label.pos.y + label.galley.rect.center().y)).abs() < 1.0)), "Missing left swatch: {}", accent.name());
+        let centers = accent_centers(&shapes);
+        assert!(
+            centers
+                .windows(2)
+                .all(|pair| pair[0].x < pair[1].x && pair[0].y == pair[1].y)
+        );
+        let accent = |settings: &AppSettings| crate::theme::accent(&ctx) == settings.accent.color();
+        for (color, center) in AccentColor::CHOICES.into_iter().zip(centers) {
+            assert!(!click_at(&ctx, &mut settings, center));
+            assert_eq!(settings.accent, color);
+            assert!(accent(&settings));
+            assert!(!egui::Popup::is_any_open(&ctx));
+            assert_eq!(AppSettings::from_json(Some(&settings.to_json())), settings);
         }
-        assert!(!click(&ctx, &mut settings, "Red"));
-        assert_eq!(settings.accent, AccentColor::Red);
-        assert_eq!(crate::theme::accent(&ctx), AccentColor::Red.color());
-        assert!(!egui::Popup::is_any_open(&ctx));
         assert!(click(&ctx, &mut settings, "Close"));
     }
 
@@ -1859,7 +1886,7 @@ mod tests {
             AccentColor::Teal.color()
         );
         assert_eq!(crate::theme::ruler_loop_colors(&a, true), initial);
-        assert_eq!(crate::theme::accent(&b), AccentColor::Purple.color());
+        assert_eq!(crate::theme::accent(&b), AccentColor::default().color());
     }
 
     #[test]
@@ -1868,7 +1895,7 @@ mod tests {
         crate::theme::configure(&ctx);
         let mut settings = AppSettings::default();
         frame(&ctx, &mut settings, vec![]);
-        click(&ctx, &mut settings, "Purple");
+        click(&ctx, &mut settings, ColorTheme::default().name());
         let key = |pressed| egui::Event::Key {
             key: egui::Key::Escape,
             physical_key: None,

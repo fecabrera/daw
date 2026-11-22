@@ -80,7 +80,7 @@ fn either_waveform_edge_previews_the_pair_and_commits_the_same_snapped_boundary(
                             &preview.clip,
                             preview.clip.start_frame
                         ),
-                        theme::ACCENT
+                        theme::accent(&ctx)
                     ));
                 }
                 assert_eq!(format!("{:?}", app.session.project), original);

@@ -325,6 +325,24 @@ mod tests {
         output.textures_delta.clear();
         let padding = f32::from(crate::dialogs::PADDING);
         let footer_top = bounds.bottom() - crate::toolbars::CONTROL_HEIGHT - 2.0 * padding;
+        let swatches = output.shapes.iter().filter_map(|clipped| {
+            let egui::Shape::Circle(circle) = &clipped.shape else {
+                return None;
+            };
+            (circle.fill != egui::Color32::TRANSPARENT).then_some((clipped.clip_rect, circle))
+        });
+        let swatches: Vec<_> = swatches.collect();
+        assert_eq!(swatches.len(), 8);
+        for (clip, swatch) in &swatches {
+            assert!(
+                clip.intersect(bounds)
+                    .contains_rect(egui::Rect::from_center_size(
+                        swatch.center,
+                        egui::Vec2::splat(swatch.radius * 2.0),
+                    ))
+            );
+            assert_eq!(swatch.center.y, swatches[0].1.center.y);
+        }
         for label in ["Appearance", "Plugins", "Theme", "Close"] {
             let text = output
                 .shapes

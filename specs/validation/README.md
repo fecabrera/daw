@@ -2,6 +2,20 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Accent color swatches — 2026-11-21
+
+The 30 focused Settings tests pass. The swatch test checks all eight choices,
+their single-row order, immediate application and saved preference round
+trips. The native Settings body geometry test checks that all eight swatches
+fit in one row at the 420 × 320 minimum client size. The preference test
+checks Red as the default and verifies that existing saved colors still load.
+Formatting, strict workspace Clippy, documentation links, and the macOS debug
+bundle signature pass. The geometry and interaction tests run without a
+native window.
+
+The debug and release workspace suites pass with the known macOS Audio Unit
+registration case excluded.
+
 - [Audio preparation session copies — 2026-11-17](audio-preparation-session-copies-2026-11-17.md) records before and after measurements and rollback checks.
 
 - [External plugin hosting integration — 2026-11-17](external-plugin-hosting-integration-2026-11-17.md): active effects/instruments, controls/editors, modulation, PCM sidechains, state/history and native checks.
