@@ -4,7 +4,7 @@ use crate::{
     transport_monitor_control,
 };
 use daw_core::Project;
-use daw_media::{ExportFormat, ExportSettings, Mp3Bitrate, WavCodec};
+use daw_media::{ExportChannels, ExportFormat, ExportSettings, Mp3Bitrate, WavCodec};
 use daw_project::ExportRegion;
 use std::sync::Arc;
 
@@ -93,22 +93,15 @@ pub(super) fn show(
     project: &Project,
     surface: Option<&mut egui::Ui>,
 ) -> Option<Action> {
-    let description = format!(
-        "Stereo · {} kHz",
-        draft
-            .request
-            .settings
-            .output_sample_rate(project.sample_rate_hz) as f32
-            / 1000.0
-    );
     let actions = [
         FooterAction::accept("Export", Action::Export),
         FooterAction::cancel("Cancel", Action::Cancel),
     ];
-    let dialog = crate::dialogs::Dialog::new("Export audio", &description, &actions);
+    let dialog = crate::dialogs::Dialog::new("Export audio", "", &actions);
     let content = |ui: &mut egui::Ui| {
         draft.range_controls(ui, project);
         let settings = &mut draft.request.settings;
+        let rate_label = |rate: u32| format!("{} kHz", f64::from(rate) / 1000.0);
         egui::Grid::new("export_settings")
             .num_columns(2)
             .spacing(egui::Vec2::new(12.0, 8.0))
@@ -116,17 +109,25 @@ pub(super) fn show(
                 ui.label("Format");
                 crate::menus::Dropdown::from_id_salt("export_format")
                     .selected_text(settings.format.label())
+                    .width(ui.available_width())
                     .show_ui(ui, |ui| {
                         for format in ExportFormat::ALL {
                             ui.selectable_value(&mut settings.format, format, format.label());
                         }
                     });
                 ui.end_row();
+                if settings
+                    .sample_rate_hz
+                    .is_some_and(|rate| !settings.format.export_sample_rates().contains(&rate))
+                {
+                    settings.sample_rate_hz = None;
+                }
                 ui.label("Codec");
                 match settings.format {
                     ExportFormat::Wav => {
                         crate::menus::Dropdown::from_id_salt("export_codec")
                             .selected_text(settings.wav_codec.label())
+                            .width(ui.available_width())
                             .show_ui(ui, |ui| {
                                 for codec in WavCodec::ALL {
                                     ui.selectable_value(
@@ -145,6 +146,32 @@ pub(super) fn show(
                     }
                 }
                 ui.end_row();
+                ui.label("Channels");
+                crate::menus::Dropdown::from_id_salt("export_channels")
+                    .selected_text(settings.channels.label())
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for channels in ExportChannels::ALL {
+                            ui.selectable_value(&mut settings.channels, channels, channels.label());
+                        }
+                    });
+                ui.end_row();
+                ui.label("Sample rate");
+                let rate = settings.output_sample_rate(project.sample_rate_hz);
+                crate::menus::Dropdown::from_id_salt("export_sample_rate")
+                    .selected_text(rate_label(rate))
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for &candidate in settings.format.export_sample_rates() {
+                            if ui
+                                .selectable_label(rate == candidate, rate_label(candidate))
+                                .clicked()
+                            {
+                                settings.sample_rate_hz = Some(candidate);
+                            }
+                        }
+                    });
+                ui.end_row();
                 if settings.format != ExportFormat::Wav {
                     let bitrate = if settings.format == ExportFormat::Aac {
                         &mut settings.aac_bitrate
@@ -154,6 +181,7 @@ pub(super) fn show(
                     ui.label("Bitrate");
                     crate::menus::Dropdown::from_id_salt("export_bitrate")
                         .selected_text(format!("{} kbps", bitrate.kbps()))
+                        .width(ui.available_width())
                         .show_ui(ui, |ui| {
                             for candidate in Mp3Bitrate::ALL {
                                 ui.selectable_value(
@@ -328,9 +356,20 @@ mod tests {
         click(&ctx, &mut draft, "PCM 24-bit");
         click(&ctx, &mut draft, "IEEE float 32-bit");
         assert_eq!(draft.request.settings.wav_codec, WavCodec::Float32);
+        click(&ctx, &mut draft, "Stereo");
+        click(&ctx, &mut draft, "Mono");
+        assert_eq!(draft.request.settings.channels, ExportChannels::Mono);
+        click(&ctx, &mut draft, "48 kHz");
+        let (_, choices) = frame(&ctx, &mut draft, vec![]);
+        assert!(!choices.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text().contains("Automatic"))));
+        click(&ctx, &mut draft, "192 kHz");
+        assert_eq!(draft.request.settings.sample_rate_hz, Some(192_000));
         click(&ctx, &mut draft, "WAV");
         click(&ctx, &mut draft, "MP3");
         assert_eq!(draft.request.settings.format, ExportFormat::Mp3);
+        assert_eq!(draft.request.settings.sample_rate_hz, None);
+        click(&ctx, &mut draft, "48 kHz");
+        click(&ctx, &mut draft, "44.1 kHz");
         let (_, shapes) = frame(&ctx, &mut draft, vec![]);
         assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "MPEG Layer III (LAME)")));
         click(&ctx, &mut draft, "192 kbps");
@@ -339,6 +378,8 @@ mod tests {
         click(&ctx, &mut draft, "MP3");
         click(&ctx, &mut draft, "AAC");
         assert_eq!(draft.request.settings.format, ExportFormat::Aac);
+        assert_eq!(draft.request.settings.channels, ExportChannels::Mono);
+        assert_eq!(draft.request.settings.sample_rate_hz, Some(44_100));
         let (_, shapes) = frame(&ctx, &mut draft, vec![]);
         assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "AAC-LC (ADTS)")));
         click(&ctx, &mut draft, "192 kbps");

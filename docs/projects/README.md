@@ -187,13 +187,21 @@ Repeated imports of the same unchanged file can share audio storage. They remain
 In **Export audio**, drag the bar or beat digits in **Start** and **End** to
 adjust the range. The dialog starts with the enabled loop, otherwise the active
 time selection or the span of the selected clips, otherwise the full project.
-The range applies to the stereo mix. Choose a format and click **Export** to open
-the system file picker. Close the Export window to cancel. WAV supports PCM16, PCM24, and float32 at the project rate; PCM24 is the default. MP3 supports 128, 192, 256, and 320 kbps; the default is 192 kbps. MP3 uses 48 kHz when the project rate is higher.
+The range applies to the mix. Set **Channels** to **Stereo** or **Mono**.
+Mono averages the left and right channels into one output channel.
+**Sample rate** starts at the project rate, or 48 kHz if the format cannot use
+it. WAV offers 44.1, 48, 88.2, 96, 176.4, and 192 kHz. MP3 and AAC offer
+44.1 and 48 kHz. Changing formats keeps a compatible rate you selected and
+otherwise uses the new format's default. The export status reports the file's
+channel layout and sample rate.
 
-AAC exports stereo AAC-LC in an ADTS `.aac` file. Choose a target bitrate of 128,
+Click **Export** to open the system file picker. Close the Export window to
+cancel. WAV supports PCM16, PCM24, and float32, with PCM24 as the default.
+MP3 supports 128, 192, 256, and 320 kbps, with 192 kbps as the default.
+
+AAC exports AAC-LC in an ADTS `.aac` file. Choose a target bitrate of 128,
 192, 256, or 320 kbps; the default is 192 kbps. Frame sizes vary with the audio.
-Projects above 48 kHz are converted to 48 kHz before encoding. The dialog and
-completion report show the output rate. AAC export uses the bundled encoder.
+AAC export uses the bundled encoder.
 It does not require FFmpeg. M4A/MP4 export is unavailable.
 
 ADTS does not store the original sample count or gapless trim information. AAC

@@ -67,8 +67,9 @@ impl ExportStatus {
             complete_text: "Export complete",
             failed_text: "Export failed",
             detail: &format!(
-                "{} · {codec} · Stereo · {} kHz",
+                "{} · {codec} · {} · {} kHz",
                 self.settings.format.label(),
+                self.settings.channels.label(),
                 self.sample_rate_hz as f32 / 1000.0
             ),
             path: Some(&self.path),

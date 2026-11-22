@@ -3233,7 +3233,10 @@ impl DawUi {
             FileAction::Export => {
                 self.project_prompt_window.begin();
                 self.export_dialog = Some(export_dialog::Draft::new(
-                    self.export_request(self.export_settings),
+                    self.export_request(ExportSettings {
+                        sample_rate_hz: None,
+                        ..self.export_settings
+                    }),
                     self.session.project.end(),
                 ));
             }
@@ -10914,12 +10917,14 @@ mod tests {
     }
     #[test]
     fn export_jobs_use_selected_settings_and_overwrite_retains_them() {
-        use daw_media::{ExportFormat, Mp3Bitrate, WavCodec};
+        use daw_media::{ExportChannels, ExportFormat, Mp3Bitrate, WavCodec};
         let wav = TestWav::new();
         let folder = wav.0.parent().unwrap();
         for settings in [
             ExportSettings {
                 wav_codec: WavCodec::Pcm16,
+                channels: ExportChannels::Mono,
+                sample_rate_hz: Some(96_000),
                 ..Default::default()
             },
             ExportSettings {
@@ -10963,6 +10968,7 @@ mod tests {
             assert_eq!(status.state, export_status::State::Complete);
             assert_eq!(status.path, output);
             assert_eq!(status.settings, settings);
+            assert_eq!(status.sample_rate_hz, settings.output_sample_rate(48_000));
             assert_eq!(status.frames.load(Ordering::Relaxed), 48000);
             assert!(status.warnings.is_empty());
             let bytes = std::fs::read(&output).unwrap();
@@ -10971,7 +10977,16 @@ mod tests {
                 assert_eq!(bytes[2] >> 4, 14); // 320 kbps.
             } else {
                 let reader = hound::WavReader::open(&output).unwrap();
-                assert_eq!(reader.duration(), 48000);
+                assert_eq!(reader.duration(), status.sample_rate_hz);
+                assert_eq!(reader.spec().sample_rate, status.sample_rate_hz);
+                assert_eq!(
+                    reader.spec().channels,
+                    if settings.channels == ExportChannels::Mono {
+                        1
+                    } else {
+                        2
+                    }
+                );
                 assert_eq!(
                     reader.spec().bits_per_sample,
                     if settings.wav_codec == WavCodec::Pcm16 {

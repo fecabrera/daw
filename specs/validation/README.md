@@ -2,6 +2,32 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Export dropdown defaults and width — 2026-11-22
+
+The export dialog tests check that the sample-rate list contains concrete
+rates, that an explicit compatible rate survives a format switch, and that a
+96 kHz project opens at 96 kHz for WAV and 48 kHz for MP3. The native-surface
+egui test measures the right inset of every dropdown in both layouts.
+Formatting, strict workspace Clippy, and macOS bundle signature verification
+passed. The debug and release workspace suites each passed 3,693 tests with
+the known macOS Audio Unit registration case excluded.
+
+## Export channels and sample rate — 2026-11-22
+
+The encoder tests decode stereo and mono exports at every selectable rate in
+WAV, MP3, and AAC from 48 and 192 kHz inputs. They check the output headers,
+WAV frame counts, mono averaging, and rejection of an incompatible explicit
+rate before writing a file. The egui tests exercise both dropdowns, rate
+fallback on format changes, and settings transfer through the destination
+picker and replacement confirmation.
+
+Formatting, strict workspace Clippy, CLI smoke and macOS bundle signature
+verification passed. The debug workspace passed 3,693 tests and the release
+workspace passed 3,692 tests with the known macOS Audio Unit registration
+case excluded. All three export-settings tests passed in a focused release
+run after the final mono averaging case was added. The native prompt smoke
+process aborted during macOS application registration before the dialog opened.
+
 ## Reverse audio clips — 2026-11-22
 
 The menu input test exercises the context and Clip menus, multi-clip Undo,

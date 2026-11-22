@@ -886,6 +886,9 @@ mod tests {
         use daw_media::ExportFormat;
         let mut app = DawUi::default();
         app.enable_native_windows();
+        app.session.project.sample_rate_hz = 96_000;
+        app.export_settings.sample_rate_hz = Some(44_100);
+        let saved = app.export_settings;
         let track = app.session.project.add_midi_track().unwrap();
         app.session.project.add_midi_pattern(track, 0).unwrap();
         app.perform_file_action(crate::FileAction::Export);
@@ -897,9 +900,36 @@ mod tests {
         let child = egui::Context::default();
         crate::fonts::configure(&child);
         child_frame(&mut app, &root, &child, window, vec![], false);
+        let shapes = child_frame(&mut app, &root, &child, window, vec![], false);
+        let check_width = |app: &DawUi, shapes: &[egui::epaint::ClippedShape], labels: &[&str]| {
+            for label in labels {
+                let point = text_bounds(shapes, label).center();
+                let right = shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Rect(rect)
+                            if rect.rect.contains(point) && rect.rect.height() <= 30.0 =>
+                        {
+                            Some(rect.rect.right())
+                        }
+                        _ => None,
+                    })
+                    .expect("dropdown background");
+                let gap = app.desktop_window_size(window)[0] as f32 - right;
+                assert!(
+                    (7.0..=9.0).contains(&gap),
+                    "Gap after {label} dropdown: {gap}"
+                );
+            }
+        };
+        check_width(&app, &shapes, &["WAV", "PCM 24-bit", "Stereo", "96 kHz"]);
         let wav_height = app.desktop_window_size(window)[1];
+        app.export_dialog.as_mut().unwrap().request.settings.format = ExportFormat::Mp3;
+        let shapes = child_frame(&mut app, &root, &child, window, vec![], false);
+        check_width(&app, &shapes, &["MP3", "Stereo", "48 kHz", "192 kbps"]);
         let draft = app.export_dialog.as_mut().unwrap();
-        draft.request.settings.format = ExportFormat::Mp3;
+        draft.request.settings.channels = daw_media::ExportChannels::Mono;
+        draft.request.settings.sample_rate_hz = Some(44_100);
         draft.request.region.start_frame = 100;
         draft.request.region.include_tail = false;
         let expected = draft.request;
@@ -938,6 +968,6 @@ mod tests {
         app.complete_desktop_picker(request, Ok(None));
         assert!(app.desktop_window().is_none());
         assert!(!app.dirty && app.job.is_none());
-        assert_eq!(app.export_settings, ExportSettings::default());
+        assert_eq!(app.export_settings, saved);
     }
 }

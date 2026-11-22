@@ -148,7 +148,7 @@ impl Smoke {
                             "Export audio"
                         },
                     );
-                    let max_height = if action == FileAction::Save { 145 } else { 220 };
+                    let max_height = if action == FileAction::Save { 145 } else { 250 };
                     if height < max_height && (actual - f64::from(height)).abs() <= 1.0 {
                         ctx.send_viewport_cmd_to(id, ViewportCommand::Close);
                         self.step = Step::ProjectPromptClosing(action);

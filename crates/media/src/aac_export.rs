@@ -1,6 +1,7 @@
 //! Bounded worker-side AAC-LC/ADTS export. The codec keeps history across writes.
-use crate::stereo_fft::StereoFft;
-use crate::{AudioEncoder, AudioReservation, Error, Result, resampled_frames};
+use crate::{
+    AudioEncoder, AudioReservation, Error, ExportChannels, Result, export_resample::ExportResampler,
+};
 use oxideav_aac::encoder::{EncoderConfig, StreamEncoder};
 use std::{
     fs::File,
@@ -12,41 +13,28 @@ pub struct AacEncoder {
     encoder: StreamEncoder,
     writer: BufWriter<File>,
     pcm: Vec<i16>,
-    converter: Option<StereoFft>,
-    input: Vec<Vec<f32>>,
-    output: Vec<Vec<f32>>,
-    input_filled: usize,
-    input_frames: u64,
-    output_frames: u64,
-    input_rate: u32,
-    output_rate: u32,
+    converter: Option<ExportResampler>,
+    channels: ExportChannels,
+    wrote_audio: bool,
     pub(super) clipped: bool,
     _reservation: AudioReservation,
 }
 impl AacEncoder {
-    pub(super) fn create(path: &Path, bitrate: u16, input_rate: u32) -> Result<Self> {
+    pub(super) fn create(
+        path: &Path,
+        bitrate: u16,
+        input_rate: u32,
+        output_rate: u32,
+        channels: ExportChannels,
+    ) -> Result<Self> {
         if !daw_core::SAMPLE_RATES.contains(&input_rate) {
             return Err(Error("Unsupported AAC input sample rate".into()));
         }
-        let output_rate = input_rate.min(daw_core::SAMPLE_RATE);
-        let reservation = AudioReservation::new(
-            0,
-            crate::resample_scratch(input_rate, output_rate)? + 8 * 1024 * 1024,
-        )?;
-        let converter = if input_rate != output_rate {
-            Some(StereoFft::new(input_rate, output_rate).map_err(error)?)
-        } else {
-            None
-        };
-        let input = converter
-            .as_ref()
-            .map_or_else(Vec::new, StereoFft::input_buffer);
-        let output = converter
-            .as_ref()
-            .map_or_else(Vec::new, StereoFft::output_buffer);
+        let reservation = AudioReservation::new(0, 8 * 1024 * 1024)?;
+        let converter = ExportResampler::new(input_rate, output_rate)?;
         let encoder = StreamEncoder::new(EncoderConfig {
             sample_rate: output_rate,
-            channels: 2,
+            channels: channels.count() as u8,
             bitrate: u32::from(bitrate) * 1000,
         })
         .map_err(error)?;
@@ -55,19 +43,14 @@ impl AacEncoder {
             writer: BufWriter::new(File::create(path).map_err(error)?),
             pcm: Vec::with_capacity(2048),
             converter,
-            input,
-            output,
-            input_filled: 0,
-            input_frames: 0,
-            output_frames: 0,
-            input_rate,
-            output_rate,
+            channels,
+            wrote_audio: false,
             clipped: false,
             _reservation: reservation,
         })
     }
     fn push_frame(&mut self, frame: [f32; 2]) -> Result<()> {
-        for sample in frame {
+        for sample in frame.into_iter().take(usize::from(self.channels.count())) {
             self.clipped |= sample.abs() > 1.0;
             self.pcm.push(
                 (sample.clamp(-1.0, 1.0) * 32768.0)
@@ -75,31 +58,30 @@ impl AacEncoder {
                     .clamp(-32768.0, 32767.0) as i16,
             );
         }
-        if self.pcm.len() == 2048 {
+        if self.pcm.len() == 1024 * usize::from(self.channels.count()) {
             self.writer
                 .write_all(&self.encoder.encode_frame(&self.pcm).map_err(error)?)
                 .map_err(error)?;
             self.pcm.clear();
         }
-        self.output_frames += 1;
         Ok(())
     }
-    fn convert_block(&mut self, target: u64) -> Result<()> {
-        let window = self
-            .converter
-            .as_mut()
-            .unwrap()
-            .process(
-                &self.input,
-                &mut self.output,
-                target.saturating_sub(self.output_frames),
-            )
-            .map_err(error)?;
-        for i in window {
-            self.push_frame([self.output[0][i], self.output[1][i]])?;
+    pub(super) fn finish_with_clipping(mut self) -> Result<bool> {
+        if let Some(mut converter) = self.converter.take() {
+            converter.finish(|frame| self.push_frame(frame))?;
         }
-        self.input_filled = 0;
-        Ok(())
+        if !self.pcm.is_empty() {
+            self.writer
+                .write_all(&self.encoder.encode_frame(&self.pcm).map_err(error)?)
+                .map_err(error)?;
+        }
+        if self.wrote_audio {
+            self.writer
+                .write_all(&self.encoder.finish().map_err(error)?)
+                .map_err(error)?;
+        }
+        self.writer.flush().map_err(error)?;
+        Ok(self.clipped)
     }
 }
 impl AudioEncoder for AacEncoder {
@@ -107,46 +89,29 @@ impl AudioEncoder for AacEncoder {
         if frames.iter().flatten().any(|s| !s.is_finite()) {
             return Err(Error("Cannot export non-finite audio samples".into()));
         }
-        self.input_frames = self
-            .input_frames
-            .checked_add(frames.len() as u64)
-            .ok_or_else(|| Error("AAC export length overflow".into()))?;
-        let target = resampled_frames(self.input_frames, self.input_rate, self.output_rate)?;
-        for frame in frames {
-            self.clipped |= frame.iter().any(|s| s.abs() > 1.0);
-            if self.converter.is_some() {
-                for (channel, sample) in frame.iter().enumerate() {
-                    self.input[channel][self.input_filled] = sample.clamp(-1.0, 1.0);
-                }
-                self.input_filled += 1;
-                if self.input_filled == self.input[0].len() {
-                    self.convert_block(target)?;
-                }
-            } else {
-                self.push_frame(*frame)?;
+        self.wrote_audio |= !frames.is_empty();
+        let channels = self.channels;
+        if let Some(mut converter) = self.converter.take() {
+            let mut input_clipped = false;
+            let inputs = frames.iter().map(|&frame| {
+                channels.mix_frame(frame).map(|sample| {
+                    input_clipped |= sample.abs() > 1.0;
+                    sample.clamp(-1.0, 1.0)
+                })
+            });
+            let result = converter.write(inputs, |frame| self.push_frame(frame));
+            self.clipped |= input_clipped;
+            self.converter = Some(converter);
+            result?;
+        } else {
+            for &frame in frames {
+                self.push_frame(channels.mix_frame(frame))?;
             }
         }
         Ok(())
     }
-    fn finish(mut self) -> Result<()> {
-        let target = resampled_frames(self.input_frames, self.input_rate, self.output_rate)?;
-        while self.converter.is_some() && self.output_frames < target {
-            for channel in &mut self.input {
-                channel[self.input_filled..].fill(0.0);
-            }
-            self.convert_block(target)?;
-        }
-        if !self.pcm.is_empty() {
-            self.writer
-                .write_all(&self.encoder.encode_frame(&self.pcm).map_err(error)?)
-                .map_err(error)?;
-        }
-        if self.input_frames > 0 {
-            self.writer
-                .write_all(&self.encoder.finish().map_err(error)?)
-                .map_err(error)?;
-        }
-        self.writer.flush().map_err(error)
+    fn finish(self) -> Result<()> {
+        self.finish_with_clipping().map(|_| ())
     }
 }
 fn error(e: impl std::fmt::Display) -> Error {

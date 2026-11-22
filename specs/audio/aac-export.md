@@ -13,8 +13,11 @@ rates, not a strict constant byte rate; the codec varies frame sizes within its
 bit budget. Label the format AAC, codec AAC-LC (ADTS), and bitrate mode Target.
 Keep existing WAV and MP3 defaults and selections.
 
-Encode stereo. Keep project rates of 44.1/48 kHz; convert higher rates to 48 kHz
-with streaming Rubato `FftFixedIn` on the export worker. Remove resampler delay
+Encode stereo or mono at 44.1 or 48 kHz. The default is 44.1 kHz for a
+44.1 kHz project and 48 kHz for other project rates. Use streaming Rubato
+`FftFixedIn` on the export worker when the output rate differs from the project
+rate. Average the left and right channels before
+clipping or conversion for mono output. Remove resampler delay
 and keep exactly the ceiling-rounded converted source frame count before codec
 padding. Retain converter/codec state across renderer block writes. Input,
 converted PCM and encoder blocks remain bounded; admit a working reservation

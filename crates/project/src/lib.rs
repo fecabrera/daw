@@ -728,7 +728,7 @@ impl Session {
                     let offset = start.saturating_sub(position) as usize;
                     audible_cutoff = block[offset..count]
                         .iter()
-                        .flatten()
+                        .flat_map(|&frame| settings.channels.mix_frame(frame))
                         .any(|sample| sample.abs() >= EXPORT_TAIL_WARNING_PEAK);
                 }
                 let skip = start.saturating_sub(position).min(count as u64) as usize;
@@ -738,8 +738,7 @@ impl Session {
                 position += count as u64;
                 progress(position.saturating_sub(start), end - start);
             }
-            let clipped = encoder.clipped();
-            encoder.finish().map_err(error)?;
+            let clipped = encoder.finish_with_clipping().map_err(error)?;
             if file_publish::canonical_entry(&requested).map_err(error)? != path {
                 return Err(error("Output folder changed during export"));
             }

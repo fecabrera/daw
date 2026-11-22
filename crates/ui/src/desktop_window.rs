@@ -47,7 +47,7 @@ impl DesktopWindow {
                 match prompt.kind {
                     ProjectPromptKind::Unsaved | ProjectPromptKind::ReplaceExport => 64,
                     ProjectPromptKind::Save | ProjectPromptKind::SaveAs => 132,
-                    ProjectPromptKind::Export => 220,
+                    ProjectPromptKind::Export => 250,
                     ProjectPromptKind::ExportStatus => 224,
                     ProjectPromptKind::StretchUpgrade => 128,
                     ProjectPromptKind::ProjectSettings | ProjectPromptKind::Normalize => 260,

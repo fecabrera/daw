@@ -1,6 +1,6 @@
 # Features and roadmap
 
-DAW provides audio, MIDI and beat arrangement, layered instruments, effects, mixing, and stereo export. The project format is experimental. See the [user guide](README.md) for instructions and the main [README](../README.md) for platform setup.
+DAW provides audio, MIDI and beat arrangement, layered instruments, effects, mixing, and stereo or mono export. The project format is experimental. See the [user guide](README.md) for instructions and the main [README](../README.md) for platform setup.
 
 ## Available features
 

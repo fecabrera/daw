@@ -20,7 +20,7 @@ Use a combination of ASD-STE100 principles and Plain Language (PL) for project d
 
 ## Objective
 
-Build a small multitrack audio editor for macOS, Linux, and Windows. A user must be able to import recordings, arrange clips, adjust the mix, save and reopen a project, and export a stereo WAV, MP3 or AAC file.
+Build a small multitrack audio editor for macOS, Linux, and Windows. A user must be able to import recordings, arrange clips, adjust the mix, save and reopen a project, and export a stereo or mono WAV, MP3 or AAC file.
 
 Use Rust with egui for the desktop interface. Keep the audio engine independent of the interface. Future targets are iPadOS and Android; mobile delivery is outside the MVP.
 
@@ -38,7 +38,7 @@ Provide a headless command-line mode from the start, using the same project mode
 | MVP-06 | Mixing | Mixer tracks. Provide a master gain control and peak meters. |
 | MVP-07 | Output | Use the selected audio output device (system default initially). Configure machine-local output rate, bit depth and buffer preferences through [Audio Settings](../audio/devices.md). Display audio initialization errors. If the device disconnects, stop playback safely and display a clear error. |
 | MVP-08 | Projects | Save and open projects stored as folders containing manifest files and an assets directory. Reference external source audio files during the MVP. Open projects with missing sources normally, show a warning, and display affected clips as empty placeholders. |
-| MVP-10 | Export | Export the arrangement as a stereo WAV, MP3 or AAC file. |
+| MVP-10 | Export | Export the arrangement as a stereo or mono WAV, MP3 or AAC file. |
 | MVP-11 | Sample rate | Use a selectable project processing rate (44.1, 48, 88.2, 96, 176.4, or 192 kHz; default 48 kHz). Convert imports to that rate. |
 | MVP-12 | Clip boundaries | Apply short fades at clip boundaries to prevent clicks. |
 | MVP-13 | Headless mode | Load and validate an existing project and export its arrangement as WAV or MP3 from the command line, without a graphical session or audio output device. |
@@ -299,7 +299,7 @@ Use one manifest for the MVP. This is the initial schema, not a stable compatibi
 - Import uncompressed WAV files with 16-bit or 24-bit integer PCM, or 32-bit IEEE floating-point samples.
 - Accept mono and stereo sources. Feed mono sources equally to the left and right channels before track gain and pan; preserve stereo channel order. Reject files with more than two channels with a clear error.
 - Decode and mix using 32-bit floating-point PCM at the project's selected sample rate.
-- Export stereo at the project rate as WAV (16-bit PCM, default 24-bit PCM, or 32-bit IEEE float) or MP3 (MPEG Layer III through bundled LAME, CBR 128/192/256/320 kbps; default 192; MP3 converts rates above 48 kHz to 48 kHz).
+- Export stereo or mono WAV (16-bit PCM, default 24-bit PCM, or 32-bit IEEE float) or MP3 (MPEG Layer III through bundled LAME, CBR 128/192/256/320 kbps with a default of 192). WAV offers all project rates. MP3 offers 44.1 or 48 kHz. The default is the project rate if the format supports it and 48 kHz otherwise.
 - Open the shared application dialog for format, codec, and MP3 bitrate before choosing the native destination. Remember the last accepted options for the app session. Cancel must not modify the project.
 - When export starts, show a status dialog with live progress, finalization state, destination, settings, warnings, completion notices, and errors. Keep the report open until dismissed after completion or failure. Scroll long reports. Block background editing and file actions while it is open. Show 100% only after successful file publication.
 - Use the same settings and encoders for desktop and CLI export. Reject incompatible CLI options.
@@ -357,7 +357,7 @@ Future synth and effect work follows [Modular audio units design and decisions](
 2. Display their waveforms and move the clips.
 3. Play both tracks together with independent gain and mute controls.
 4. Seek and zoom while playback continues.
-5. Export the mix as a stereo WAV, MP3 or AAC file.
+5. Export the mix as a stereo or mono WAV, MP3 or AAC file.
 6. Validate and export the same project through the headless CLI.
 
 After this milestone, implement the remaining MVP features.
@@ -426,7 +426,7 @@ Source management is also a future goal; its delivery horizon remains to be defi
 
 - Audio recording.
 - Additional import and export formats.
-- Mono/stereo export, channel mapping/downmix rules, and dither modes including an off option.
+- Custom export channel mapping and dither modes including an off option.
 
 #### UI
 
