@@ -419,7 +419,7 @@ pub enum PickerKind {
 #[derive(Default)]
 pub(super) struct Navigation {
     group: Group,
-    scroll: [f32; 6],
+    scroll: [f32; Group::ALL.len()],
 }
 
 /// Discovery data and actions for the main Settings device selectors.
@@ -455,15 +455,17 @@ enum Group {
     Playback,
     TimeStretch,
     Midi,
+    Recording,
     StemSeparation,
     Plugins,
 }
 impl Group {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 7] = [
         Self::Appearance,
         Self::Playback,
         Self::TimeStretch,
         Self::Midi,
+        Self::Recording,
         Self::StemSeparation,
         Self::Plugins,
     ];
@@ -473,6 +475,7 @@ impl Group {
             Self::Playback => "Playback",
             Self::TimeStretch => "Time stretch",
             Self::Midi => "MIDI",
+            Self::Recording => "Recording",
             Self::StemSeparation => "Stem Separation",
             Self::Plugins => "Plugins",
         }
@@ -923,6 +926,23 @@ fn midi(
                     });
             },
         );
+    });
+    crate::rows::advice(
+        ui,
+        "Enable R after M/S to receive MIDI on several tracks. With no R enabled, the selected MIDI track receives input. Its R text shows the active color.",
+    );
+    if settings.midi.device.is_some() && !audio.midi_connected {
+        ui.label("MIDI input is disconnected.");
+    }
+}
+
+fn recording(
+    ui: &mut egui::Ui,
+    settings: &mut AppSettings,
+    audio: &mut AudioControls<'_>,
+    label_width: f32,
+) {
+    ui.add_enabled_ui(audio.midi_enabled, |ui| {
         crate::rows::field(
             ui,
             label_width,
@@ -960,8 +980,6 @@ fn midi(
                     });
             },
         );
-    });
-    ui.add_enabled_ui(audio.midi_enabled, |ui| {
         crate::rows::field(
             ui,
             label_width,
@@ -977,8 +995,6 @@ fn midi(
                 .on_hover_text("Shift recorded notes; positive values place notes later");
             },
         );
-    });
-    ui.add_enabled_ui(audio.midi_enabled, |ui| {
         ui.checkbox(&mut settings.midi.count_in_enabled, "Count-in enabled")
             .on_hover_text(if settings.midi.count_in_enabled {
                 "Count-in: On"
@@ -991,13 +1007,6 @@ fn midi(
     }
     if audio.midi_take_retained && ui.button("Retry MIDI take publication").clicked() {
         audio.midi_retry_requested = true;
-    }
-    crate::rows::advice(
-        ui,
-        "Enable R after M/S to receive MIDI on several tracks. With no R enabled, the selected MIDI track receives input. Its R text shows the active color.",
-    );
-    if settings.midi.device.is_some() && !audio.midi_connected {
-        ui.label("MIDI input is disconnected.");
     }
 }
 
@@ -1155,6 +1164,7 @@ pub(super) fn show_surface(
                             }
                             Group::TimeStretch => time_stretch(ui, settings, label_width),
                             Group::Midi => midi(ui, settings, audio, label_width),
+                            Group::Recording => recording(ui, settings, audio, label_width),
                             Group::Plugins => crate::plugin_settings::show(ui, settings, audio),
                             Group::StemSeparation => separation(
                                 ui,
@@ -1337,6 +1347,7 @@ mod tests {
                 (Group::Playback, "Seek cache"),
                 (Group::TimeStretch, "Default engine"),
                 (Group::Midi, "Split MIDI notes"),
+                (Group::Recording, "Count-in"),
                 (Group::StemSeparation, "CPU model"),
                 (Group::Plugins, "Default folders"),
                 (Group::Appearance, "Theme"),
@@ -1361,6 +1372,7 @@ mod tests {
                     "Seek cache",
                     "Default engine",
                     "Split MIDI notes",
+                    "Count-in",
                     "CPU model",
                     "Default folders",
                 ] {
@@ -1368,6 +1380,16 @@ mod tests {
                         text(label),
                         label == field,
                         "visible field {label} on {group:?}"
+                    );
+                }
+                for label in ["MIDI input", "MIDI channel"] {
+                    assert_eq!(text(label), group == Group::Midi, "{label} on {group:?}");
+                }
+                for label in ["Recording offset", "Count-in enabled", "Panic"] {
+                    assert_eq!(
+                        text(label),
+                        group == Group::Recording,
+                        "{label} on {group:?}"
                     );
                 }
                 assert_eq!(settings, before);

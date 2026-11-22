@@ -99,7 +99,7 @@ need a selection retain their usual empty-selection prompts.
 - [Time stretching and offline pitch changes](audio/time-stretch.md).
 - [Projects, settings, and export](projects/README.md).
 - [Command-line interface](cli/README.md): track inspection, validation, source collection and export.
-- [Application Settings](projects/README.md#application-settings): Appearance, Playback, Time stretch, MIDI, Stem Separation, and Plugins.
+- [Application Settings](projects/README.md#application-settings): Appearance, Playback, Time stretch, MIDI, Recording, Stem Separation, and Plugins.
 - [Audio devices](projects/README.md#audio-devices): output/input selection and output sample rate, bit depth, and buffer size.
 - [Seek mode](projects/README.md#seek-mode) chooses how playback starts or jumps.
 - [Seek cache profiles](projects/README.md#seek-cache-profiles) control background CPU and memory use.

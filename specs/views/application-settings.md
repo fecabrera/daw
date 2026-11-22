@@ -1,8 +1,8 @@
 # Application Settings
 
 The shared Settings surface has a left sidebar and a right content panel. List
-Appearance, Playback, Time stretch, MIDI, Stem Separation and Plugins in that
-order. Highlight the active group with the shared catalog selection style.
+Appearance, Playback, Time stretch, MIDI, Recording, Stem Separation and
+Plugins in that order. Highlight the active group with the shared catalog selection style.
 Show only that group's controls and advice in the content panel.
 
 Appearance is initially active. Remember navigation in transient application UI
@@ -71,6 +71,13 @@ Validate actual group clicks, exclusive page content, preference isolation,
 device selection and MIDI-note split interaction, theme/accent behavior, smaller
 windows and persistent Close/sidebar visibility. Separate native observations
 from headless geometry/interaction checks.
+
+## MIDI and Recording
+
+Keep Split MIDI notes, MIDI input, MIDI channel and input status on MIDI.
+Show the count-in duration and enable toggle, Recording offset, Panic, and
+retained MIDI take retry on Recording. Keep both pages on the existing MIDI
+preference and recording action paths.
 
 ## Accent color
 

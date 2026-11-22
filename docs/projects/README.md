@@ -18,7 +18,7 @@ If Save As fails because an included recording or generated stem is missing, res
 
 Saving fails if a directory occupies the `project.json` destination. The directory and its contents remain intact. Move that directory out of the project folder or choose another save location, then retry.
 
-See [Autosave and recovery](recovery.md) for private checkpoints and interrupted MIDI takes. MIDI input, channel, recording offset and count-in preferences are in Application Settings. The Numbers transport button toggles that count-in preference.
+See [Autosave and recovery](recovery.md) for private checkpoints and interrupted MIDI takes. Choose the input and channel under **Settings > MIDI**. Set recording offset and count-in under **Settings > Recording**. The Numbers transport button toggles that count-in preference.
 
 ## Background audio preparation
 
@@ -87,7 +87,8 @@ Settings groups controls into six categories:
 - **Appearance**: titlebar style where supported, theme, and accent color.
 - **Playback**: input/output devices, audio quality defaults, and seek cache profile.
 - **Time stretch**: the default engine for new projects.
-- **MIDI**: input device/channel, count-in, recording offset, Panic, retained-take retry, and note splitting.
+- **MIDI**: note splitting, input device, and input channel.
+- **Recording**: count-in, recording offset, Panic, and retained-take retry.
 - **Stem Separation**: local model selection and validation.
 - **Plugins**: default and additional VST3/CLAP folders, scan/rescan, retry/cancel, and scan status.
 

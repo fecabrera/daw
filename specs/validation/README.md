@@ -2,6 +2,15 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Recording settings page — 2026-11-21
+
+The 30 focused Settings tests pass. The sidebar tests check that MIDI and
+Recording show their own controls, switching pages preserves preferences, and
+all seven pages and Close remain visible in the smaller test windows.
+Debug and release workspace tests passed with the known macOS Audio Unit
+registration case excluded. Formatting, strict Clippy, documentation links,
+and the rebuilt macOS bundle signature also passed.
+
 ## Accent color swatches — 2026-11-21
 
 The 30 focused Settings tests pass. The swatch test checks all eight choices,
