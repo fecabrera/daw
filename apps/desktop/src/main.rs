@@ -1,6 +1,8 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod app_icon;
+#[cfg(not(target_os = "linux"))]
+mod dialog_modal;
 #[cfg(target_os = "linux")]
 mod gtk_host;
 mod hosting;

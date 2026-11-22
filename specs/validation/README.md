@@ -2,6 +2,21 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Modal dialog footers — 2026-11-22
+
+The dialog layout test checks that the footer divider spans the native client
+width and that the action buttons fit below it. On macOS, clicking the main
+window left Settings focused, closing Settings restored main-window input,
+and the Save folder picker opened and canceled. Native smoke tests passed for
+Settings, its two injected fallback cases, and the fitted Save and Export
+prompts.
+
+The debug and release workspace suites each passed 3,680 tests with the known
+macOS Audio Unit registration case excluded. Formatting, strict workspace
+Clippy, and the macOS bundle signature checks passed. The Windows modality
+adapter compiled for Windows. Native Windows and Linux interaction checks
+remain open.
+
 ## Recording settings page — 2026-11-21
 
 The 30 focused Settings tests pass. The sidebar tests check that MIDI and

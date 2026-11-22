@@ -805,7 +805,6 @@ impl DawUi {
             "",
             &[("Apply", true), ("Cancel", false)],
         )
-        .footer_separator(true)
         .show_surface(ctx, surface, |ui| match draft.item.kind {
             Kind::Marker => {}
             Kind::Tempo => {

@@ -45,6 +45,16 @@ top of the footer. Size the sidebar and scrollable page from the remaining
 client height so they meet the divider and keep the footer visible as the
 window resizes.
 
+Use the same footer in project prompts and reports. Fit the native client
+around the content and footer. Keep dialog actions below the divider during
+progress and on validation errors.
+
+Treat the active native dialog as modal to the main window. The desktop
+host keeps the dialog above the owner and blocks owner input. If another
+dialog takes over, transfer ownership to the active dialog. Native pickers
+retain their own modality. If the desktop host falls back to an embedded
+dialog, keep workspace widgets disabled and limit input to the modal layer.
+
 Keep one Settings session and block main-window editing through child
 retirement. Repeated Settings requests focus the current session. Native
 close and footer Close retire the session through the same state transition.

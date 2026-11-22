@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Step {
     Open,
     Opening,
@@ -47,7 +47,8 @@ impl Smoke {
         }
         assert!(
             self.started.elapsed() < Duration::from_secs(15),
-            "Native dialog smoke test timed out"
+            "Native dialog smoke test timed out in {:?}",
+            self.step
         );
         match self.step {
             Step::Open => {
@@ -120,6 +121,16 @@ impl Smoke {
                 self.step = Step::ProjectPromptOpening(action);
             }
             Step::ProjectPromptOpening(action) => {
+                let status = match host
+                    .viewport_id()
+                    .and_then(|id| native_viewport::status(ctx, id))
+                {
+                    Some(Status::Opening) => "opening",
+                    Some(Status::Presented(_)) => "presented",
+                    Some(Status::Failed(_)) => "failed",
+                    None => "absent",
+                };
+                tracing::debug!(window = ?daw.desktop_window(), status, "Waiting for native project prompt");
                 if let Some(id) = host.viewport_id()
                     && let Some(Status::Presented(window)) = native_viewport::status(ctx, id)
                     && let Some(window) = window.upgrade()
@@ -127,6 +138,7 @@ impl Smoke {
                     let key = daw.desktop_window().unwrap();
                     let [_, height] = daw.desktop_window_size(key);
                     let actual = f64::from(window.inner_size().height) / window.scale_factor();
+                    tracing::debug!(title = key.title(), height, actual, "Native dialog client");
                     assert!(window.is_decorated());
                     assert_eq!(
                         window.title(),

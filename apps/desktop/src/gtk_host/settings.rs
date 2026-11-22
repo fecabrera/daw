@@ -192,6 +192,7 @@ impl Child {
             .default_width(width)
             .default_height(height)
             .transient_for(parent)
+            .modal(true)
             .destroy_with_parent(true)
             .build();
         if let Some(app) = parent.application() {

@@ -54,6 +54,7 @@ pub(super) struct Host {
     suspended_settings: Option<Viewport>,
     chooser: Option<Chooser>,
     retiring: Option<ViewportId>,
+    modal: crate::dialog_modal::Modal,
     #[cfg(all(target_os = "macos", debug_assertions))]
     pub startup_error: bool,
 }
@@ -67,6 +68,7 @@ impl Host {
             suspended_settings: None,
             chooser: None,
             retiring: None,
+            modal: Default::default(),
             #[cfg(all(target_os = "macos", debug_assertions))]
             startup_error: false,
         }
@@ -222,7 +224,7 @@ impl Host {
         }) = &mut self.chooser
         {
             if let Some(child) = owner
-                .take()
+                .clone()
                 .filter(|_| !*use_root && window == Some(request.owner()))
             {
                 self.chooser = Some(Self::open_chooser(*request, child));
@@ -234,8 +236,10 @@ impl Host {
                     .as_ref()
                     .is_none_or(|viewport| viewport.suspended)
                 {
-                    if let Some(window) = root_window {
-                        self.chooser = Some(Self::open_chooser(*request, window));
+                    if let Some(window) = &root_window {
+                        // A root-hosted chooser owns its own native modal state.
+                        self.modal.update(None, None);
+                        self.chooser = Some(Self::open_chooser(*request, window.clone()));
                         root.request_repaint();
                     } else {
                         app.borrow_mut().complete_desktop_picker(
@@ -261,9 +265,15 @@ impl Host {
         }
 
         let Some(viewport) = &mut self.viewport else {
+            self.modal.update(None, None);
             return;
         };
         let suspended = root_prompt || suspend_for_chooser;
+        if suspended {
+            self.modal.update(None, None);
+        } else {
+            self.modal.update(root_window.as_deref(), owner.as_deref());
+        }
         if suspended != viewport.suspended {
             viewport.suspended = suspended;
             if suspend_for_chooser {

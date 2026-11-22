@@ -1193,27 +1193,17 @@ pub(super) fn show_surface(
             .exact_size(height)
             .resizable(false)
             .show_separator_line(false)
-            .frame(frame)
+            .frame(egui::Frame::new().fill(palette.panel))
             .show(surface, |ui| {
-                crate::rows::wrapped(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
-                    ui.button("Close").clicked().then_some(())
-                })
-                .inner
+                crate::dialogs::footer(ui, |ui| ui.button("Close").clicked().then_some(()))
             });
         egui::CentralPanel::default()
             .frame(frame)
             .show(surface, content);
-        let bounds = footer.response.rect;
-        surface.painter().hline(
-            bounds.x_range(),
-            bounds.top() + 0.5,
-            egui::Stroke::new(1.0, palette.border),
-        );
         footer.inner
     } else {
         crate::dialogs::Dialog::new("Settings", "", &[("Close", ())])
             .width(width)
-            .footer_separator(true)
             .show_with_content(ctx, content)
     };
     if let Some(state) = &mut navigation {

@@ -1650,6 +1650,7 @@ dependencies = [
 name = "daw-desktop"
 version = "0.1.0"
 dependencies = [
+ "block2 0.6.2",
  "daw-core",
  "daw-plugin-host",
  "daw-ui",

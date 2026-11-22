@@ -25,18 +25,10 @@ pub struct Report<'a> {
 impl Report<'_> {
     pub fn show_surface(&self, ctx: &egui::Context, surface: Option<&mut egui::Ui>) -> bool {
         let running = *self.state == State::Running;
-        let actions: &[(&str, ())] = if running {
-            if self.cancel.is_some() {
-                &[("Cancel", ())]
-            } else {
-                &[]
-            }
-        } else {
-            &[("Close", ())]
-        };
+        let cancellable = running && self.cancel.is_some();
         const DETAILS_HEIGHT: f32 = 300.0;
         let native = surface.is_some();
-        let dialog = crate::dialogs::Dialog::new(self.title, "", actions);
+        let dialog = crate::dialogs::Dialog::<()>::new(self.title, "", &[]);
         let content = |ui: &mut egui::Ui| {
             match self.state {
                 State::Running => {
@@ -93,11 +85,14 @@ impl Report<'_> {
                 }
             });
         };
-        let clicked = match surface {
-            Some(ui) => dialog.body(ui, content),
-            None => dialog.show_with_content(ctx, content),
-        }
-        .is_some();
+        let clicked = dialog
+            .show_with_footer(ctx, surface, content, |ui, ()| {
+                let label = if cancellable { "Cancel" } else { "Close" };
+                ui.add_enabled(!running || cancellable, egui::Button::new(label))
+                    .clicked()
+                    .then_some(())
+            })
+            .is_some();
         if running {
             if clicked && let Some(cancel) = self.cancel {
                 cancel.store(true, Ordering::Relaxed);

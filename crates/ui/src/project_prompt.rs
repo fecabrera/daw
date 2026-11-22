@@ -385,7 +385,8 @@ impl DawUi {
             } else {
                 ("Save project", "Choosing a project location…")
             };
-            let waiting = dialogs::Dialog::<()>::new(title, message, &[]);
+            let waiting =
+                dialogs::Dialog::new(title, message, &[("Cancel", ())]).actions_enabled(false);
             match surface {
                 Some(ui) => waiting.body(ui, |_| {}),
                 None => waiting.show(ctx),
@@ -705,7 +706,8 @@ mod tests {
         ] {
             assert!(has_label(&shapes, label), "Missing {label}");
         }
-        for label in [window.title(), "Close", "Cancel"] {
+        assert!(has_label(&shapes, "Close"));
+        for label in [window.title(), "Cancel"] {
             assert!(!has_label(&shapes, label), "Unexpected {label}");
         }
         child_frame(

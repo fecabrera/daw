@@ -2522,6 +2522,9 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        if self.settings_modal() || self.project_prompt_kind().is_some() {
+            ui.disable();
+        }
         self.themes.poll(ui.ctx(), &self.settings);
         self.sync_settings_theme(ui.ctx());
         self.poll_hosting(ui.ctx());
@@ -2678,6 +2681,9 @@ impl DawUi {
             }
             self.view_shortcuts(&ctx);
         }
+        if ui.is_enabled() && (self.settings_modal() || self.project_prompt_kind().is_some()) {
+            ui.disable();
+        }
         egui::Panel::top("toolbar")
             .frame(egui::Frame::new().fill(
                 if cfg!(target_os = "windows")
@@ -2709,7 +2715,7 @@ impl DawUi {
                             .unwrap_or_else(|| self.busy.clone()),
                     );
                     if self.settings_cancel.is_some()
-                        && !(self.native_settings_visible() && self.separation_models.running())
+                        && ui.is_enabled()
                         && ui.button("Cancel").clicked()
                     {
                         if let Some(cancel) = &self.settings_cancel {
@@ -10864,7 +10870,22 @@ mod tests {
         ] {
             assert!(has_text(&shapes, label), "Missing status item: {label}");
         }
-        assert!(!has_text(&shapes, "Close"));
+        let close = shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == "Close" => {
+                    Some(text.pos + text.galley.size() * 0.5)
+                }
+                _ => None,
+            })
+            .expect("Running export keeps Close in the footer");
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(close), button(close, true)],
+        );
+        frame(&mut app, &ctx, vec![button(close, false)]);
+        assert!(app.export_status.is_some());
         assert!(
             FileAction::ALL
                 .into_iter()

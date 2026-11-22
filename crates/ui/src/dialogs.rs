@@ -11,7 +11,6 @@ pub struct Dialog<'a, T> {
     actions: &'a [(&'a str, T)],
     actions_enabled: bool,
     width: Option<f32>,
-    footer_separator: bool,
 }
 
 impl<'a, T: Copy> Dialog<'a, T> {
@@ -22,17 +21,11 @@ impl<'a, T: Copy> Dialog<'a, T> {
             actions,
             actions_enabled: true,
             width: None,
-            footer_separator: false,
         }
     }
 
     pub fn width(mut self, width: f32) -> Self {
         self.width = Some(width);
-        self
-    }
-
-    pub fn footer_separator(mut self, enabled: bool) -> Self {
-        self.footer_separator = enabled;
         self
     }
 
@@ -50,15 +43,22 @@ impl<'a, T: Copy> Dialog<'a, T> {
         ctx: &Context,
         content: impl FnOnce(&mut egui::Ui),
     ) -> Option<T> {
+        self.embedded(ctx, |ui| self.body(ui, content))
+    }
+
+    fn embedded(&self, ctx: &Context, body: impl FnOnce(&mut egui::Ui) -> Option<T>) -> Option<T> {
         let mut selected = None;
-        Window::new(RichText::new(self.title).text_style(TextStyle::Body))
+        let shown = Window::new(RichText::new(self.title).text_style(TextStyle::Body))
             .collapsible(false)
             .resizable(false)
             .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
             .default_width(self.width.unwrap_or(DEFAULT_WIDTH))
             .max_width(self.width.unwrap_or(MAX_WIDTH))
-            .frame(Frame::window(&ctx.global_style()).inner_margin(PADDING))
-            .show(ctx, |ui| selected = self.body(ui, content));
+            .frame(Frame::window(&ctx.global_style()).inner_margin(0))
+            .show(ctx, |ui| selected = body(ui));
+        if let Some(shown) = shown {
+            ctx.memory_mut(|memory| memory.set_modal_layer(shown.response.layer_id));
+        }
         selected
     }
 
@@ -74,53 +74,126 @@ impl<'a, T: Copy> Dialog<'a, T> {
         }
     }
 
-    pub(super) fn body(self, ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) -> Option<T> {
-        let mut selected = None;
-        ui.spacing_mut().item_spacing = Vec2::splat(f32::from(PADDING));
-        if !self.message.is_empty() {
-            ui.add(egui::Label::new(self.message).wrap());
+    pub(super) fn show_with_footer<R>(
+        &self,
+        ctx: &Context,
+        surface: Option<&mut egui::Ui>,
+        content: impl FnOnce(&mut egui::Ui) -> R,
+        buttons: impl FnOnce(&mut egui::Ui, R) -> Option<T>,
+    ) -> Option<T> {
+        let draw = |ui: &mut egui::Ui| {
+            let value = self.content(ui, content);
+            footer(ui, |ui| buttons(ui, value))
+        };
+        match surface {
+            Some(ui) => draw(ui),
+            None => self.embedded(ctx, draw),
         }
-        ui.add_enabled_ui(self.actions_enabled, |ui| {
-            content(ui);
-            if !self.actions.is_empty() {
-                if self.footer_separator {
-                    let (separator, _) = ui.allocate_exact_size(
-                        Vec2::new(ui.available_width(), 1.0),
-                        egui::Sense::hover(),
-                    );
-                    let padding = f32::from(PADDING);
-                    ui.painter()
-                        .with_clip_rect(ui.clip_rect().expand(padding))
-                        .hline(
-                            (separator.left() - padding)..=(separator.right() + padding),
-                            separator.center().y,
-                            egui::Stroke::new(1.0, crate::theme::palette(ui.ctx()).border),
-                        );
+    }
+
+    fn content<R>(&self, ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui) -> R) -> R {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        Frame::new()
+            .inner_margin(PADDING)
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing = Vec2::splat(f32::from(PADDING));
+                if !self.message.is_empty() {
+                    ui.add(egui::Label::new(self.message).wrap());
                 }
-                crate::rows::wrapped(ui, crate::toolbars::CONTROL_HEIGHT, |ui| {
-                    for &(label, action) in self.actions {
-                        if ui.button(label).clicked() {
-                            selected = Some(action);
-                        }
+                ui.add_enabled_ui(self.actions_enabled, content).inner
+            })
+            .inner
+    }
+
+    pub(super) fn body(&self, ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) -> Option<T> {
+        self.content(ui, content);
+        if self.actions.is_empty() {
+            return None;
+        }
+        footer(ui, |ui| {
+            ui.add_enabled_ui(self.actions_enabled, |ui| {
+                let mut selected = None;
+                for &(label, action) in self.actions {
+                    if ui.button(label).clicked() {
+                        selected = Some(action);
                     }
-                });
-            }
-        });
-        selected
+                }
+                selected
+            })
+            .inner
+        })
     }
 }
 
-/// Return the client height needed for the dialog content and its outer padding.
+pub(super) fn footer<R>(ui: &mut egui::Ui, buttons: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let footer = Frame::new().inner_margin(PADDING).show(ui, |ui| {
+        ui.set_min_width(ui.available_width());
+        crate::rows::wrapped(ui, crate::toolbars::CONTROL_HEIGHT, buttons).inner
+    });
+    let bounds = footer.response.rect;
+    ui.painter().hline(
+        bounds.x_range(),
+        bounds.top() + 0.5,
+        egui::Stroke::new(1.0, crate::theme::palette(ui.ctx()).border),
+    );
+    footer.inner
+}
+
+/// Return the fitted height of the content and footer, including their padding.
 pub(super) fn native_client(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) -> u32 {
     egui::CentralPanel::default()
-        .frame(
-            Frame::new()
-                .fill(crate::theme::palette(ui.ctx()).panel)
-                .inner_margin(PADDING),
-        )
+        .frame(Frame::new().fill(crate::theme::palette(ui.ctx()).panel))
         .show(ui, |ui| {
-            // Measure the body separately from the panel that fills the viewport.
-            (ui.scope(content).response.rect.height() + 2.0 * f32::from(PADDING)).ceil() as u32
+            ui.scope(content).response.rect.height().ceil() as u32
         })
         .inner
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_dialog_fits_content_and_buttons_below_a_full_width_divider() {
+        let ctx = Context::default();
+        crate::theme::configure(&ctx);
+        let viewport = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(352.0, 160.0));
+        let mut height = 0;
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(viewport),
+                ..Default::default()
+            },
+            |ui| {
+                height = native_client(ui, |ui| {
+                    Dialog::new("Test", "Message", &[("OK", ())]).body(ui, |_| {});
+                });
+            },
+        );
+        output.textures_delta.clear();
+        let y = |label| {
+            output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => {
+                        Some(text.pos.y + text.galley.rect.center().y)
+                    }
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let message = y("Message");
+        let button = y("OK");
+        let border = crate::theme::palette(&ctx).border;
+        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::LineSegment { points, stroke }
+                if (points[0].x - viewport.left()).abs() <= 1.0
+                    && (points[1].x - viewport.right()).abs() <= 1.0
+                    && points[0].y == points[1].y
+                    && (message..button).contains(&points[0].y)
+                    && stroke.color == border
+        )));
+        assert!((button + f32::from(PADDING)..viewport.bottom()).contains(&(height as f32)));
+    }
 }

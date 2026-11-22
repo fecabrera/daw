@@ -16,12 +16,11 @@ impl Draft {
         }
     }
     fn show(&mut self, ctx: &egui::Context, surface: Option<&mut egui::Ui>) -> Option<bool> {
-        let mut action = None;
         let message = format!(
             "Normalize {} audio clip(s) individually. Adjusts dry clip Gain before effects. Source files stay unchanged.",
             self.clips.len()
         );
-        dialogs::Dialog::<bool>::new("Normalize gain", &message, &[]).show_surface(ctx, surface, |ui| {
+        let action = dialogs::Dialog::<bool>::new("Normalize gain", &message, &[]).show_with_footer(ctx, surface, |ui| {
             let before = self.options.mode;
             egui::Grid::new("normalize-options").show(ui, |ui| {
                 ui.label("Measure");
@@ -43,13 +42,16 @@ impl Draft {
             self.options.target = self.target.trim().replace('−', "-").parse().unwrap_or(f32::NAN);
             let valid = self.options.validate();
             if let Err(error) = &valid { ui.label(error.to_string()); }
-            rows::wrapped(ui, toolbars::CONTROL_HEIGHT, |ui| {
-                if ui.add_enabled(valid.is_ok(), egui::Button::new("Normalize")).clicked() { action = Some(true); }
-                if ui.button("Cancel").clicked() { action = Some(false); }
-            });
+            valid.is_ok()
+        }, |ui, valid| {
+            if ui.add_enabled(valid, egui::Button::new("Normalize")).clicked() {
+                Some(true)
+            } else {
+                ui.button("Cancel").clicked().then_some(false)
+            }
         });
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
-            action = Some(false);
+            return Some(false);
         }
         action
     }
