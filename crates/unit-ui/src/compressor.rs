@@ -4,7 +4,9 @@ use crate::{
     layout::UNIT_STRIP_WIDTH,
     meters, parameter_knobs, rows, theme,
 };
-use daw_unit_core::{CompressorDetection, CompressorSettings, ModulationParameter as Parameter};
+use daw_unit_core::{
+    CompressorDetection, CompressorSettings, DynamicsDirection, ModulationParameter as Parameter,
+};
 use egui::{Rect, Ui, Vec2};
 
 use crate::layout::PANEL_MARGIN;
@@ -24,6 +26,7 @@ fn row(
     row: usize,
     markers: &[Option<knobs::ModulationMarker>; 8],
     preview: Option<[f32; 2]>,
+    direction: DynamicsDirection,
 ) -> Rect {
     knobs::row(ui, settings, knobs::CHOICE_SIZE, |ui, s| {
         if (column, row) == (2, 2) {
@@ -62,7 +65,10 @@ fn row(
         };
         let mut spec = parameter_knobs::destination(Parameter::COMPRESSOR[index]);
         if index == 5 {
-            spec = spec.named("Compressor output level");
+            spec = spec.named(match direction {
+                DynamicsDirection::Compressor => "Compressor output level",
+                DynamicsDirection::Expander => "Expander output level",
+            });
         }
         let mut shown = if index < 2 {
             preview.map_or(*value, |p| p[index])
@@ -93,6 +99,24 @@ pub fn show(
     body_height: f32,
     controls: Controls<'_>,
 ) -> Bounds {
+    show_with_direction(
+        ui,
+        settings,
+        compact,
+        body_height,
+        controls,
+        DynamicsDirection::Compressor,
+    )
+}
+
+pub fn show_with_direction(
+    ui: &mut Ui,
+    settings: &mut CompressorSettings,
+    compact: bool,
+    body_height: f32,
+    controls: Controls<'_>,
+    direction: DynamicsDirection,
+) -> Bounds {
     let mut bounds = Bounds {
         graph: crate::compressor_curve::Bounds::default(),
         output_meter: Rect::NOTHING,
@@ -103,7 +127,7 @@ pub fn show(
     };
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
-        bounds.graph = crate::compressor_curve::show(
+        bounds.graph = crate::compressor_curve::show_with_direction(
             ui,
             settings,
             (
@@ -112,8 +136,13 @@ pub fn show(
             ),
             controls.graph,
             controls.reduction,
+            direction,
         );
-        for (column, name) in ["Comp", "Response", "Out"].into_iter().enumerate() {
+        let shape = match direction {
+            DynamicsDirection::Compressor => "Comp",
+            DynamicsDirection::Expander => "Expand",
+        };
+        for (column, name) in [shape, "Response", "Out"].into_iter().enumerate() {
             let rect = ui
                 .push_id(column, |ui| {
                     crate::layout::unit_strip_frame(ui)
@@ -131,6 +160,7 @@ pub fn show(
                                             index,
                                             controls.markers,
                                             bounds.graph.preview,
+                                            direction,
                                         );
                                     }
                                 }

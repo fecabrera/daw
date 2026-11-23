@@ -2,6 +2,33 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Expander knee handle — 2026-11-23
+
+A graph test checks equal curve lengths on either side of the soft-knee
+handle, including a wide knee at maximum ratio. A hard knee keeps the handle
+at the Threshold corner. The shared editor tests cover drag, cancel, and
+automation. Formatting, strict workspace Clippy, and macOS app signature
+verification passed. The debug and release workspace suites passed with
+native Audio Unit registration excluded.
+
+## Expander — 2026-11-23
+
+DSP tests check the lower transfer curve, unity ratio, knee continuity,
+stereo linking, opening and closing times, and Peak detection through tone
+zero crossings. Project tests cover saved settings and modulation routes.
+A CLI render from a reopened project reduced the quiet test tone by 26.91 dB
+and retained the loud tone's peak level. The editor tests check shared strip
+geometry, compact and collapsed states, and graph automation. Catalog tests
+scroll to the selected row before exercising navigation and drag actions.
+
+Formatting, strict workspace Clippy, and the CLI smoke check passed. The
+signed macOS app rebuilt successfully. Packaged macOS CLAP, VST3, and AUv2
+passed headless host checks. The debug workspace suite passed. The release
+workspace run passed outside the desktop UI target. After updating the catalog test fixtures, all 1,104 release
+desktop UI tests passed on rerun. Both workspace runs excluded native Audio
+Unit registration, which passed in its own macOS run. Native desktop
+interaction was unavailable.
+
 ## Export dropdown defaults and width — 2026-11-22
 
 The export dialog tests check that the sample-rate list contains concrete

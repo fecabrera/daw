@@ -368,3 +368,65 @@ fn shaped_curve_changes_audio_and_retargets_without_resetting_the_detector_or_ot
         assert_eq!(processor.effective_parameters()[7], 1.0);
     }
 }
+
+#[test]
+fn expander_attenuates_the_linked_signal_below_threshold_and_opens_on_attack() {
+    let settings = CompressorSettings {
+        threshold_db: -18.0,
+        ratio: 4.0,
+        knee_db: 0.0,
+        ..Default::default()
+    };
+    for rate in RATES {
+        let mut unit = Compressor::with_direction(
+            ProcessingContext {
+                sample_rate_hz: rate,
+                max_block_frames: 512,
+            },
+            &settings,
+            DynamicsDirection::Expander,
+        );
+        let quiet = amplitude(-24.0);
+        let input = [quiet, -quiet * 0.25];
+        for _ in 0..rate / 10 {
+            unit.process_sample(input);
+        }
+        assert!((unit.gain_reduction_db() - 18.0 * (1.0 - (-1.0_f32).exp())).abs() < 0.003);
+        let output = settle(&mut unit, rate, input);
+        assert!((output[0] - amplitude(-42.0)).abs() < 0.0001);
+        assert_eq!(output[1], -output[0] * 0.25);
+        let before = unit.gain_reduction_db();
+        for _ in 0..rate / 100 {
+            unit.process_sample([0.5, -0.125]);
+        }
+        assert!((unit.gain_reduction_db() - before * (-1.0_f32).exp()).abs() < 0.02);
+        assert_eq!(settle(&mut unit, rate, [0.5, -0.125]), [0.5, -0.125]);
+    }
+}
+
+#[test]
+fn expander_peak_follows_loud_tones_through_zero_crossings_and_recovers_from_silence() {
+    let rate = 48_000;
+    let settings = CompressorSettings {
+        knee_db: 0.0,
+        ..Default::default()
+    };
+    let mut unit = Compressor::with_direction(
+        ProcessingContext {
+            sample_rate_hz: rate,
+            max_block_frames: 512,
+        },
+        &settings,
+        DynamicsDirection::Expander,
+    );
+    assert_eq!(settle(&mut unit, rate, [0.0; 2]), [0.0; 2]);
+    assert!((100.0..=120.0).contains(&unit.gain_reduction_db()));
+    for i in 0..rate / 4 {
+        let tone = amplitude(-12.0) * (i as f32 * std::f32::consts::TAU / 480.0).sin();
+        let output = unit.process_sample([tone, 0.0]);
+        if i >= rate / 8 {
+            assert!((output[0] - tone).abs() < 0.00002);
+            assert_eq!(output[1], 0.0);
+        }
+    }
+}

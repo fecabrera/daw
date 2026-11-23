@@ -123,7 +123,7 @@ The Effects catalog uses the same `Catalog::with_folders`, `ControlPanel` folder
 | --- | --- |
 | EQ | 3-band EQ, Multiband EQ |
 | Filters | Filter, Auto-filter, Chorus |
-| Dynamics | Compressor, OTT, Limiter, Multiband Compressor |
+| Dynamics | Compressor, OTT, Limiter, Multiband Compressor, Transient Shaper, Expander |
 | Distortion | Drive, Bitcrusher, Saturator, Drive v2, Multiband Exciter, Harmonic Lift |
 | Imaging | Direction Mixer, Stereo Spread |
 | Reverb | Plate Reverb, Ambient Reverb, Shimmer Reverb |

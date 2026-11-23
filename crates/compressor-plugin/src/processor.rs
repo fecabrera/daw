@@ -31,12 +31,13 @@ impl Processor {
             return Err(ConfigurationError);
         }
         Ok(Self {
-            drive: Drive::new(
+            drive: Drive::with_direction(
                 ProcessingContext {
                     sample_rate_hz: rate as u32,
                     max_block_frames: maximum,
                 },
                 &state.to_settings(),
+                crate::DIRECTION,
             ),
             settings: state.to_settings(),
             frame: 0,

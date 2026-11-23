@@ -1,7 +1,12 @@
 //! Read-only background paint. It creates no interaction regions over curve handles.
 use daw_unit_core::{LEVEL_HISTORY_BINS, LevelHistoryReading};
 use egui::{Rect, Ui};
-pub(super) fn paint(ui: &Ui, plot: Rect, history: &LevelHistoryReading) {
+pub(super) fn paint(
+    ui: &Ui,
+    plot: Rect,
+    history: &LevelHistoryReading,
+    output_range: std::ops::RangeInclusive<f32>,
+) {
     let painter = ui.painter_at(plot);
     let color = crate::theme::palette(ui.ctx()).secondary;
     let count = history.count.min(LEVEL_HISTORY_BINS);
@@ -26,7 +31,7 @@ pub(super) fn paint(ui: &Ui, plot: Rect, history: &LevelHistoryReading) {
     };
     let input_y = |value: f32| {
         let db = 20.0 * value.max(1e-20).log10();
-        plot.bottom() - plot.height() * ((db + 72.0) / 84.0).clamp(0.0, 1.0)
+        plot.bottom() - plot.height() * egui::remap_clamp(db, output_range.clone(), 0.0..=1.0)
     };
     let reduction_y = |value: f32| plot.top() + plot.height() * (value / 24.0).clamp(0.0, 1.0);
     let mut area = egui::Mesh::default();
@@ -60,6 +65,7 @@ mod tests {
                 ui,
                 Rect::from_min_max(egui::pos2(10.0, 20.0), egui::pos2(209.0, 104.0)),
                 &history,
+                -72.0..=12.0,
             );
         });
         output.textures_delta.clear();
@@ -86,6 +92,7 @@ mod tests {
                     ui,
                     Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(199.0, 84.0)),
                     &history,
+                    -72.0..=12.0,
                 );
             });
             output.textures_delta.clear();

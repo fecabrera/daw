@@ -589,6 +589,16 @@ impl RuntimeEffect {
         }
     }
     pub(super) fn retarget(&mut self, settings: &EffectSettings) -> bool {
+        if let Self::Compressor(unit, _) = self {
+            let type_id = match settings {
+                EffectSettings::Compressor(_) => daw_unit_core::COMPRESSOR_TYPE_ID,
+                EffectSettings::Expander(_) => daw_unit_core::EXPANDER_TYPE_ID,
+                _ => return false,
+            };
+            if unit.descriptor().type_id != type_id {
+                return false;
+            }
+        }
         let routes = match &mut *self {
             Self::Eq3(_, routes)
             | Self::Drive(_, routes)
@@ -658,9 +668,10 @@ impl RuntimeEffect {
             }
             (Self::Drive(unit, _), EffectSettings::Drive(settings)) => unit.retarget(settings),
             (Self::DriveV2(unit, _), EffectSettings::DriveV2(settings)) => unit.retarget(settings),
-            (Self::Compressor(unit, _), EffectSettings::Compressor(settings)) => {
-                unit.retarget(settings)
-            }
+            (
+                Self::Compressor(unit, _),
+                EffectSettings::Compressor(settings) | EffectSettings::Expander(settings),
+            ) => unit.retarget(settings),
             (Self::AutoFilter(unit, _), EffectSettings::AutoFilter(settings)) => {
                 unit.retarget(settings)
             }
@@ -927,9 +938,18 @@ impl EffectChain {
                             // Hosted units execute in the shared block chain, outside
                             // this built-in sample kernel segment.
                             EffectSettings::Hosted(_) | EffectSettings::Missing { .. } => None,
-                            EffectSettings::Compressor(settings) => {
+                            EffectSettings::Compressor(settings)
+                            | EffectSettings::Expander(settings) => {
+                                let direction =
+                                    if matches!(effect.unit, EffectSettings::Expander(_)) {
+                                        daw_unit_core::DynamicsDirection::Expander
+                                    } else {
+                                        daw_unit_core::DynamicsDirection::Compressor
+                                    };
                                 Some(RuntimeEffect::Compressor(
-                                    Box::new(Compressor::new(context, settings)),
+                                    Box::new(Compressor::with_direction(
+                                        context, settings, direction,
+                                    )),
                                     settings
                                         .modulations
                                         .iter()
@@ -1390,6 +1410,27 @@ impl EffectChain {
 #[cfg(test)]
 mod gap_meter_tests {
     use super::*;
+
+    #[test]
+    fn changing_dynamics_type_for_the_same_effect_id_replaces_the_processor() {
+        let compressor = EffectInstance::compressor();
+        let mut expander = EffectInstance::expander();
+        expander.id = compressor.id;
+        let mut previous = EffectChain::chain(None, &[compressor], 48_000, 512);
+        let mut next = EffectChain::chain(None, &[expander.clone()], 48_000, 512);
+        next.inherit_chain(&mut previous, &[expander]);
+
+        let input = [0.063, -0.0315];
+        let output = (0..24_000)
+            .map(|frame| {
+                next.sample(input, Some(false), frame, 120.0, None, (&[], None))
+                    .0
+            })
+            .last()
+            .unwrap();
+        assert!(output[0] > 0.006 && output[0] < 0.009);
+        assert_eq!(output[1], -0.5 * output[0]);
+    }
 
     #[test]
     fn units_without_out_strips_measure_complete_output_and_retarget_peak_handles() {

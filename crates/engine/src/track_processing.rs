@@ -111,6 +111,7 @@ pub(super) fn channel_shape(input: bool, effects: &[daw_core::EffectInstance]) -
             | E::DriveV2(_)
             | E::Filter(_)
             | E::Compressor(_)
+            | E::Expander(_)
             | E::Ott(_)
             | E::Limiter(_)
             | E::Saturator(_)

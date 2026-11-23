@@ -1,7 +1,7 @@
-//! Linked stereo feed-forward compressor. FunDSP detector types remain private.
+//! Linked stereo compressor and downward expander. FunDSP detector types remain private.
 use daw_unit_core::ramps::ExactRamp32 as Ramp;
 use daw_unit_core::{
-    BandMeter, COMPRESSOR_TYPE_ID, CompressorDetection, CompressorSettings, EffectUnit,
+    BandMeter, CompressorDetection, CompressorSettings, DynamicsDirection, EffectUnit,
     LevelMonitor, PeakMeter, PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
 };
 use fundsp::dynamics::{Meter, MeterState};
@@ -14,6 +14,8 @@ mod modulation;
 mod modulation_tests;
 
 const RMS: Meter = Meter::Rms(0.01);
+const EXPANDER_PEAK: Meter = Meter::Peak(0.030);
+const EXPANDER_MAX_REDUCTION_DB: f32 = 120.0;
 
 fn amplitude(db: f32) -> f32 {
     10_f32.powf(db / 20.0)
@@ -21,11 +23,12 @@ fn amplitude(db: f32) -> f32 {
 
 #[cfg(test)]
 use daw_unit_core::compressor_gain_reduction_db as reduction;
-use daw_unit_core::compressor_shaped_gain_reduction_db as shaped_reduction;
 
 #[derive(Clone)]
 pub struct Compressor {
+    direction: DynamicsDirection,
     rms: [MeterState; 2],
+    peak_detector: Option<MeterState>,
     // Threshold, slope, knee, log attack/release time, RMS weight, level, wet, enabled, Curve.
     parameters: [Ramp; 10],
     rate: f64,
@@ -43,6 +46,14 @@ pub struct Compressor {
 impl Compressor {
     /// Prepare with validated settings on a control thread.
     pub fn new(context: ProcessingContext, settings: &CompressorSettings) -> Self {
+        Self::with_direction(context, settings, DynamicsDirection::Compressor)
+    }
+
+    pub fn with_direction(
+        context: ProcessingContext,
+        settings: &CompressorSettings,
+        direction: DynamicsDirection,
+    ) -> Self {
         let rate = f64::from(context.sample_rate_hz);
         let rms = std::array::from_fn(|_| {
             let mut state = MeterState::new(RMS);
@@ -50,7 +61,13 @@ impl Compressor {
             state
         });
         let mut unit = Self {
+            direction,
             rms,
+            peak_detector: (direction == DynamicsDirection::Expander).then(|| {
+                let mut state = MeterState::new(EXPANDER_PEAK);
+                state.set_sample_rate(EXPANDER_PEAK, rate);
+                state
+            }),
             parameters: Self::values(settings).map(Ramp::new),
             rate,
             fade_frames: (context.sample_rate_hz / 200).max(1),
@@ -144,8 +161,8 @@ impl Compressor {
 impl EffectUnit for Compressor {
     fn descriptor(&self) -> UnitDescriptor {
         UnitDescriptor {
-            type_id: COMPRESSOR_TYPE_ID,
-            name: "Compressor",
+            type_id: self.direction.type_id(),
+            name: self.direction.name(),
             is_source: false,
             inputs: &[PortKind::StereoAudio, PortKind::Modulation],
             outputs: &[PortKind::StereoAudio],
@@ -154,6 +171,9 @@ impl EffectUnit for Compressor {
     fn reset(&mut self) {
         for state in &mut self.rms {
             state.reset(RMS);
+        }
+        if let Some(detector) = &mut self.peak_detector {
+            detector.reset(EXPANDER_PEAK);
         }
         for parameter in &mut self.parameters {
             parameter.reset();
@@ -186,11 +206,33 @@ impl Compressor {
                 rms = rms.max(level);
             }
         }
+        // Follow the linked peak across zero crossings when expanding.
+        let detected_peak = if let Some(detector) = &mut self.peak_detector {
+            detector.tick(EXPANDER_PEAK, peak);
+            let level = detector.level(EXPANDER_PEAK);
+            if level < 1e-15 {
+                detector.reset(EXPANDER_PEAK);
+            }
+            level
+        } else {
+            peak
+        };
         let p = &self.effective;
-        let detected = peak * (1.0 - p[5]) + rms * p[5];
+        let detected = detected_peak * (1.0 - p[5]) + rms * p[5];
         let level_db = 20.0 * detected.max(1e-20).log10();
-        let target = f64::from(shaped_reduction(level_db, p[0], p[1], p[2], p[9]));
-        let coefficient = self.coefficients[usize::from(target < self.reduction_db)];
+        let target = self
+            .direction
+            .gain_reduction_db(level_db, p[0], p[1], p[2], p[9]);
+        // Bound how far the envelope must travel to reopen after digital silence.
+        let target = f64::from(match self.direction {
+            DynamicsDirection::Compressor => target,
+            DynamicsDirection::Expander => target.min(EXPANDER_MAX_REDUCTION_DB),
+        });
+        let releasing = match self.direction {
+            DynamicsDirection::Compressor => target < self.reduction_db,
+            DynamicsDirection::Expander => target > self.reduction_db,
+        };
+        let coefficient = self.coefficients[usize::from(releasing)];
         self.reduction_db = target + coefficient * (self.reduction_db - target);
         if self.reduction_db < 1e-8 {
             self.reduction_db = 0.0;

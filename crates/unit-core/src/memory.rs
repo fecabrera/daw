@@ -54,7 +54,7 @@ impl EffectSettings {
             Self::DriveV2(s) => vec_bytes(&s.modulations),
             Self::AutoFilter(s) => vec_bytes(&s.modulations),
             Self::Filter(s) => vec_bytes(&s.modulations),
-            Self::Compressor(s) => vec_bytes(&s.modulations),
+            Self::Compressor(s) | Self::Expander(s) => vec_bytes(&s.modulations),
             Self::Ott(s) => vec_bytes(&s.modulations),
             Self::Limiter(s) => vec_bytes(&s.modulations),
             Self::DirectionMixer(s) => vec_bytes(&s.modulations),

@@ -601,7 +601,7 @@ mod limiter_tests {
 #[cfg(test)]
 mod effect_modulation_tests {
     use crate::*;
-    const EFFECTS: [fn() -> EffectInstance; 10] = [
+    const EFFECTS: [fn() -> EffectInstance; 11] = [
         EffectInstance::equalizer,
         EffectInstance::compressor,
         EffectInstance::limiter,
@@ -612,6 +612,7 @@ mod effect_modulation_tests {
         EffectInstance::saturator,
         EffectInstance::chorus,
         EffectInstance::transient_shaper,
+        EffectInstance::expander,
     ];
 
     fn fixture(kind: usize) -> (Project, Id, EffectInstance) {
@@ -628,7 +629,9 @@ mod effect_modulation_tests {
         let (open, routes) = match &mut effect.unit {
             EffectSettings::MultibandEq(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Eq3(s) => (&mut s.modulation_open, &mut s.modulations),
-            EffectSettings::Compressor(s) => (&mut s.modulation_open, &mut s.modulations),
+            EffectSettings::Compressor(s) | EffectSettings::Expander(s) => {
+                (&mut s.modulation_open, &mut s.modulations)
+            }
             EffectSettings::Limiter(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::Ott(s) => (&mut s.modulation_open, &mut s.modulations),
             EffectSettings::DirectionMixer(s) => (&mut s.modulation_open, &mut s.modulations),
@@ -654,6 +657,7 @@ mod effect_modulation_tests {
             &ModulationParameter::SATURATOR[..],
             &ModulationParameter::CHORUS[..],
             &ModulationParameter::TRANSIENT_SHAPER[..],
+            &ModulationParameter::COMPRESSOR[..],
         ][kind]
             .iter()
             .copied()

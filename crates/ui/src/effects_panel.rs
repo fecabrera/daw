@@ -1058,6 +1058,13 @@ impl DawUi {
                                         .as_ref()
                                         .and_then(|o| o.effect_output_meter(effect.id)),
                                 );
+                                let direction =
+                                    if matches!(effect.unit, daw_core::EffectSettings::Expander(_))
+                                    {
+                                        daw_unit_core::DynamicsDirection::Expander
+                                    } else {
+                                        daw_unit_core::DynamicsDirection::Compressor
+                                    };
                                 match &mut effect.unit {
                                     daw_core::EffectSettings::Hosted(settings) => {
                                         let unit = settings.id;
@@ -1704,7 +1711,8 @@ impl DawUi {
 
                                         (header, power)
                                     }
-                                    daw_core::EffectSettings::Compressor(settings) => {
+                                    daw_core::EffectSettings::Compressor(settings)
+                                    | daw_core::EffectSettings::Expander(settings) => {
                                         let reduction =
                                             self.output.as_ref().map_or(0.0, |output| {
                                                 output.gain_reduction_db(effect.id)
@@ -1718,7 +1726,7 @@ impl DawUi {
                                         let (_bounds, header) = crate::compressor_panel::show(
                                             ui,
                                             settings,
-                                            (compact, height),
+                                            (compact, height, direction),
                                             reduction,
                                             modulation_sources,
                                             self.output.as_ref().and_then(|o| {

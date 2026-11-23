@@ -295,6 +295,7 @@ fn effect_meters(
                 effect.unit,
                 daw_core::EffectSettings::HarmonicLift(_)
                     | daw_core::EffectSettings::Compressor(_)
+                    | daw_core::EffectSettings::Expander(_)
                     | daw_core::EffectSettings::Limiter(_)
             )
         })
@@ -343,6 +344,7 @@ fn output_meters(
             matches!(
                 e.unit,
                 daw_core::EffectSettings::Compressor(_)
+                    | daw_core::EffectSettings::Expander(_)
                     | daw_core::EffectSettings::Limiter(_)
                     | daw_core::EffectSettings::Ott(_)
                     | daw_core::EffectSettings::Loudness(_)
@@ -372,6 +374,7 @@ fn band_meters(
             let group = matches!(
                 effect.unit,
                 daw_core::EffectSettings::Compressor(_)
+                    | daw_core::EffectSettings::Expander(_)
                     | daw_core::EffectSettings::Ott(_)
                     | daw_core::EffectSettings::Eq3(_)
                     | daw_core::EffectSettings::PlateReverb(_)
@@ -402,7 +405,11 @@ fn band_meters(
                 .map(|key| {
                     (
                         key,
-                        matches!(effect.unit, daw_core::EffectSettings::Compressor(_)),
+                        matches!(
+                            effect.unit,
+                            daw_core::EffectSettings::Compressor(_)
+                                | daw_core::EffectSettings::Expander(_)
+                        ),
                     )
                 })
                 .chain(
@@ -469,6 +476,7 @@ fn modulation_meters(
                     | daw_core::EffectSettings::MultibandCompressor(_)
                     | daw_core::EffectSettings::Exciter(_)
                     | daw_core::EffectSettings::Compressor(_)
+                    | daw_core::EffectSettings::Expander(_)
                     | daw_core::EffectSettings::Limiter(_)
                     | daw_core::EffectSettings::DirectionMixer(_)
                     | daw_core::EffectSettings::StereoSpread(_)
@@ -2685,7 +2693,8 @@ mod gain_reduction_meter_tests {
             daw_core::EffectInstance::compressor()
         };
         match &mut effect.unit {
-            daw_core::EffectSettings::Compressor(settings) => {
+            daw_core::EffectSettings::Compressor(settings)
+            | daw_core::EffectSettings::Expander(settings) => {
                 settings.threshold_db = -48.0;
                 settings.attack_ms = 0.1;
             }
@@ -2905,7 +2914,8 @@ mod band_meter_tests {
                 let mut plan = crate::tests::transport_plan();
                 let mut effect = make();
                 match &mut effect.unit {
-                    daw_core::EffectSettings::Compressor(s) => {
+                    daw_core::EffectSettings::Compressor(s)
+                    | daw_core::EffectSettings::Expander(s) => {
                         s.threshold_db = -36.0;
                         s.attack_ms = 0.1;
                     }
@@ -2952,7 +2962,8 @@ mod band_meter_tests {
                         daw_core::EffectSettings::Exciter(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Filter(s) => s.enabled = enabled,
                         daw_core::EffectSettings::AutoFilter(s) => s.enabled = enabled,
-                        daw_core::EffectSettings::Compressor(s) => s.enabled = enabled,
+                        daw_core::EffectSettings::Compressor(s)
+                        | daw_core::EffectSettings::Expander(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Limiter(s) => s.enabled = enabled,
                         daw_core::EffectSettings::Ott(s) => s.enabled = enabled,
                         _ => unreachable!(),

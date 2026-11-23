@@ -32,7 +32,7 @@ pub fn render(
 ) -> Bounds {
     let before = PluginState::from_settings(settings).ok();
     let (b, captured) = control_capture::scope(ui, |ui| {
-        daw_unit_ui::compressor::show(
+        daw_unit_ui::compressor::show_with_direction(
             ui,
             settings,
             false,
@@ -47,6 +47,7 @@ pub fn render(
                     history,
                 },
             },
+            daw_drive_plugin::DIRECTION,
         )
     });
     let after = PluginState::from_settings(settings).ok();

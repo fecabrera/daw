@@ -2,6 +2,7 @@ use crate::{AMBIENT_REVERB_STATE_VERSION, AMBIENT_REVERB_TYPE_ID, AmbientReverbS
 use crate::{
     AUTO_FILTER_STATE_VERSION, AUTO_FILTER_TYPE_ID, AutoFilterSettings, COMPRESSOR_STATE_VERSION,
     COMPRESSOR_TYPE_ID, CompressorSettings, DRIVE_STATE_VERSION, DRIVE_TYPE_ID, DriveSettings,
+    EXPANDER_TYPE_ID,
 };
 use crate::{BITCRUSHER_STATE_VERSION, BITCRUSHER_TYPE_ID, BitcrusherSettings};
 use crate::{CHORUS_STATE_VERSION, CHORUS_TYPE_ID, ChorusSettings};
@@ -98,6 +99,7 @@ pub enum EffectSettings {
     AutoFilter(AutoFilterSettings),
     Filter(FilterSettings),
     Compressor(CompressorSettings),
+    Expander(CompressorSettings),
     Ott(OttSettings),
     Limiter(LimiterSettings),
     DirectionMixer(DirectionMixerSettings),
@@ -188,6 +190,10 @@ impl Serialize for EffectSettings {
             },
             Self::Compressor(settings) => StoredEffect {
                 type_id: COMPRESSOR_TYPE_ID.into(),
+                state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
+            },
+            Self::Expander(settings) => StoredEffect {
+                type_id: EXPANDER_TYPE_ID.into(),
                 state: serde_json::to_value(settings).map_err(serde::ser::Error::custom)?,
             },
             Self::MultibandEq(settings) => StoredEffect {
@@ -445,15 +451,21 @@ impl<'de> Deserialize<'de> for EffectSettings {
             serde_json::from_value(stored.state)
                 .map(Self::Filter)
                 .map_err(serde::de::Error::custom)
-        } else if stored.type_id == COMPRESSOR_TYPE_ID
-            && stored
-                .state
-                .get("version")
-                .and_then(serde_json::Value::as_u64)
-                .is_none_or(|version| version <= u64::from(COMPRESSOR_STATE_VERSION))
+        } else if matches!(
+            stored.type_id.as_str(),
+            COMPRESSOR_TYPE_ID | EXPANDER_TYPE_ID
+        ) && stored
+            .state
+            .get("version")
+            .and_then(serde_json::Value::as_u64)
+            .is_none_or(|version| version <= u64::from(COMPRESSOR_STATE_VERSION))
         {
             serde_json::from_value(stored.state)
-                .map(Self::Compressor)
+                .map(if stored.type_id == EXPANDER_TYPE_ID {
+                    Self::Expander
+                } else {
+                    Self::Compressor
+                })
                 .map_err(serde::de::Error::custom)
         } else {
             Ok(Self::Missing {
@@ -476,7 +488,7 @@ impl EffectSettings {
             Self::DriveV2(s) => Some(&mut s.enabled),
             Self::AutoFilter(s) => Some(&mut s.enabled),
             Self::Filter(s) => Some(&mut s.enabled),
-            Self::Compressor(s) => Some(&mut s.enabled),
+            Self::Compressor(s) | Self::Expander(s) => Some(&mut s.enabled),
             Self::HarmonicLift(s) => Some(&mut s.enabled),
             Self::Ott(s) => Some(&mut s.enabled),
             Self::Limiter(s) => Some(&mut s.enabled),
@@ -508,7 +520,7 @@ impl EffectSettings {
             Self::DriveV2(settings) => Some(&mut settings.collapsed),
             Self::AutoFilter(settings) => Some(&mut settings.collapsed),
             Self::Filter(settings) => Some(&mut settings.collapsed),
-            Self::Compressor(settings) => Some(&mut settings.collapsed),
+            Self::Compressor(settings) | Self::Expander(settings) => Some(&mut settings.collapsed),
             Self::Ott(settings) => Some(&mut settings.collapsed),
             Self::Limiter(settings) => Some(&mut settings.collapsed),
             Self::DirectionMixer(settings) => Some(&mut settings.collapsed),
@@ -572,7 +584,9 @@ impl EffectSettings {
             Self::Exciter(s) => &s.modulations,
             Self::MultibandCompressor(s) => &s.modulations,
             Self::Eq3(s) => crate::ModulationDestinationSettings::modulations(s),
-            Self::Compressor(s) => crate::ModulationDestinationSettings::modulations(s),
+            Self::Compressor(s) | Self::Expander(s) => {
+                crate::ModulationDestinationSettings::modulations(s)
+            }
             Self::Limiter(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::DirectionMixer(s) => crate::ModulationDestinationSettings::modulations(s),
             Self::StereoSpread(s) => crate::ModulationDestinationSettings::modulations(s),
@@ -606,7 +620,7 @@ impl EffectSettings {
             Self::Exciter(s) => Some(&mut s.modulations),
             Self::MultibandCompressor(s) => Some(&mut s.modulations),
             Self::Eq3(s) => Some(&mut s.modulations),
-            Self::Compressor(s) => Some(&mut s.modulations),
+            Self::Compressor(s) | Self::Expander(s) => Some(&mut s.modulations),
             Self::Limiter(s) => Some(&mut s.modulations),
             Self::DirectionMixer(s) => Some(&mut s.modulations),
             Self::StereoSpread(s) => Some(&mut s.modulations),
@@ -635,7 +649,7 @@ impl EffectSettings {
             Self::DriveV2(s) => s.valid(),
             Self::AutoFilter(settings) => settings.valid(),
             Self::Filter(settings) => settings.valid(),
-            Self::Compressor(settings) => settings.valid(),
+            Self::Compressor(settings) | Self::Expander(settings) => settings.valid(),
             Self::Ott(settings) => settings.valid(),
             Self::Limiter(settings) => settings.valid(),
             Self::DirectionMixer(settings) => settings.valid(),
@@ -660,7 +674,7 @@ impl EffectSettings {
                     DRIVE_V2_TYPE_ID => Some(DRIVE_V2_STATE_VERSION),
                     AUTO_FILTER_TYPE_ID => Some(AUTO_FILTER_STATE_VERSION),
                     FILTER_TYPE_ID => Some(FILTER_STATE_VERSION),
-                    COMPRESSOR_TYPE_ID => Some(COMPRESSOR_STATE_VERSION),
+                    COMPRESSOR_TYPE_ID | EXPANDER_TYPE_ID => Some(COMPRESSOR_STATE_VERSION),
                     OTT_TYPE_ID => Some(OTT_STATE_VERSION),
                     LIMITER_TYPE_ID => Some(LIMITER_STATE_VERSION),
                     DIRECTION_MIXER_TYPE_ID => Some(DIRECTION_MIXER_STATE_VERSION),
@@ -851,6 +865,12 @@ impl EffectInstance {
         Self {
             id: uuid::Uuid::new_v4(),
             unit: EffectSettings::Compressor(CompressorSettings::default()),
+        }
+    }
+    pub fn expander() -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            unit: EffectSettings::Expander(CompressorSettings::default()),
         }
     }
     pub fn auto_filter() -> Self {

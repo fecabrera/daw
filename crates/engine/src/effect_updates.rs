@@ -440,6 +440,9 @@ pub(super) fn fingerprint(plan: &RenderPlan) -> u64 {
                 daw_core::EffectSettings::Compressor(_) => {
                     daw_unit_core::COMPRESSOR_TYPE_ID.hash(&mut hash)
                 }
+                daw_core::EffectSettings::Expander(_) => {
+                    daw_unit_core::EXPANDER_TYPE_ID.hash(&mut hash)
+                }
                 daw_core::EffectSettings::Ott(_) => daw_unit_core::OTT_TYPE_ID.hash(&mut hash),
                 daw_core::EffectSettings::Limiter(_) => {
                     daw_unit_core::LIMITER_TYPE_ID.hash(&mut hash)
@@ -547,7 +550,8 @@ fn controls_changed(a: &EffectSettings, b: &EffectSettings) -> bool {
         (EffectSettings::DriveV2(a), EffectSettings::DriveV2(b)) => compare!(a, b),
         (EffectSettings::AutoFilter(a), EffectSettings::AutoFilter(b)) => compare!(a, b),
         (EffectSettings::Filter(a), EffectSettings::Filter(b)) => compare!(a, b),
-        (EffectSettings::Compressor(a), EffectSettings::Compressor(b)) => compare!(a, b),
+        (EffectSettings::Compressor(a), EffectSettings::Compressor(b))
+        | (EffectSettings::Expander(a), EffectSettings::Expander(b)) => compare!(a, b),
         (EffectSettings::Ott(a), EffectSettings::Ott(b)) => compare!(a, b),
         (EffectSettings::Limiter(a), EffectSettings::Limiter(b)) => compare!(a, b),
         (EffectSettings::DirectionMixer(a), EffectSettings::DirectionMixer(b)) => compare!(a, b),

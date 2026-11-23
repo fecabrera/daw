@@ -2020,6 +2020,71 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-expander-auv2"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "daw-expander-editor",
+ "daw-expander-plugin",
+ "daw-plugin-auv2",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-expander-clap"
+version = "0.1.0"
+dependencies = [
+ "daw-compressor",
+ "daw-expander-editor",
+ "daw-expander-plugin",
+ "daw-plugin-clap",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading 0.8.9",
+ "rtrb",
+ "serde_json",
+]
+
+[[package]]
+name = "daw-expander-editor"
+version = "0.1.0"
+dependencies = [
+ "daw-expander-plugin",
+ "daw-plugin-support",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "daw-unit-ui",
+ "egui",
+]
+
+[[package]]
+name = "daw-expander-plugin"
+version = "0.1.0"
+dependencies = [
+ "daw-compressor",
+ "daw-plugin-support",
+ "daw-unit-core",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
+name = "daw-expander-vst3"
+version = "0.1.0"
+dependencies = [
+ "daw-compressor",
+ "daw-expander-editor",
+ "daw-expander-plugin",
+ "daw-plugin-vst3",
+ "daw-plugin-window",
+ "daw-unit-core",
+ "libloading 0.8.9",
+ "serde_json",
+]
+
+[[package]]
 name = "daw-filter"
 version = "0.1.0"
 dependencies = [

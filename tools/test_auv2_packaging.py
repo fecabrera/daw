@@ -14,7 +14,7 @@ class Auv2Packaging(unittest.TestCase):
     def test_distinct_products_have_metadata_and_native_targets(self):
         triples, bundles, classes = set(), set(), set()
         units = available_units()
-        self.assertEqual(len(units), 21)
+        self.assertEqual(len(units), 22)
         workflow = (ROOT / '.github/workflows/plugins.yml').read_text()
         for slug, path in units.items():
             manifest = tomllib.loads(path.read_text())
@@ -66,7 +66,7 @@ class Auv2Packaging(unittest.TestCase):
                     package(target, base / 'target', base / 'out', units='all', release=release, api='auv2')
                 self.assertEqual(build.call_args.args[3], ['auv2'])
                 archives = list((base / 'out').glob(f'*-auv2{suffix}.zip'))
-                self.assertEqual(len(archives), 21)
+                self.assertEqual(len(archives), 22)
                 for archive in archives:
                     with zipfile.ZipFile(archive) as zipped:
                         info_name = next(n for n in zipped.namelist() if n.endswith('/Contents/Info.plist'))

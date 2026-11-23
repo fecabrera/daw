@@ -672,7 +672,11 @@ mod tests {
                                         crate::compressor_panel::show(
                                             ui,
                                             &mut settings,
-                                            (false, 244.0),
+                                            (
+                                                false,
+                                                244.0,
+                                                daw_unit_core::DynamicsDirection::Compressor,
+                                            ),
                                             12.0,
                                             &[],
                                             None,

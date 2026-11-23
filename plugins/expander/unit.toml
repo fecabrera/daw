@@ -1,0 +1,123 @@
+schema_version = 2
+settings_version = 1
+state_version = 1
+type_id = "daw.expander"
+vendor = "Sie"
+version = "0.1.0"
+product = "Expander"
+clap_id = "io.github.fecabrera.daw.expander"
+processor_id = "566594010167476ca769092162b584b6"
+controller_id = "6c171ce6c1a94cbe9930d282941c76f0"
+
+[[parameters]]
+id = 100
+key = "bypass"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "boolean"
+
+[[parameters]]
+id = 101
+key = "threshold"
+minimum = -60.0
+maximum = 0.0
+default = -18.0
+scale = "linear"
+
+[[parameters]]
+id = 102
+key = "ratio"
+minimum = 1.0
+maximum = 20.0
+default = 4.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 103
+key = "attack"
+minimum = 0.1
+maximum = 200.0
+default = 10.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 104
+key = "release"
+minimum = 10.0
+maximum = 2000.0
+default = 100.0
+scale = "logarithmic"
+
+[[parameters]]
+id = 105
+key = "knee"
+minimum = 0.0
+maximum = 24.0
+default = 6.0
+scale = "linear"
+
+[[parameters]]
+id = 106
+key = "level"
+minimum = -1000.0
+maximum = 12.0
+default = 0.0
+scale = "gain"
+
+[[parameters]]
+id = 107
+key = "dry_wet"
+minimum = 0.0
+maximum = 1.0
+default = 1.0
+scale = "linear"
+
+[[parameters]]
+id = 108
+key = "detection"
+minimum = 0.0
+maximum = 1.0
+default = 0.0
+scale = "choice"
+
+[[parameters]]
+id = 109
+key = "curve"
+minimum = -1.0
+maximum = 1.0
+default = 0.0
+scale = "linear"
+
+[[strips]]
+footer = "Expand"
+controls = [
+{ parameter = "threshold", control = "db" },
+{ parameter = "ratio", control = "scalar" },
+{ parameter = "curve", control = "percent" },
+]
+
+[[strips]]
+footer = "Response"
+controls = [
+{ parameter = "attack", control = "scalar" },
+{ parameter = "release", control = "scalar" },
+{ parameter = "knee", control = "db" },
+]
+
+[[strips]]
+footer = "Out"
+controls = [
+{ parameter = "level", control = "gain" },
+{ parameter = "dry_wet", control = "percent" },
+{ parameter = "detection", control = "mode" },
+]
+
+[auv2]
+type = "aufx"
+subtype = "Expd"
+manufacturer = "SieD"
+bundle_id = "io.github.fecabrera.daw.expander.auv2"
+factory = "DAWAudioUnitFactory"
+cocoa_class = "SieExpanderAUView"
+component_version = 256

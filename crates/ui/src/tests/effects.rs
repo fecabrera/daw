@@ -194,11 +194,11 @@ fn effect_category_folders_share_navigation_and_retain_only_visible_selections()
                     .all(|pair| pair[0].bottom() <= pair[1].top())
             );
             assert!(rows[..3].iter().all(|rect| b.library.contains_rect(*rect)));
-            let drive = b.drive_entry.center();
+            let drive = reveal_catalog_row(&mut app, &ctx, |b| b.drive_entry);
             click(&mut app, &ctx, drive);
-            let compressor = app.effects_bounds.compressor_entry.center();
+            let compressor = reveal_catalog_row(&mut app, &ctx, |b| b.compressor_entry);
             click_effect_with_shift(&mut app, &ctx, compressor, true);
-            let dynamics = app.effects_bounds.folders[2].center();
+            let dynamics = reveal_catalog_row(&mut app, &ctx, |b| b.folders[2]);
             click(&mut app, &ctx, dynamics);
             frame(&mut app, &ctx, vec![]);
             assert_eq!(
@@ -242,28 +242,25 @@ fn effect_category_group_additions_and_drops_follow_display_order_for_every_targ
         for target in ["track", "master", "instrument"] {
             for drop in [false, true] {
                 let (mut app, ctx) = categorized_catalog_fixture(theme, target);
-                let b = &app.effects_bounds;
-                let points = [
-                    b.drive_entry.center(),
-                    b.limiter_entry.center(),
-                    b.ott_entry.center(),
-                    b.compressor_entry.center(),
-                    b.auto_filter_entry.center(),
-                    b.entry.center(),
-                    b.filter_entry.center(),
+                let rows: [fn(&effects_panel::EffectsUiBounds) -> Rect; 8] = [
+                    |b| b.drive_entry,
+                    |b| b.limiter_entry,
+                    |b| b.ott_entry,
+                    |b| b.compressor_entry,
+                    |b| b.auto_filter_entry,
+                    |b| b.entry,
+                    |b| b.filter_entry,
+                    |b| b.direction_mixer_entry,
                 ];
-                for (index, point) in points.into_iter().enumerate() {
+                for (index, row) in rows.into_iter().enumerate() {
+                    let point = reveal_catalog_row(&mut app, &ctx, row);
                     click_effect_with_shift(&mut app, &ctx, point, index != 0);
                 }
-                scroll_effects_catalog(&mut app, &ctx, -80.0);
-                let direction = app.effects_bounds.direction_mixer_entry.center();
-                click_effect_with_shift(&mut app, &ctx, direction, true);
-                scroll_effects_catalog(&mut app, &ctx, 80.0);
                 let original = serde_json::to_value(&app.session.project).unwrap();
                 assert!(!app.dirty);
                 if drop {
                     end_click_sequence(&mut app, &ctx);
-                    let start = app.effects_bounds.entry.center();
+                    let start = reveal_catalog_row(&mut app, &ctx, |b| b.entry);
                     let end = app.effects_bounds.lane_viewport.center();
                     begin_effect_drag(&mut app, &ctx, start, end);
                     assert!(
@@ -477,6 +474,7 @@ fn effects_library_keyboard_and_shift_click_select_without_project_edits() {
             Some(entries[6]),
             Some(entries[19]),
             Some(entries[21]),
+            Some(daw_core::EXPANDER_TYPE_ID),
             None,
             Some(entries[1]),
             Some(entries[9]),
@@ -566,9 +564,11 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
         (0.99, 0.99),
     ] {
         let (mut app, _, ctx, ids) = chain_fixture(false, false);
-        let distortion = reveal_catalog_row(&mut app, &ctx, |b| b.folders[3]);
-        click(&mut app, &ctx, distortion);
-        frame(&mut app, &ctx, vec![]);
+        for category in [2, 3] {
+            let folder = reveal_catalog_row(&mut app, &ctx, |b| b.folders[category]);
+            click(&mut app, &ctx, folder);
+            frame(&mut app, &ctx, vec![]);
+        }
         let folder = reveal_catalog_row(&mut app, &ctx, |b| b.folders[4]);
         click(&mut app, &ctx, folder);
         frame(&mut app, &ctx, vec![]);
@@ -626,9 +626,11 @@ fn effects_library_empty_space_clears_selection_on_release_without_project_edits
 fn effects_library_empty_click_respects_input_guards_and_other_catalog_controls() {
     for guard in ["header", "secondary", "modal", "focus", "drag"] {
         let (mut app, _, ctx, _) = chain_fixture(false, false);
-        let distortion = reveal_catalog_row(&mut app, &ctx, |b| b.folders[3]);
-        click(&mut app, &ctx, distortion);
-        frame(&mut app, &ctx, vec![]);
+        for category in [2, 3] {
+            let folder = reveal_catalog_row(&mut app, &ctx, |b| b.folders[category]);
+            click(&mut app, &ctx, folder);
+            frame(&mut app, &ctx, vec![]);
+        }
         let folder = reveal_catalog_row(&mut app, &ctx, |b| b.folders[4]);
         click(&mut app, &ctx, folder);
         frame(&mut app, &ctx, vec![]);
@@ -924,7 +926,7 @@ fn effects_library_drag_uses_reorder_preview_and_inserts_group_on_release() {
             let (mut app, _, ctx, ids) = chain_fixture(compact, false);
             let point = app.effects_bounds.compressor_entry.center();
             click(&mut app, &ctx, point);
-            let start = app.effects_bounds.drive_entry.center();
+            let start = reveal_catalog_row(&mut app, &ctx, |b| b.drive_entry);
             click_effect_with_shift(&mut app, &ctx, start, true);
             end_click_sequence(&mut app, &ctx);
             app.dirty = false;
@@ -1003,7 +1005,7 @@ fn effects_library_drag_handles_empty_lanes_fast_release_and_cancellation() {
         app.select_track(track, false);
         app.set_view_mode(ViewMode::Timeline, &ctx);
         frame(&mut app, &ctx, vec![]);
-        let start = app.effects_bounds.drive_entry.center();
+        let start = reveal_catalog_row(&mut app, &ctx, |b| b.drive_entry);
         let end = app.effects_bounds.lane_viewport.center();
         frame(
             &mut app,
@@ -1074,6 +1076,7 @@ fn effects_library_drag_scrolls_to_offscreen_insertion_slots() {
             .effects
             .push(daw_core::EffectInstance::equalizer());
     }
+    reveal_catalog_row(&mut app, &ctx, |b| b.drive_entry);
     frame_sized(&mut app, &ctx, vec![], Vec2::new(640.0, 800.0));
     let start = app.effects_bounds.drive_entry.center();
     let viewport = app.effects_bounds.lane_viewport;
@@ -1456,7 +1459,7 @@ fn drive_catalog_adds_independent_units_and_keeps_the_existing_eq() {
     app.select_track(track, false);
     app.set_view_mode(ViewMode::Timeline, &ctx);
     frame(&mut app, &ctx, vec![]);
-    let entry = app.effects_bounds.drive_entry.center();
+    let entry = reveal_catalog_row(&mut app, &ctx, |b| b.drive_entry);
     assert!(entry.y > app.effects_bounds.entry.bottom());
     app.dirty = false;
     click(&mut app, &ctx, entry);
@@ -1479,7 +1482,7 @@ fn drive_catalog_adds_independent_units_and_keeps_the_existing_eq() {
     assert_eq!(effects.len(), 2);
     assert_ne!(effects[0].id, effects[1].id);
     end_click_sequence(&mut app, &ctx);
-    let eq_entry = app.effects_bounds.entry.center();
+    let eq_entry = reveal_catalog_row(&mut app, &ctx, |b| b.entry);
     click(&mut app, &ctx, eq_entry);
     click(&mut app, &ctx, eq_entry);
     frame(&mut app, &ctx, vec![]);
@@ -3110,7 +3113,18 @@ fn compressor_catalog_adds_independent_units_and_blocks_without_a_track() {
     }
 }
 #[test]
-fn compressor_layout_compact_collapse_and_readonly_meter_follow_unit_conventions() {
+fn dynamics_layout_compact_collapse_and_readonly_meter_follow_unit_conventions() {
+    dynamics_layout(daw_core::EffectInstance::compressor, "Comp");
+    dynamics_layout(daw_core::EffectInstance::expander, "Expand");
+}
+fn dynamics_layout(make: fn() -> daw_core::EffectInstance, shape_label: &str) {
+    fn settings(app: &DawUi) -> &daw_core::CompressorSettings {
+        match &app.session.project.tracks[0].effects[0].unit {
+            daw_core::EffectSettings::Compressor(settings)
+            | daw_core::EffectSettings::Expander(settings) => settings,
+            _ => panic!("expected Compressor or Expander"),
+        }
+    }
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for compact in [false, true] {
             let (mut app, track) = fixture();
@@ -3122,7 +3136,7 @@ fn compressor_layout_compact_collapse_and_readonly_meter_follow_unit_conventions
                     ..Default::default()
                 },
             );
-            app.session.project.tracks[0].effects = vec![daw_core::EffectInstance::compressor()];
+            app.session.project.tracks[0].effects = vec![make()];
             app.session.project.tracks[0].effects_compact = compact;
             app.select_track(track, false);
             app.set_view_mode(ViewMode::Timeline, &ctx);
@@ -3135,7 +3149,7 @@ fn compressor_layout_compact_collapse_and_readonly_meter_follow_unit_conventions
                     assert!((section.left() - bounds.sections[column - 1].right()).abs() < 0.1);
                 }
             }
-            for name in ["Comp", "Response", "Out"] {
+            for name in [shape_label, "Response", "Out"] {
                 assert!(shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == name)));
             }
             if compact {
@@ -3167,21 +3181,21 @@ fn compressor_layout_compact_collapse_and_readonly_meter_follow_unit_conventions
                 assert!(bounds.graph.reduction_meter.left() > bounds.graph.plot.right());
                 let meter = bounds.graph.reduction_meter.center();
                 app.dirty = false;
-                let before = compressor_settings(&app).clone();
+                let before = settings(&app).clone();
                 click(&mut app, &ctx, meter);
-                assert_eq!(compressor_settings(&app), &before);
+                assert_eq!(settings(&app), &before);
                 assert!(!app.dirty);
             }
             let power = app.effects_bounds.compressor_units[0].power.center();
             end_click_sequence(&mut app, &ctx);
             click(&mut app, &ctx, power);
-            assert!(!compressor_settings(&app).enabled);
+            assert!(!settings(&app).enabled);
             let header = unit_title_point(app.effects_bounds.compressor_units[0].header);
             end_click_sequence(&mut app, &ctx);
             click(&mut app, &ctx, header);
             click(&mut app, &ctx, header);
             frame(&mut app, &ctx, vec![]);
-            assert!(compressor_settings(&app).collapsed);
+            assert!(settings(&app).collapsed);
         }
     }
 }
@@ -3922,9 +3936,10 @@ fn timeline_catalog_drag_reorder_and_delete_share_effect_lane_behavior() {
         };
         let start = app.effects_bounds.entry.center();
         click(&mut app, &ctx, start);
-        let drive = app.effects_bounds.drive_entry.center();
+        let drive = reveal_catalog_row(&mut app, &ctx, |b| b.drive_entry);
         click_effect_with_shift(&mut app, &ctx, drive, true);
         let end = app.effects_bounds.lane_viewport.center();
+        let start = reveal_catalog_row(&mut app, &ctx, |b| b.entry);
         begin_effect_drag(&mut app, &ctx, start, end);
         assert!(
             app.effects_drag
@@ -4603,7 +4618,7 @@ fn selecting_master_shows_its_independent_chain_and_restores_track_effects_in_th
     frame(&mut app, &ctx, vec![]);
     let point = app.master_bounds.center_top() + Vec2::new(0.0, 16.0);
     click(&mut app, &ctx, point);
-    let entry = app.effects_bounds.drive_entry.center();
+    let entry = reveal_catalog_row(&mut app, &ctx, |b| b.drive_entry);
     click(&mut app, &ctx, entry);
     library_key(&mut app, &ctx, egui::Key::Enter, false);
     assert!(app.master_selected);
@@ -5180,15 +5195,7 @@ fn direction_mixer_controls_and_catalog_use_shared_track_master_and_instrument_a
                 &shape.shape,
                 egui::Shape::Text(text) if text.galley.text() == "Imaging"
             )));
-            if !app
-                .effects_bounds
-                .library
-                .contains_rect(app.effects_bounds.direction_mixer_entry)
-            {
-                scroll_effects_catalog(&mut app, &ctx, -80.0);
-            }
-            let point = app.effects_bounds.direction_mixer_entry.center();
-            assert!(app.effects_bounds.direction_mixer_entry.is_positive());
+            let point = reveal_catalog_row(&mut app, &ctx, |b| b.direction_mixer_entry);
             click(&mut app, &ctx, point);
             library_key(&mut app, &ctx, egui::Key::Enter, false);
             frame(&mut app, &ctx, vec![]);
@@ -5260,30 +5267,7 @@ fn stereo_spread_shared_controls_add_edit_reset_and_remove_on_every_target() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for target in ["track", "master", "instrument"] {
             let (mut app, ctx) = categorized_catalog_fixture(theme, target);
-            if !app
-                .effects_bounds
-                .library
-                .contains_rect(app.effects_bounds.stereo_spread_entry)
-            {
-                let pointer = app.effects_bounds.library.center();
-                for _ in 0..8 {
-                    frame(
-                        &mut app,
-                        &ctx,
-                        vec![
-                            egui::Event::PointerMoved(pointer),
-                            egui::Event::MouseWheel {
-                                unit: egui::MouseWheelUnit::Point,
-                                phase: egui::TouchPhase::Move,
-                                delta: Vec2::new(0.0, -80.0),
-                                modifiers: Default::default(),
-                            },
-                        ],
-                    );
-                }
-            }
-            let point = app.effects_bounds.stereo_spread_entry.center();
-            assert!(app.effects_bounds.stereo_spread_entry.is_positive());
+            let point = reveal_catalog_row(&mut app, &ctx, |b| b.stereo_spread_entry);
             click(&mut app, &ctx, point);
             library_key(&mut app, &ctx, egui::Key::Enter, false);
             frame(&mut app, &ctx, vec![]);
@@ -5882,7 +5866,7 @@ fn main_catalog_effects_are_inline_and_track_effects_remain_separate() {
             layer: main,
         };
         assert_eq!(app.effect_catalog_target(), Some(target));
-        let entry = app.effects_bounds.drive_entry.center();
+        let entry = reveal_catalog_row(&mut app, &ctx, |b| b.drive_entry);
         click(&mut app, &ctx, entry);
         library_key(&mut app, &ctx, egui::Key::Enter, false);
         frame(&mut app, &ctx, vec![]);
@@ -5901,7 +5885,7 @@ fn main_catalog_effects_are_inline_and_track_effects_remain_separate() {
         let strip = app.effects_bounds.strip;
         click(&mut app, &ctx, strip.right_center() - Vec2::new(80.0, 0.0));
         assert_eq!(app.effect_catalog_target(), app.effects_target());
-        let entry = app.effects_bounds.drive_entry.center();
+        let entry = reveal_catalog_row(&mut app, &ctx, |b| b.drive_entry);
         click(&mut app, &ctx, entry);
         library_key(&mut app, &ctx, egui::Key::Enter, false);
         assert_eq!(app.session.project.tracks[0].effects.len(), 1);

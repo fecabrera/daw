@@ -1,6 +1,51 @@
 use serde::{Deserialize, Serialize};
 
 pub const COMPRESSOR_TYPE_ID: &str = "daw.compressor";
+pub const EXPANDER_TYPE_ID: &str = "daw.expander";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DynamicsDirection {
+    Compressor,
+    Expander,
+}
+
+impl DynamicsDirection {
+    pub const fn type_id(self) -> &'static str {
+        match self {
+            Self::Compressor => COMPRESSOR_TYPE_ID,
+            Self::Expander => EXPANDER_TYPE_ID,
+        }
+    }
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Compressor => "Compressor",
+            Self::Expander => "Expander",
+        }
+    }
+
+    pub fn gain_reduction_db(
+        self,
+        input: f32,
+        threshold: f32,
+        slope: f32,
+        knee: f32,
+        curve: f32,
+    ) -> f32 {
+        match self {
+            Self::Compressor => {
+                compressor_shaped_gain_reduction_db(input, threshold, slope, knee, curve)
+            }
+            Self::Expander => {
+                // Reflect the detector about the threshold and convert the
+                // compressor slope (1 - 1/ratio) to an expansion slope (ratio - 1).
+                compressor_shaped_gain_reduction_db(-input, -threshold, slope, knee, curve)
+                    / (1.0 - slope)
+            }
+        }
+    }
+}
+
 pub const COMPRESSOR_STATE_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -175,6 +220,34 @@ mod curve_tests {
             }
         }
     }
+    #[test]
+    fn expander_knee_joins_the_lower_curve_and_ratio_one_is_unity() {
+        let expander = DynamicsDirection::Expander;
+        assert_eq!(
+            expander.gain_reduction_db(-24.0, -18.0, 0.75, 0.0, 0.0),
+            18.0
+        );
+        assert_eq!(
+            expander.gain_reduction_db(-15.0, -18.0, 0.75, 6.0, 1.0),
+            0.0
+        );
+        for curve in [-1.0, 0.0, 1.0] {
+            assert_eq!(
+                expander.gain_reduction_db(-90.0, -18.0, 0.0, 6.0, curve),
+                0.0
+            );
+            let mut previous = f32::INFINITY;
+            for input in -200..=12 {
+                let reduction = expander.gain_reduction_db(input as f32, -18.0, 0.75, 6.0, curve);
+                assert!(reduction.is_finite() && reduction >= 0.0 && reduction <= previous);
+                previous = reduction;
+            }
+            let edge = expander.gain_reduction_db(-21.0, -18.0, 0.75, 6.0, curve);
+            let lower = expander.gain_reduction_db(-21.01, -18.0, 0.75, 6.0, curve);
+            assert!(((lower - edge) / 0.01 - 3.0).abs() < 0.01);
+        }
+    }
+
     #[test]
     fn legacy_settings_default_curve_to_zero_and_roundtrip_new_values() {
         let mut json = serde_json::to_value(CompressorSettings::default()).unwrap();

@@ -2,7 +2,7 @@
 use crate::{
     control_capture, layout, meters, rows, spectrum_graph, spectrum_graph::Presentation, theme,
 };
-use daw_unit_core::{CompressorSettings, compressor_shaped_gain_reduction_db};
+use daw_unit_core::{CompressorSettings, DynamicsDirection};
 use egui::{Pos2, Rect, Response, Ui, Vec2};
 // Include the lowest possible knee edge: -60 dB threshold - 24/2 dB knee.
 const MIN: f32 = -72.0;
@@ -43,15 +43,73 @@ impl Default for Bounds {
         }
     }
 }
-fn point(plot: Rect, input: f32, output: f32) -> Pos2 {
-    egui::pos2(
-        plot.left() + plot.width() * (input - MIN) / (MAX - MIN),
-        plot.bottom() - plot.height() * (output - MIN) / (MAX - MIN),
-    )
+#[derive(Clone, Copy)]
+struct Plot {
+    rect: Rect,
+    output_min: f32,
 }
-fn output(input: f32, parameters: [f32; 2], knee: f32, curve: f32) -> f32 {
+impl Plot {
+    fn new(rect: Rect, direction: DynamicsDirection, knee: f32, view: [f32; 2]) -> Self {
+        let output_min = if direction == DynamicsDirection::Expander && knee > 0.0 {
+            let lower = output(direction, view[0] - knee * 0.5, view, knee, 0.0);
+            MIN.min(((lower - 6.0) / 12.0).floor() * 12.0)
+        } else {
+            MIN
+        };
+        Self { rect, output_min }
+    }
+
+    fn point(self, input: f32, output: f32) -> Pos2 {
+        egui::pos2(
+            self.rect.left() + self.rect.width() * (input - MIN) / (MAX - MIN),
+            self.rect.bottom()
+                - self.rect.height() * (output - self.output_min) / (MAX - self.output_min),
+        )
+    }
+}
+
+#[cfg(test)]
+fn point(plot: Rect, input: f32, output: f32) -> Pos2 {
+    Plot {
+        rect: plot,
+        output_min: MIN,
+    }
+    .point(input, output)
+}
+
+fn knee_handle(plot: Plot, direction: DynamicsDirection, view: [f32; 2], knee: f32) -> Pos2 {
+    let on_curve = |input| plot.point(input, output(direction, input, view, knee, 0.0));
+    if direction == DynamicsDirection::Compressor || knee == 0.0 {
+        return on_curve(view[0]);
+    }
+
+    // Measure the soft knee in screen space. Its upper end is much flatter
+    // than its lower end, so the midpoint in input dB is not halfway along it.
+    let lower = view[0] - knee * 0.5;
+    const SEGMENTS: usize = 32;
+    let at = |index: f32| on_curve(lower + knee * index / SEGMENTS as f32);
+    let points: [Pos2; SEGMENTS + 1] = std::array::from_fn(|index| at(index as f32));
+    let length = |pair: &[Pos2]| pair[0].distance(pair[1]);
+    let mut remaining = points.windows(2).map(length).sum::<f32>() * 0.5;
+    for (index, pair) in points.windows(2).enumerate() {
+        let segment = length(pair);
+        if remaining <= segment && segment > 0.0 {
+            return at(index as f32 + remaining / segment);
+        }
+        remaining -= segment;
+    }
+    on_curve(view[0])
+}
+
+fn output(
+    direction: DynamicsDirection,
+    input: f32,
+    parameters: [f32; 2],
+    knee: f32,
+    curve: f32,
+) -> f32 {
     input
-        - compressor_shaped_gain_reduction_db(
+        - direction.gain_reduction_db(
             input,
             parameters[0],
             1.0 - parameters[1].recip(),
@@ -72,6 +130,24 @@ pub fn show(
     dimensions: (Presentation, f32),
     input: Input,
     reduction: meters::GainReduction<'_>,
+) -> Bounds {
+    show_with_direction(
+        ui,
+        s,
+        dimensions,
+        input,
+        reduction,
+        DynamicsDirection::Compressor,
+    )
+}
+
+pub fn show_with_direction(
+    ui: &mut Ui,
+    s: &mut CompressorSettings,
+    dimensions: (Presentation, f32),
+    input: Input,
+    reduction: meters::GainReduction<'_>,
+    direction: DynamicsDirection,
 ) -> Bounds {
     let (presentation, height) = dimensions;
     let compact = presentation == Presentation::Compact;
@@ -126,7 +202,6 @@ pub fn show(
                     plot
                 };
                 bounds.plot = plot;
-                let palette = theme::palette(ui.ctx());
                 let (p, grid) = spectrum_graph::surface(ui, chart);
                 if !compact {
                     bounds.reduction_meter = Rect::from_x_y_ranges(
@@ -139,43 +214,24 @@ pub fn show(
                         reduction.for_unit(s.enabled),
                     );
                 }
-                if s.enabled
-                    && let Some(history) = input.history.as_ref()
-                {
-                    crate::compressor_history::paint(ui, plot, history);
-                }
-                for db in [-72.0, -60.0, -48.0, -36.0, -24.0, -12.0, 0.0, 12.0] {
-                    let pos = point(plot, db, db);
-                    p.vline(pos.x, plot.y_range(), grid);
-                    p.hline(plot.x_range(), pos.y, grid);
-                    if !compact && [-72.0, -24.0, 0.0, 12.0].contains(&db) {
-                        let text = format!("{db:+.0}");
-                        p.text(
-                            egui::pos2(pos.x, plot.bottom() + 4.0),
-                            egui::Align2::CENTER_TOP,
-                            &text,
-                            egui::FontId::proportional(9.0),
-                            palette.secondary,
-                        );
-                        p.text(
-                            egui::pos2(plot.left() - 4.0, pos.y),
-                            egui::Align2::RIGHT_CENTER,
-                            text,
-                            egui::FontId::proportional(9.0),
-                            palette.secondary,
-                        );
-                    }
-                }
-                if compact {
-                    paint_curve(ui, plot, s, parameters(s), false, input.detector_level);
-                    return;
-                }
                 let view = drag
                     .as_ref()
                     .filter(|d| !d.cancelled)
                     .map_or(parameters(s), |d| d.preview);
-                // Threshold is the input midpoint of the soft knee (the hard-knee corner).
-                let node = point(plot, view[0], output(view[0], view, s.knee_db, s.curve));
+                let geometry = Plot::new(plot, direction, s.knee_db, view);
+                if compact {
+                    paint_plot(
+                        ui,
+                        geometry,
+                        s,
+                        (view, false, compact),
+                        input,
+                        direction,
+                        (&p, grid),
+                    );
+                    return;
+                }
+                let node = knee_handle(geometry, direction, view, s.knee_db);
                 let response = ui
                     .interact(
                         Rect::from_center_size(node, Vec2::splat(17.0)),
@@ -219,7 +275,7 @@ pub fn show(
                                 + f64::from(delta.x * (MAX - MIN) / plot.width()))
                             .clamp(-60.0, 0.0);
                         }
-                        // Up opens the curve (less compression); down raises Ratio.
+                        // Up opens the curve (less gain reduction); down raises Ratio.
                         if !modifiers.alt {
                             d.position[1] = (d.position[1]
                                 + f64::from(delta.y / plot.height()) * 20.0_f64.ln())
@@ -245,8 +301,17 @@ pub fn show(
                     .as_ref()
                     .filter(|d| !d.cancelled)
                     .map_or(parameters(s), |d| d.preview);
-                paint_curve(ui, plot, s, view, selected, input.detector_level);
-                let node = point(plot, view[0], output(view[0], view, s.knee_db, s.curve));
+                let geometry = Plot::new(plot, direction, s.knee_db, view);
+                paint_plot(
+                    ui,
+                    geometry,
+                    s,
+                    (view, selected, compact),
+                    input,
+                    direction,
+                    (&p, grid),
+                );
+                let node = knee_handle(geometry, direction, view, s.knee_db);
                 bounds.handle = Rect::from_center_size(node, Vec2::splat(17.0));
                 spectrum_graph::band_handle(ui, &p, node, 5.5, selected, s.enabled);
                 response.widget_info(|| {
@@ -254,8 +319,10 @@ pub fn show(
                         egui::WidgetType::DragValue,
                         response.enabled(),
                         format!(
-                            "Compressor curve: Threshold {:.1} dBFS, Ratio {:.1}:1",
-                            view[0], view[1]
+                            "{} curve: Threshold {:.1} dBFS, Ratio {:.1}:1",
+                            direction.name(),
+                            view[0],
+                            view[1]
                         ),
                     )
                 });
@@ -293,25 +360,65 @@ pub fn show(
     });
     bounds
 }
-fn paint_curve(
+fn paint_plot(
     ui: &Ui,
-    plot: Rect,
+    plot: Plot,
     s: &CompressorSettings,
-    view: [f32; 2],
-    selected: bool,
-    detector_level: f32,
+    presentation: ([f32; 2], bool, bool),
+    input: Input,
+    direction: DynamicsDirection,
+    surface: (&egui::Painter, egui::Stroke),
 ) {
+    let (view, selected, compact) = presentation;
+    let (painter, grid) = surface;
     let palette = theme::palette(ui.ctx());
-    let painter = ui.painter_at(plot);
+    let rect = plot.rect;
+    if s.enabled
+        && let Some(history) = input.history.as_ref()
+    {
+        crate::compressor_history::paint(ui, rect, history, plot.output_min..=MAX);
+    }
+
+    let font = egui::FontId::proportional(9.0);
+    for db in (MIN as i32..=MAX as i32).step_by(12) {
+        let x = plot.point(db as f32, 0.0).x;
+        painter.vline(x, rect.y_range(), grid);
+        if !compact && [-72, -24, 0, 12].contains(&db) {
+            painter.text(
+                egui::pos2(x, rect.bottom() + 4.0),
+                egui::Align2::CENTER_TOP,
+                format!("{db:+}"),
+                font.clone(),
+                palette.secondary,
+            );
+        }
+    }
+    let extended = plot.output_min < MIN;
+    let step = ((MAX - plot.output_min) / (MAX - MIN)).ceil() as usize * 12;
+    let low = plot.output_min as i32;
+    for db in (low + 1..=0).rev().step_by(step).chain([low, 12]) {
+        let y = plot.point(0.0, db as f32).y;
+        painter.hline(rect.x_range(), y, grid);
+        if !compact && (extended || [-72, -24, 0, 12].contains(&db)) {
+            painter.text(
+                egui::pos2(rect.left() - 4.0, y),
+                egui::Align2::RIGHT_CENTER,
+                format!("{db:+}"),
+                font.clone(),
+                palette.secondary,
+            );
+        }
+    }
+    let painter = ui.painter_at(rect);
     painter.line_segment(
-        [point(plot, MIN, MIN), point(plot, MAX, MAX)],
+        [plot.point(MIN, MIN), plot.point(MAX, MAX)],
         egui::Stroke::new(1.0, palette.secondary.gamma_multiply(0.15)),
     );
     painter.add(egui::Shape::line(
         (0..161)
             .map(|i| {
                 let x = MIN + (MAX - MIN) * i as f32 / 160.0;
-                point(plot, x, output(x, view, s.knee_db, s.curve))
+                plot.point(x, output(direction, x, view, s.knee_db, s.curve))
             })
             .collect(),
         egui::Stroke::new(
@@ -323,10 +430,11 @@ fn paint_curve(
             },
         ),
     ));
+    let detector_level = input.detector_level;
     if s.enabled && detector_level.is_finite() && detector_level > 1e-3 {
         let db = (20.0 * detector_level.log10()).clamp(MIN, MAX);
         painter.circle_filled(
-            point(plot, db, output(db, view, s.knee_db, s.curve)),
+            plot.point(db, output(direction, db, view, s.knee_db, s.curve)),
             2.5,
             theme::accent(ui.ctx()),
         );
@@ -711,7 +819,13 @@ mod tests {
                             dot.distance(point(
                                 b.graph.plot,
                                 db,
-                                output(db, parameters(&s), s.knee_db, s.curve)
+                                output(
+                                    DynamicsDirection::Compressor,
+                                    db,
+                                    parameters(&s),
+                                    s.knee_db,
+                                    s.curve
+                                )
                             )) < 0.01
                         );
                     }
@@ -740,6 +854,40 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn expander_handle_splits_the_visible_knee_into_equal_curve_lengths() {
+        let direction = DynamicsDirection::Expander;
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(175.0, 136.0));
+        for (view, knee) in [
+            ([-9.7, 14.2], 6.0),
+            ([-60.0, 20.0], 24.0),
+            ([-18.0, 1.0], 6.0),
+        ] {
+            let plot = Plot::new(rect, direction, knee, view);
+            let handle = knee_handle(plot, direction, view, knee);
+            let db = MIN + (handle.x - rect.left()) / rect.width() * (MAX - MIN);
+            let on_curve = |input| plot.point(input, output(direction, input, view, knee, 0.0));
+            assert!(handle.distance(on_curve(db)) < 0.01);
+            let lower = view[0] - knee * 0.5;
+            let upper = view[0] + knee * 0.5;
+            assert!(rect.contains(on_curve(lower)) && rect.contains(on_curve(upper)));
+            let length = |start, end| {
+                (0..256)
+                    .map(|i| {
+                        let at = |i| on_curve(egui::lerp(start..=end, i as f32 / 256.0));
+                        at(i).distance(at(i + 1))
+                    })
+                    .sum::<f32>()
+            };
+            assert!((length(lower, db) - length(db, upper)).abs() < 0.02);
+            let hard_knee = Plot::new(rect, direction, 0.0, view);
+            assert_eq!(
+                knee_handle(hard_knee, direction, view, 0.0),
+                hard_knee.point(view[0], view[0])
+            );
+        }
+    }
+
     #[test]
     fn command_and_option_lock_axes_and_switch_during_the_same_drag_without_jumps() {
         for live in [false, true] {

@@ -191,7 +191,13 @@ impl Parameter {
 }
 include!("../../saturator-plugin/src/conversion.rs");
 #[allow(dead_code)]
-pub(crate) const MANIFEST_TYPE_ID: &str = daw_unit_core::COMPRESSOR_TYPE_ID;
+pub(crate) const MANIFEST_TYPE_ID: &str = DIRECTION.type_id();
+pub const DIRECTION: daw_unit_core::DynamicsDirection =
+    if matches!(env!("CARGO_PKG_NAME").as_bytes(), b"daw-expander-plugin") {
+        daw_unit_core::DynamicsDirection::Expander
+    } else {
+        daw_unit_core::DynamicsDirection::Compressor
+    };
 #[allow(dead_code)]
 pub(crate) const SETTINGS_VERSION: u32 = daw_unit_core::COMPRESSOR_STATE_VERSION;
 #[allow(dead_code)]
@@ -202,7 +208,10 @@ type StripBinding = (
 #[allow(dead_code)]
 pub(crate) const STRIP_BINDINGS: [StripBinding; 3] = [
     (
-        "Comp",
+        match DIRECTION {
+            daw_unit_core::DynamicsDirection::Compressor => "Comp",
+            daw_unit_core::DynamicsDirection::Expander => "Expand",
+        },
         &[
             (Parameter::Threshold, "db", "Db"),
             (Parameter::Ratio, "scalar", "Scalar"),

@@ -60,7 +60,7 @@ impl EffectDescriptor {
     }
 }
 
-pub const BUILTIN_EFFECTS: [EffectDescriptor; 22] = [
+pub const BUILTIN_EFFECTS: [EffectDescriptor; 23] = [
     EffectDescriptor::new(
         "equalizer",
         EQ_TYPE_ID,
@@ -214,5 +214,12 @@ pub const BUILTIN_EFFECTS: [EffectDescriptor; 22] = [
         "Transient Shaper",
         EffectCategory::Dynamics,
         EffectInstance::transient_shaper,
+    ),
+    EffectDescriptor::new(
+        "expander",
+        EXPANDER_TYPE_ID,
+        "Expander",
+        EffectCategory::Dynamics,
+        EffectInstance::expander,
     ),
 ];

@@ -209,7 +209,9 @@ impl State {
             (EffectSettings::MultibandCompressor(s), Band::Compressor(before)) => {
                 Band::Compressor(s.bands.iter().find(|b| b.id == before.id)?.clone())
             }
-            (EffectSettings::Compressor(s), Band::Curve(_)) => Band::Curve(Box::new(s.clone())),
+            (EffectSettings::Compressor(s) | EffectSettings::Expander(s), Band::Curve(_)) => {
+                Band::Curve(Box::new(s.clone()))
+            }
             _ => return None,
         };
         (current == p.before).then(|| preview.clone())
@@ -255,9 +257,10 @@ impl State {
                         .find(|b| b.id == band.id)
                         .ok_or("Effect preview band is unavailable")? = band.clone()
                 }
-                (EffectSettings::Compressor(s), Band::Curve(settings)) => {
-                    *s = settings.as_ref().clone()
-                }
+                (
+                    EffectSettings::Compressor(s) | EffectSettings::Expander(s),
+                    Band::Curve(settings),
+                ) => *s = settings.as_ref().clone(),
                 _ => return Err("Effect preview effect changed".into()),
             }
             plan.project

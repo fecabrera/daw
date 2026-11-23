@@ -1,0 +1,17 @@
+[package]
+name = "daw-expander-editor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "BSD-2-Clause"
+
+[lib]
+path = "../compressor-editor/src/lib.rs"
+
+[dependencies]
+daw-unit-core.workspace = true
+daw-drive-plugin = { package = "daw-expander-plugin", path = "../expander-plugin" }
+daw-plugin-support.workspace = true
+daw-plugin-window.workspace = true
+daw-unit-ui.workspace = true
+egui.workspace = true

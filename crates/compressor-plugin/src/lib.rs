@@ -1,4 +1,4 @@
-//! Format-neutral Compressor plugin contract over the portable unit.
+//! Format-neutral Compressor and Expander plugin contract over the portable unit.
 #[path = "../../drive-v2-plugin/src/exchange.rs"]
 mod exchange;
 mod mapping;
@@ -7,7 +7,7 @@ mod processor;
 #[path = "../../saturator-plugin/src/state.rs"]
 mod state;
 pub use exchange::StateExchange;
-pub use parameters::{Parameter, ParameterError, ParameterInfo, Scale};
+pub use parameters::{DIRECTION, Parameter, ParameterError, ParameterInfo, Scale};
 pub use processor::{ConfigurationError, Processor, SUPPORTED_RATES};
 pub use state::{MAX_STATE_BYTES, PluginState, STATE_VERSION, StateError};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,7 +54,11 @@ mod meter;
 pub use meter::{METER_VALUES, OutputMeter, meter_values, receive_meter, reset_meter};
 
 use daw_compressor::Compressor as Dsp;
-const MAGIC: &[u8; 8] = b"DAWCOMPR";
+use daw_unit_core::DynamicsDirection;
+const MAGIC: &[u8; 8] = match DIRECTION {
+    DynamicsDirection::Compressor => b"DAWCOMPR",
+    DynamicsDirection::Expander => b"DAWEXP01",
+};
 /// Fixed portable DSP latency, including bypass.
 pub const LATENCY_FRAMES: u32 = 0;
 
@@ -65,11 +69,17 @@ pub fn latency_frames(_rate: u32) -> u32 {
 
 /// Conservative tail bound in samples; histories continue on quiet blocks.
 pub fn tail_frames(rate: u32) -> u32 {
-    rate.saturating_mul(4)
+    match DIRECTION {
+        DynamicsDirection::Compressor => rate.saturating_mul(4),
+        DynamicsDirection::Expander => 0,
+    }
 }
 
 /// Format classification does not alter product identity.
-pub const CLAP_FEATURE: &std::ffi::CStr = c"compressor";
+pub const CLAP_FEATURE: &std::ffi::CStr = match DIRECTION {
+    DynamicsDirection::Compressor => c"compressor",
+    DynamicsDirection::Expander => c"expander",
+};
 pub const VST3_CATEGORIES: &str = "Fx|Dynamics|Stereo";
 pub const USES_TRANSPORT: bool = false;
 

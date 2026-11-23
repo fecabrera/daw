@@ -1,12 +1,13 @@
 use crate::{meters, panels, theme};
 use daw_core::{CompressorSettings, ModulationParameter as Parameter};
+use daw_unit_core::DynamicsDirection;
 pub(super) use daw_unit_ui::compressor::Bounds;
 use egui::{Rect, Ui, Vec2};
 
 pub(super) fn show<'a>(
     ui: &mut Ui,
     settings: &mut CompressorSettings,
-    dimensions: (bool, f32),
+    dimensions: (bool, f32, DynamicsDirection),
     reduction_db: impl Into<meters::GainReduction<'a>>,
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
@@ -37,7 +38,7 @@ pub(super) fn show<'a>(
 fn show_inner(
     ui: &mut Ui,
     settings: &mut CompressorSettings,
-    dimensions: (bool, f32),
+    dimensions: (bool, f32, DynamicsDirection),
     reduction_db: meters::GainReduction<'_>,
     sources: &[crate::modulation_panel::Source],
     live: Option<daw_engine::ModulationSnapshot>,
@@ -47,7 +48,7 @@ fn show_inner(
         Option<daw_unit_core::LevelHistoryReading>,
     ),
 ) -> (Bounds, egui::Response) {
-    let (compact, height) = dimensions;
+    let (compact, height, direction) = dimensions;
     let (level, detector_level, history) = monitor;
     let reduction_db = reduction_db.for_unit(settings.enabled);
     let bases = [
@@ -85,14 +86,14 @@ fn show_inner(
     let mut collapsed = settings.collapsed;
     let result = panels::PanelStyle { margin: 0, ..panel }.unit_in_lane(
         ui,
-        ("Compressor", compact),
+        (direction.name(), compact),
         height,
         &mut enabled,
         &mut collapsed,
         |ui| {
             ui.horizontal_top(|ui| {
  ui.spacing_mut().item_spacing = Vec2::new(0.0, f32::from(theme::TOOLBAR_PADDING));
- bounds = daw_unit_ui::compressor::show(ui, settings, compact, crate::envelope_panel::body_height(compact), daw_unit_ui::compressor::Controls { markers:&markers, reduction:reduction_db, level, graph:daw_unit_ui::compressor_curve::Input { live_edits:false, detector_level, history } });
+ bounds = daw_unit_ui::compressor::show_with_direction(ui, settings, compact, crate::envelope_panel::body_height(compact), daw_unit_ui::compressor::Controls { markers:&markers, reduction:reduction_db, level, graph:daw_unit_ui::compressor_curve::Input { live_edits:false, detector_level, history } }, direction);
 if open {
 
                     crate::modulation_panel::body(ui, &mut settings.modulations, sources, <CompressorSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_PARAMETERS, <CompressorSettings as daw_unit_core::ModulationDestinationSettings>::MODULATION_SCOPE, compact);

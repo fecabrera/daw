@@ -99,6 +99,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Filter](effects/filter.md)
 - [Auto-filter](effects/auto-filter.md)
 - [Compressor](effects/compressor.md)
+- [Expander](effects/expander.md)
 - [Multiband Compressor](effects/multiband-compressor.md)
 - [OTT](effects/ott.md)
 - [Limiter](effects/limiter.md)

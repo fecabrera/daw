@@ -70,7 +70,7 @@ fn paint_reference(
     let _ = (reduction, gains, levels);
     use daw_unit_ui::layout::unit_control_height;
     let _ = {
-        daw_unit_ui::compressor::show(
+        daw_unit_ui::compressor::show_with_direction(
             ui,
             settings,
             false,
@@ -85,6 +85,7 @@ fn paint_reference(
                     history: model.output_meter.bands.history().and_then(|h| h.reading()),
                 },
             },
+            daw_drive_plugin::DIRECTION,
         )
     };
 }
