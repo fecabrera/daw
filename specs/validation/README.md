@@ -2,6 +2,16 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Late effect publication — 2026-11-23
+
+The regression test stages late control and topology results after the callback
+has applied their revision. It reproduced the outstanding-publication assertion
+before the fix and passed after it. All 112 output tests and 200 repetitions of
+the concurrent publication test passed on macOS across debug and release.
+Formatting, strict workspace Clippy, and the signed macOS app build passed.
+Both workspace suites passed with native Audio Unit registration excluded.
+Linux and Windows CI results for this change are pending.
+
 ## Expander knee handle — 2026-11-23
 
 A graph test checks equal curve lengths on either side of the soft-knee

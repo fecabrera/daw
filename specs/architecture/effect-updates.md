@@ -105,6 +105,9 @@ desired revision. Rejecting one removes only its own publication record. The
 callback acknowledges the exact installed publication, and retirement processing
 refreshes that acknowledgment before releasing records. This prevents a stale
 sibling from removing the active metadata during a concurrent drain.
+The control thread discards worker results for a revision once it observes
+completion. Previously queued siblings can still retire after that acknowledgment.
+
 
 Seek/Play/Stop preparation retains its separate transport intent and supersedes
 effect candidates through the existing request revision. Stop retains immediate

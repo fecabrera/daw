@@ -1308,6 +1308,38 @@ fn rejecting_a_duplicate_revision_cannot_erase_the_applied_publication_before_ac
 }
 
 #[test]
+fn late_effect_candidates_are_discarded_after_the_revision_is_applied() {
+    let (mut output, mut callback) = crate::preparation_tests::controlled_output(48_000);
+    let previous = output.plan.clone();
+    let mut desired = (*previous).clone();
+    desired.project.tracks[0].effects.push(E::drive());
+    let desired = Arc::new(desired);
+    let bindings = preparation::Bindings::prepare(&desired, &output.bindings);
+    let candidate = || effect_updates::Ready {
+        revision: 1,
+        desired: desired.clone(),
+        bindings: bindings.clone(),
+        prepared: Ok(Some(prepared(&previous, (*desired).clone(), 0, 1))),
+        fallback: None,
+    };
+    output.plan = desired.clone();
+    output.prepare_revision = 1;
+    output.status.requested_revision.store(1, Ordering::Release);
+    output.pending_effects = Some(candidate());
+    output.drain();
+    realtime(|| callback.update());
+    assert_eq!(output.applied_revision(), 1);
+
+    // Both workers can finish before the control thread observes the callback's ACK.
+    output.pending_controls = Some(candidate());
+    output.pending_effects = Some(candidate());
+    output.drain();
+    assert!(output.current_plan_published());
+    assert!(output.published_plans.is_empty());
+    assert_eq!(output.active_publication, callback.renderer.publication);
+}
+
+#[test]
 fn concurrent_control_and_topology_publication_keeps_the_final_acknowledged_snapshot() {
     let (mut output, mut callback) = crate::preparation_tests::controlled_output(48_000);
     output.active_plan = Some(output.plan.clone());
@@ -1340,7 +1372,10 @@ fn concurrent_control_and_topology_publication_keeps_the_final_acknowledged_snap
         }
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    while output.preparing() && std::time::Instant::now() < deadline {
+    // A queued sibling can still need retirement after the final ACK.
+    while (output.preparing() || !output.published_plans.is_empty())
+        && std::time::Instant::now() < deadline
+    {
         output.drain();
         std::thread::sleep(std::time::Duration::from_millis(1));
     }

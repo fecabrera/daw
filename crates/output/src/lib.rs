@@ -1638,7 +1638,11 @@ impl AudioOutput {
         {
             self.pending_controls = Some(ready);
         }
-        if let Some(mut ready) = self.pending_controls.take() {
+        // A sibling candidate may already have completed this revision. Drop
+        // late results here, including ones retained while the queue was full.
+        if let Some(mut ready) = self.pending_controls.take()
+            && ready.revision != self.applied_revision()
+        {
             if self.saturator_controls_only()
                 && !matches!(&ready.prepared, Ok(Some(p)) if p.complete)
             {
@@ -1680,11 +1684,12 @@ impl AudioOutput {
         }
         if let Some(ready) = self.effects.take()
             && ready.revision == self.prepare_revision
-            && self.status.applied_revision.load(Ordering::Acquire) != ready.revision
         {
             self.pending_effects = Some(ready);
         }
-        if let Some(mut ready) = self.pending_effects.take() {
+        if let Some(mut ready) = self.pending_effects.take()
+            && ready.revision != self.applied_revision()
+        {
             match ready.prepared {
                 Ok(Some(mut prepared)) => {
                     let publication = self.publication_id();
