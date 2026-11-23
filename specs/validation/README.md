@@ -2,6 +2,15 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Compressor and Expander handle deselection — 2026-11-23
+
+An input test selects and deselects each handle. It covers clicks in the
+plot and elsewhere in the editor, preserves selection on hover, and checks
+that no settings change. The shared UI and both standalone editor test
+suites passed. Formatting, strict workspace Clippy, and the signed macOS
+app build passed. The debug and release workspace suites passed with native
+Audio Unit registration excluded.
+
 ## Late effect publication — 2026-11-23
 
 The regression test stages late control and topology results after the callback

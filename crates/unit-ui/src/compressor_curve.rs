@@ -241,6 +241,8 @@ pub fn show_with_direction(
                     .on_hover_cursor(egui::CursorIcon::Grab);
                 if response.clicked() || response.is_pointer_button_down_on() {
                     selected = true;
+                } else if selected && response.clicked_elsewhere() {
+                    selected = false;
                 }
                 if ui.is_enabled()
                     && ui.input(|i| i.focused)
@@ -467,6 +469,26 @@ mod tests {
         enabled: bool,
         compact: bool,
     ) -> Bounds {
+        draw_direction(
+            ctx,
+            s,
+            events,
+            (live, DynamicsDirection::Compressor),
+            focused,
+            enabled,
+            compact,
+        )
+    }
+    fn draw_direction(
+        ctx: &egui::Context,
+        s: &mut CompressorSettings,
+        events: Vec<egui::Event>,
+        mode: (bool, DynamicsDirection),
+        focused: bool,
+        enabled: bool,
+        compact: bool,
+    ) -> Bounds {
+        let (live, direction) = mode;
         let mut b = Bounds::default();
         let mut out = ctx.run_ui(
             egui::RawInput {
@@ -478,7 +500,7 @@ mod tests {
             |ui| {
                 b = ui
                     .add_enabled_ui(enabled, |ui| {
-                        show(
+                        show_with_direction(
                             ui,
                             s,
                             (
@@ -499,6 +521,7 @@ mod tests {
                                 }),
                             },
                             0.0.into(),
+                            direction,
                         )
                     })
                     .inner;
@@ -513,6 +536,54 @@ mod tests {
         out.textures_delta.clear();
         b
     }
+    #[test]
+    fn clicking_away_deselects_both_dynamics_handles() {
+        for direction in [DynamicsDirection::Compressor, DynamicsDirection::Expander] {
+            let ctx = context();
+            let mut settings = CompressorSettings::default();
+            let before = settings.clone();
+            let mut draw = |events| {
+                let bounds = draw_direction(
+                    &ctx,
+                    &mut settings,
+                    events,
+                    (false, direction),
+                    true,
+                    true,
+                    false,
+                );
+                let shapes = ctx.data(|d| {
+                    d.get_temp::<Vec<egui::epaint::ClippedShape>>(egui::Id::new(
+                        "compressor-curve-shapes-test",
+                    ))
+                    .unwrap()
+                });
+                let selected = shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::Circle(c) if c.center == bounds.handle.center() && c.radius == 6.5
+                ));
+                assert!(bounds.edits.iter().all(|(_, edit)| !edit.changed()));
+                (bounds, selected)
+            };
+            let (bounds, selected) = draw(vec![]);
+            assert!(!selected);
+            let handle = bounds.handle.center();
+            for away in [
+                bounds.plot.left_center(),
+                bounds.section.right_center() + Vec2::new(20.0, 0.0),
+            ] {
+                draw(vec![
+                    egui::Event::PointerMoved(handle),
+                    button(handle, true),
+                ]);
+                assert!(draw(vec![button(handle, false)]).1);
+                assert!(draw(vec![egui::Event::PointerMoved(away)]).1);
+                draw(vec![button(away, true)]);
+                assert!(!draw(vec![button(away, false)]).1);
+            }
+            assert_eq!(settings, before);
+        }
+    }
+
     #[test]
     fn history_is_painted_behind_the_handle_and_bypass_masks_it() {
         let ctx = context();

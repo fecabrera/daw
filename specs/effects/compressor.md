@@ -107,7 +107,8 @@ Threshold (Ratio only); Option/Alt locks Ratio (Threshold only). Both modifiers
 lock both values. Always consume both pointer deltas, including locked axes, so
 pressing or releasing a modifier mid-drag cannot apply earlier motion or jump.
 Shift reduces only future movement tenfold. Press and
-modifier-only frames retain values. Tooltip/accessibility identify both controls.
+modifier-only frames retain values. Tooltip/accessibility identify both controls. Clicking outside the handle clears
+its selection. The shared Expander curve uses the same selection behavior.
 
 Keep a single two-parameter draft, independent of project state. DAW knob readouts
 follow the draft; coalesced graph-preview plans use the existing background worker.
