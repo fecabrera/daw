@@ -15460,3 +15460,11 @@ The focused UI and editor tests, debug and release workspace suites, and strict 
 ### Symmetric Transient Shaper preview scale
 
 The updated egui regression confirmed that the fixed −40 to +40 dB axis puts the neutral curve at the vertical midpoint. It also checked that the tick positions stay fixed and both extreme curves fit. The focused UI and editor tests, debug and release workspace suites, strict workspace Clippy, and strict signature verification of the rebuilt macOS debug app passed. The workspace suites skipped the existing native Audio Unit registration check.
+
+## Dialog opacity and movement — 2026-11-22
+
+A workspace regression checked that Settings and project prompts block root input at full paint opacity and keep the global dialog style intact. The vendored eframe policy tests passed in an isolated harness. They verified that movement of presented secondary dialogs can reuse the current frame and that resize events keep the redraw path. Both eframe backends compiled with WGPU and Glow enabled.
+
+The debug and release workspace suites passed with `--offline --locked --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`. Formatting, strict workspace Clippy, and strict signature verification of the local macOS app passed.
+
+The signed macOS app passed `--settings-smoke-test` and `--project-prompts-smoke-test` outside the sandbox. These checks cover presentation, fitted client sizing, and dismissal. Manual drag smoothness and native Windows and Linux testing remain open.

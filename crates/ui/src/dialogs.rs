@@ -57,6 +57,12 @@ impl<'a, T: Copy> FooterAction<'a, T> {
     }
 }
 
+/// Block workspace interaction while retaining its normal paint opacity.
+pub(super) fn disable_workspace(ui: &mut egui::Ui) {
+    ui.visuals_mut().disabled_alpha = 1.0;
+    ui.disable();
+}
+
 /// Shared application dialog. The caller handles the selected action.
 pub struct Dialog<'a, T> {
     title: &'a str,

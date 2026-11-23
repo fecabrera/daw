@@ -35,6 +35,17 @@ pub fn forget(ctx: &Context, id: ViewportId) {
     ctx.data_mut(|data| data.remove::<Status>(key(id)));
 }
 
+/// A presented dialog can move using its last submitted frame. Avoid rendering
+/// for each move notification. Resize and scale changes still request frames.
+pub(crate) fn compositor_handles_move(
+    ctx: &Context,
+    id: Option<ViewportId>,
+    event: &winit::event::WindowEvent,
+) -> bool {
+    matches!(event, winit::event::WindowEvent::Moved(_))
+        && id.is_some_and(|id| matches!(status(ctx, id), Some(Status::Presented(_))))
+}
+
 pub(crate) fn is_failed(ctx: &Context, id: ViewportId) -> bool {
     matches!(status(ctx, id), Some(Status::Failed(_)))
 }
@@ -58,6 +69,33 @@ pub(crate) fn presented(ctx: &Context, id: ViewportId, window: &Arc<Window>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_presented_dialog_moves_use_the_cached_frame() {
+        use winit::{
+            dpi::{PhysicalPosition, PhysicalSize},
+            event::WindowEvent,
+        };
+        let ctx = Context::default();
+        let dialog = ViewportId::from_hash_of("dialog");
+        let moved = WindowEvent::Moved(PhysicalPosition::new(100, 50));
+        watch(&ctx, dialog);
+        assert!(!compositor_handles_move(&ctx, Some(dialog), &moved));
+        ctx.data_mut(|data| data.insert_temp(key(dialog), Status::Presented(Weak::new())));
+        assert!(compositor_handles_move(&ctx, Some(dialog), &moved));
+        assert!(!compositor_handles_move(
+            &ctx,
+            Some(ViewportId::ROOT),
+            &moved
+        ));
+        assert!(!compositor_handles_move(
+            &ctx,
+            Some(dialog),
+            &WindowEvent::Resized(PhysicalSize::new(420, 320))
+        ));
+        forget(&ctx, dialog);
+        assert!(!compositor_handles_move(&ctx, Some(dialog), &moved));
+    }
 
     #[test]
     fn child_failure_is_scoped_and_quarantined() {

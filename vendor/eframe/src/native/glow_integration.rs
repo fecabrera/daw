@@ -1011,7 +1011,9 @@ impl GlowWinitRunning<'_> {
             log::trace!("Ignoring event: no viewport_id");
         }
 
-        if event_response.repaint {
+        if event_response.repaint
+            && !crate::native_viewport::compositor_handles_move(&self.integration.egui_ctx, viewport_id, event)
+        {
             if repaint_asap {
                 EventResult::RepaintNow(window_id)
             } else {

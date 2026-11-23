@@ -1041,7 +1041,9 @@ impl WgpuWinitRunning<'_> {
 
         if integration.should_close() {
             EventResult::CloseRequested
-        } else if event_response.repaint {
+        } else if event_response.repaint
+            && !crate::native_viewport::compositor_handles_move(&integration.egui_ctx, viewport_id, event)
+        {
             if repaint_asap {
                 EventResult::RepaintNow(window_id)
             } else {

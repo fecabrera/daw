@@ -2566,7 +2566,7 @@ impl DawUi {
             self.timeline_clips_focused = false;
         }
         if self.settings_modal() || self.project_prompt_kind().is_some() {
-            ui.disable();
+            dialogs::disable_workspace(ui);
         }
         self.themes.poll(ui.ctx(), &self.settings);
         self.sync_settings_theme(ui.ctx());
@@ -2725,7 +2725,7 @@ impl DawUi {
             self.view_shortcuts(&ctx);
         }
         if ui.is_enabled() && (self.settings_modal() || self.project_prompt_kind().is_some()) {
-            ui.disable();
+            dialogs::disable_workspace(ui);
         }
         egui::Panel::top("toolbar")
             .frame(egui::Frame::new().fill(
@@ -9790,6 +9790,34 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn modal_dialogs_block_workspace_input_at_full_opacity() {
+        for settings in [true, false] {
+            let mut app = DawUi::default();
+            let ctx = context();
+            if settings {
+                app.open_settings();
+            } else {
+                app.unsaved_prompt = true;
+            }
+
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
+                    ..Default::default()
+                },
+                |ui| {
+                    app.show(ui);
+                    assert!(!ui.is_enabled());
+                    assert_eq!(ui.opacity(), 1.0);
+                    assert_eq!(ui.visuals().disabled_alpha, 1.0);
+                    assert!(ctx.global_style().visuals.disabled_alpha < 1.0);
+                },
+            );
+            output.textures_delta.clear();
+        }
+    }
+
     pub(super) fn frame(app: &mut DawUi, ctx: &egui::Context, events: Vec<egui::Event>) {
         let size = ctx
             .data(|d| d.get_temp::<Vec2>(egui::Id::new("test-frame-size")))

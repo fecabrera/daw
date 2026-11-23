@@ -56,10 +56,15 @@ that only offers Cancel. Place Open last saved in the secondary position in
 the recovery footer.
 
 Treat the active native dialog as modal to the main window. The desktop
-host keeps the dialog above the owner and blocks owner input. If another
-dialog takes over, transfer ownership to the active dialog. Native pickers
-retain their own modality. If the desktop host falls back to an embedded
-dialog, keep workspace widgets disabled and limit input to the modal layer.
+host keeps the dialog above the owner and blocks owner input at normal
+workspace opacity. If another dialog takes over, transfer ownership to the
+active dialog. Native pickers retain their own modality. If the desktop host
+falls back to an embedded dialog, keep workspace widgets disabled and limit
+input to the modal layer.
+
+The compositor moves presented eframe dialogs using their existing frame.
+Movement alone does not request a redraw. Resize, scale changes, and content
+updates still repaint.
 
 Keep one Settings session and block main-window editing through child
 retirement. Repeated Settings requests focus the current session. Native
