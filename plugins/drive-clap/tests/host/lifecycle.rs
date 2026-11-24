@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::mpsc::{self, TryRecvError};
 
 #[test]
 fn metadata_configuration_failures_reactivation_and_instance_isolation() {
@@ -148,78 +149,94 @@ fn concurrent_active_recall_and_save_publish_coherent_snapshots() {
     assert!(unsafe { (*plugin.pointer).activate.unwrap()(plugin.pointer, 48000.0, 1, 32) });
     plugin.active = true;
     let pointer = plugin.pointer as usize;
-    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let worker_done = done.clone();
-    let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
-    let ready = barrier.clone();
-    let counts = plugin.counts;
-    let worker = std::thread::spawn(move || {
-        let pointer = pointer as *const clap_plugin;
-        assert!(unsafe { (*pointer).start_processing.unwrap()(pointer) });
-        let mut channels = [[0.25_f32; 32], [-0.125; 32]];
-        let mut pointers = [channels[0].as_mut_ptr(), channels[1].as_mut_ptr()];
-        let input = clap_audio_buffer {
-            data32: pointers.as_mut_ptr(),
-            data64: ptr::null_mut(),
-            channel_count: 2,
-            latency: 0,
-            constant_mask: 0,
-        };
-        let mut output = input;
-        let process = clap_process {
-            steady_time: -1,
-            frames_count: 32,
-            transport: ptr::null(),
-            audio_inputs: &input,
-            audio_outputs: &mut output,
-            audio_inputs_count: 1,
-            audio_outputs_count: 1,
-            in_events: ptr::null(),
-            out_events: ptr::null(),
-        };
-        ready.wait();
-        let mut blocks = 0;
-        while !worker_done.load(Ordering::Acquire) {
-            if let Some((begin, _)) = counts {
-                unsafe {
-                    begin();
+    let (expected, saved, blocks) = std::thread::scope(|scope| {
+        let (commands, audio_commands) = mpsc::channel();
+        let (audio_progress, progress) = mpsc::channel();
+        let counts = plugin.counts;
+        let worker = scope.spawn(move || {
+            let pointer = pointer as *const clap_plugin;
+            assert!(unsafe { (*pointer).start_processing.unwrap()(pointer) });
+            let mut channels = [[0.25_f32; 32], [-0.125; 32]];
+            let mut pointers = [channels[0].as_mut_ptr(), channels[1].as_mut_ptr()];
+            let input = clap_audio_buffer {
+                data32: pointers.as_mut_ptr(),
+                data64: ptr::null_mut(),
+                channel_count: 2,
+                latency: 0,
+                constant_mask: 0,
+            };
+            let mut output = input;
+            let process = clap_process {
+                steady_time: -1,
+                frames_count: 32,
+                transport: ptr::null(),
+                audio_inputs: &input,
+                audio_outputs: &mut output,
+                audio_inputs_count: 1,
+                audio_outputs_count: 1,
+                in_events: ptr::null(),
+                out_events: ptr::null(),
+            };
+            audio_progress.send(()).unwrap();
+            let mut blocks = 0;
+            loop {
+                let checkpoint = match audio_commands.try_recv() {
+                    Ok(()) => true,
+                    Err(TryRecvError::Empty) => false,
+                    Err(TryRecvError::Disconnected) => break,
+                };
+                if let Some((begin, _)) = counts {
+                    unsafe {
+                        begin();
+                    }
+                }
+                let status = unsafe { (*pointer).process.unwrap()(pointer, &process) };
+                if let Some((_, end)) = counts {
+                    let (mut a, mut d) = (0, 0);
+                    unsafe {
+                        end(&mut a, &mut d);
+                    }
+                    assert_eq!((a, d), (0, 0));
+                }
+                assert_eq!(status, CLAP_PROCESS_CONTINUE);
+                blocks += 1;
+                if checkpoint {
+                    audio_progress.send(()).unwrap();
                 }
             }
-            let status = unsafe { (*pointer).process.unwrap()(pointer, &process) };
-            if let Some((_, end)) = counts {
-                let (mut a, mut d) = (0, 0);
-                unsafe {
-                    end(&mut a, &mut d);
-                }
-                assert_eq!((a, d), (0, 0));
+            unsafe {
+                (*pointer).stop_processing.unwrap()(pointer);
             }
-            assert_eq!(status, CLAP_PROCESS_CONTINUE);
-            blocks += 1;
+            blocks
+        });
+        progress.recv().expect("audio worker did not start");
+        let mut expected = PluginState::default();
+        let mut saved = 0;
+        for index in 0..1000 {
+            if index == 500 {
+                // Require a checked audio block between the two halves of the recall/save loop.
+                commands.send(()).unwrap();
+                progress
+                    .recv()
+                    .expect("audio worker did not complete a block");
+            }
+            let value = index as f64 / 1000.0;
+            for parameter in [P::Gain, P::Tone, P::ColorStrength] {
+                expected.set(parameter, value).unwrap();
+            }
+            expected
+                .set(P::ColorFrequency, 250.0 + 1750.0 * value)
+                .unwrap();
+            plugin.load(expected);
+            if let Some(bytes) = plugin.save(8) {
+                assert_eq!(PluginState::decode(&bytes).unwrap(), expected);
+                saved += 1;
+            }
         }
-        unsafe {
-            (*pointer).stop_processing.unwrap()(pointer);
-        }
-        blocks
+        drop(commands);
+        (expected, saved, worker.join().unwrap())
     });
-    barrier.wait();
-    let mut expected = PluginState::default();
-    let mut saved = 0;
-    for index in 0..1000 {
-        let value = index as f64 / 1000.0;
-        for parameter in [P::Gain, P::Tone, P::ColorStrength] {
-            expected.set(parameter, value).unwrap();
-        }
-        expected
-            .set(P::ColorFrequency, 250.0 + 1750.0 * value)
-            .unwrap();
-        plugin.load(expected);
-        if let Some(bytes) = plugin.save(8) {
-            assert_eq!(PluginState::decode(&bytes).unwrap(), expected);
-            saved += 1;
-        }
-    }
-    done.store(true, Ordering::Release);
-    assert!(worker.join().unwrap() > 0);
+    assert!(blocks > 0);
     assert!(saved > 0);
     assert_eq!(
         PluginState::decode(&plugin.save(8).unwrap()).unwrap(),
