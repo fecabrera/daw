@@ -11,6 +11,12 @@ has its own log. Workspace tests use the Cargo test profile at optimization leve
 1 with debug assertions and integer overflow checks enabled. Release validation
 follows the [repository validation instructions](repository-instructions/build-and-validation-workflow.md#validation).
 
+The headless CLI smoke check reuses the debug CLI from the plugin-hosting build
+on all three platforms. Linux test jobs use line-table debug information for
+the Cargo dev and test profiles and disable incremental compilation to save disk
+space. The Linux test log artifact includes `disk-usage.log` with free space
+and build directory sizes at several stages of the job.
+
 | Platform | Runner | Download |
 | --- | --- | --- |
 | Windows x64 | `windows-2025` | `DAW-windows-x64`: portable `daw-desktop.exe`, project license, and dependency notices |

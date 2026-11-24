@@ -39,6 +39,14 @@ jobs:
           mkdir -p work/ci-logs
           printf 'Runner: %s / %s\nCommit: %s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$GITHUB_SHA" > work/ci-logs/runner.log
 
+      - name: Reduce Linux test build disk usage
+        if: runner.os == 'Linux'
+        run: |
+          printf '%s\n' \
+            'CARGO_PROFILE_TEST_DEBUG=line-tables-only' \
+            'CARGO_PROFILE_DEV_DEBUG=line-tables-only' \
+            'CARGO_INCREMENTAL=0' >> "$GITHUB_ENV"
+
       - name: Set up native build
         id: setup
         uses: ./.github/actions/setup-build
@@ -80,6 +88,10 @@ jobs:
           fi
           printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
 
+      - name: Log Linux disk usage after setup
+        if: runner.os == 'Linux'
+        run: bash tools/capture_ci_log.sh work/ci-logs/disk-usage.log bash tools/log_ci_disk_usage.sh "After setup"
+
       - name: Check formatting
         id: formatting
         run: |
@@ -111,6 +123,10 @@ jobs:
         id: doctests
         run: bash tools/capture_ci_log.sh work/ci-logs/doctests.log cargo test --locked --workspace --doc
 
+      - name: Log Linux disk usage after workspace tests
+        if: runner.os == 'Linux'
+        run: bash tools/capture_ci_log.sh --append work/ci-logs/disk-usage.log bash tools/log_ci_disk_usage.sh "After workspace tests and doctests"
+
       - name: Check Linux GTK window modes
         id: gtk_window
         if: runner.os == 'Linux'
@@ -141,11 +157,18 @@ jobs:
           rustup target add x86_64-apple-darwin
           bash tools/capture_ci_log.sh work/ci-logs/intel-check.log cargo check --locked --workspace --all-targets --target x86_64-apple-darwin
 
+      - name: Log Linux disk usage before CLI smoke checks
+        if: runner.os == 'Linux'
+        run: bash tools/capture_ci_log.sh --append work/ci-logs/disk-usage.log bash tools/log_ci_disk_usage.sh "Before headless CLI"
+
       - name: Check the headless CLI
         id: cli
-        run: |
-          bash tools/capture_ci_log.sh work/ci-logs/cli-build.log cargo build --locked -p daw-cli
-          bash tools/capture_ci_log.sh work/ci-logs/cli.log python tools/check_cli.py
+        # Plugin hosting already built the native debug CLI that check_cli.py expects.
+        run: bash tools/capture_ci_log.sh work/ci-logs/cli.log python tools/check_cli.py
+
+      - name: Log final Linux disk usage
+        if: always() && runner.os == 'Linux' && steps.nextest_setup.outcome == 'success'
+        run: bash tools/capture_ci_log.sh --append work/ci-logs/disk-usage.log bash tools/log_ci_disk_usage.sh "Before log upload"
 
       - name: Upload test logs
         id: logs
