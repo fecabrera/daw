@@ -2,6 +2,16 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Nextest in workspace CI — 2026-11-23
+
+The pinned Nextest archives for Linux, macOS, and Windows match their SHA-256
+checksums. On macOS, Cargo and Nextest discovered the same 303 test binaries,
+and the Cargo build metadata confirmed debug assertions and overflow checks.
+The CI commands passed 3,804 workspace tests with Nextest, 22 native Audio Unit
+registration tests in the serial step, and both workspace doctests with Cargo.
+The native registration step ran outside the local sandbox. Hosted Linux,
+macOS, and Windows workflow runs are pending.
+
 ## Compressor and Expander handle deselection — 2026-11-23
 
 An input test selects and deselects each handle. It covers clicks in the
