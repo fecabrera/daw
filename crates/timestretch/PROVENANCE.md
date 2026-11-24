@@ -163,3 +163,22 @@ Add held-tone level and fit/injected-attack controls; preserve original failure
 logs. New real-audio listening remains pending. Detection code/identities are
 unchanged; stretch revision 7 invalidates rendering caches. Resource estimates
 now include history scratch and onset-carrying timing regions.
+
+
+## Phase continuity and glide estimation — revision 8
+
+The revision promotes the local comparison prototype. It uses the phase-vocoder
+peak-locking research already cited above as background. The peak matching,
+confidence ramps, startup RMS check, and short-window midpoint estimator were
+implemented independently during comparison against the public Rubber Band API.
+No Rubber Band implementation material was used. The short estimator subtracts
+the phase advance measured by the long analysis and supplies a new target
+advance from three local short analyses. The long spectrum retains its
+magnitudes and overlap window. The fixed-width and bass-band bypass experiments
+served as diagnostics. The bypass is outside the revision-8 algorithm.
+
+The existing spectrum workspace gains two peak-state tables and bounded short
+analysis scratch. Increase admission to 14 MiB for spectral and tracking
+workspace. No new dependencies were added. Processing and pitch cache identities
+continue to include the stretch revision. The full algorithm and its
+experimental limits are in the [stretch specification](../../specs/audio/timestretch.md#long-window-synthesis-and-phase-continuity--revision-8).

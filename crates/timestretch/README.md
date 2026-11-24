@@ -26,9 +26,9 @@ assert_eq!(output.len(), input.len());
 # Ok::<(), timestretch::Error>(())
 ```
 
-`PitchRequest` composes the existing `Request` with a validated `Pitch`. Existing constructors and request fields retain their API. `Pitch::UNISON` delegates to the same stretch path, including exact sample bits when duration is also 1. Processing identity is exported as `REVISION` (currently 7); use that constant in caches and reports. Nonzero-pitch consumers must also identify the pitch offset and exported `PITCH_REVISION` (currently 2).
+`PitchRequest` composes the existing `Request` with a validated `Pitch`. Existing constructors and request fields retain their API. `Pitch::UNISON` delegates to the same stretch path, including exact sample bits when duration is also 1. Processing identity is exported as `REVISION` (currently 8); use that constant in caches and reports. Nonzero-pitch consumers must also identify the pitch offset and exported `PITCH_REVISION` (currently 2).
 
-Pitch processing combines linked-stereo stretching with a shared band-limited resampling filter. Offsets beyond ±24 use up to six bounded passes to limit memory. Large upward shifts resample before spectral processing; downward shifts retain the original order. `Pitch::stages()` exposes the common pass schedule for host adapters. It does not preserve vocal formants or support automation. Upward shifts remove frequencies that would exceed the output Nyquist frequency (half the sample rate); upper-band attenuation and ringing near sharp boundaries are possible. No normalization or clipping is applied. Very short results retain exact length, but few samples cannot establish a meaningful pitch. Broader listening acceptance is complete for revision 7 by explicit user acceptance; performance acceptance remains incomplete. See the [acceptance decision](../../specs/validation/transient-lowend-r7.md#broader-listening-acceptance--2026-11-08).
+Pitch processing combines linked-stereo stretching with a shared band-limited resampling filter. Offsets beyond ±24 use up to six bounded passes to limit memory. Large upward shifts resample before spectral processing; downward shifts retain the original order. `Pitch::stages()` exposes the common pass schedule for host adapters. It does not preserve vocal formants or support automation. Upward shifts remove frequencies that would exceed the output Nyquist frequency (half the sample rate); upper-band attenuation and ringing near sharp boundaries are possible. No normalization or clipping is applied. Very short results retain exact length, but few samples cannot establish a meaningful pitch. Broader listening acceptance is complete for revision 7 by explicit user acceptance; revision 8 has targeted comparison coverage. Broader listening and performance checks remain open for revision 8. See the [acceptance decision](../../specs/validation/transient-lowend-r7.md#broader-listening-acceptance--2026-11-08).
 
 ## Progress and resources
 
@@ -49,12 +49,12 @@ The expanded release suite includes the six-rate tone and short-input matrices. 
 
 ## Experimental detector comparison
 
-Default processing is revision 7 with the combined energy/spectral detector
+Default processing is revision 8 with the combined energy/spectral detector
 (`energy-spectral-v5`), including pitch composition. To compare the unchanged
 energy baseline, call `Request::process_with_transient_detector` with
 `TransientDetector::Energy` and a progress/cancellation callback. Explicit-mode
 callers must include the detector identity as well as processing revision in
-caches/reports. DAW Integrated revisions 2–6 upgrade to revision 7 with rebuilt
+caches/reports. DAW Integrated revisions 2–7 upgrade to revision 8 with rebuilt
 prepared audio and a warning; Rubber Band remains the initial DAW backend. `detect_transients` exposes the same linked,
 sorted source-frame event positions for analysis. Its request validation and
 conservative full stretch memory estimate apply even to detection-only calls.

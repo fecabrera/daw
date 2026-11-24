@@ -108,7 +108,7 @@ These checks apply to the DAW adapter, not to other consumers of the engine/tool
 
 | ID | Test and pass condition |
 | --- | --- |
-| TI-01 | Each backend accepts only its current processing identity; opening Integrated revisions 2–6 explicitly upgrades to revision 7 with a warning and complete re-preparation, leaving the file unchanged until Save. Other unsupported revisions fail. New projects and projects with no saved engine select Rubber Band R3. Save/Open and Save As retain explicit Timestretch ID/revision. Unknown/unavailable choices error without substitution, current-session replacement, or saved-file mutation. |
+| TI-01 | Each backend accepts only its current processing identity; opening Integrated revisions 2–7 explicitly upgrades to revision 8 with a warning and complete re-preparation, leaving the file unchanged until Save. Other unsupported revisions fail. New projects and projects with no saved engine select Rubber Band R3. Save/Open and Save As retain explicit Timestretch ID/revision. Unknown/unavailable choices error without substitution, current-session replacement, or saved-file mutation. |
 | TI-02 | Project Settings dropdown labels are exactly Rubber Band and Integrated (experimental), mapping to `rubberband-r3` and `timestretch`. Use shared styles in both themes and mouse/keyboard navigation. Drafts do not process audio. Cancel/Escape and unchanged Apply preserve project, caches, playback, and dirty state. |
 | TI-03 | Applying a choice rebuilds all required source/ratio buffers from originals, publishes settings/audio/peaks together, stops playback on success, and marks modified. An engine-only change preserves coordinates, IDs, selection, loop, playhead, ratios, rate, and buffer. |
 | TI-04 | Failure/cancellation partway through multiple sources retains old engine, complete project/caches, dirty state, and active playback. Stale workers cannot publish after replacement. Combined engine/rate/name changes remain atomic. |
@@ -259,3 +259,13 @@ waveform/pre-echo gates stay unchanged. Verify worker resource admission after
 the 10 MiB/56-byte estimate change, source protection and revisions 2–6 migration
 to 7. Updated private auditions do not close the user's reopened listening issue
 until the user confirms the remaining low-end artifacts are resolved.
+
+
+## Revision 8 regression checks
+
+Keep the existing stationary bass, drum, stereo, pitch, length, resource, and
+cancellation checks. Test a smoothly fading harmonic glide at 8× against its
+known source pitch contour. Require a 95th-percentile error below 4 cents over
+the moving parts of that fixture. Verify that known project and preference
+revisions, including revision 7, upgrade to 8 and that future project revisions
+fail validation. The revision-7 listening decision applies to revision 7 only.

@@ -15524,3 +15524,35 @@ A workspace regression checked that Settings and project prompts block root inpu
 The debug and release workspace suites passed with `--offline --locked --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`. Formatting, strict workspace Clippy, and strict signature verification of the local macOS app passed.
 
 The signed macOS app passed `--settings-smoke-test` and `--project-prompts-smoke-test` outside the sandbox. These checks cover presentation, fitted client sizing, and dismissal. Manual drag smoothness and native Windows and Linux testing remain open.
+
+## Integrated time stretch revision 8 — 2026-11-24
+
+Promoted the gradual-handoff prototype with the startup guard fix and short
+glide estimator. See the [revision-8 specification](../audio/timestretch.md#long-window-synthesis-and-phase-continuity--revision-8).
+
+- The macOS arm64 release CLI reproduced all 48 auditioned prototype renders
+  bit for bit across 16 sources and 2×, 4×, and 8×. The inputs cover tones,
+  synthetic percussion, musical excerpts, one-shots, and the glide and level
+  controls. Reference versions use the public Rubber Band API.
+- Retained revision-7 processing for short broadband hits. The initial
+  unqualified synthesis floor widened isolated attacks and weakened a short
+  noise tail. Restricted short glide estimation to expansion of at least 2×
+  after a tightly spaced bass dyad exposed a false motion estimate at a smaller
+  internal ratio. The existing bass and transient tolerances remain in place.
+- Added an 8× dynamic glide regression and extended the project open, manifest
+  inspection, preference, and upgrade-notice checks to cover revision 8. The
+  focused debug migration and notice checks passed on macOS arm64.
+- Rubber Band R3 remains the default. Revision 8 still has open broader
+  listening, performance, Windows, and Linux gates. The prior revision-7
+  listening decision applies only to that revision.
+- The portable library and CLI passed 52 tests and doctests in each of the
+  debug-assertion and release profiles on macOS arm64. Two full acceptance
+  matrices remain ignored by the normal test command.
+- Workspace formatting, strict Clippy, and the DAW CLI smoke suite passed.
+  Debug and release workspace runs exposed a workflow fixture that still used
+  revision 8 as the invalid future revision. After the fixture update, the
+  project workflow suite passed all 84 tests in both profiles.
+- The debug workspace run hit an artifact-resolution error during the UI
+  doctest pass. The separate workspace doctest command passed.
+- Native Audio Unit registration returned no component inside the sandbox.
+  All 22 registration checks passed separately outside it in both profiles.

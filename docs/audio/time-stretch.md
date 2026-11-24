@@ -36,20 +36,17 @@ Open File > Project Settings and choose Time stretch engine.
 | Engine | Use |
 | --- | --- |
 | Rubber Band | Default for new and existing projects. |
-| Integrated (experimental) | Listening acceptance complete for revision 7. Performance and platform checks remain open. |
+| Integrated (experimental) | Revision 8. Use representative audio to audition it for your project. |
 
 Apply prepares the audio before changing the project. A successful engine change stops playback; press Play to audition it. Cancel or a preparation error retains the old engine and playback. If a saved engine is unavailable, the application reports an error instead of silently substituting another one.
 
-Integrated uses combined energy and spectral transient detection to protect
-attacks during expansion. Its spectral path rejects changes concentrated in a
-few harmonics to avoid resetting sustained notes. Previously saved Integrated revisions 2–6 rebuild their
-prepared audio with revision 7 when opened and show a sound-change warning.
-Rubber Band remains the app's initial default. Broader listening acceptance for
-Integrated revision 7 is complete by explicit user acceptance.
+Integrated revision 8 improves how the engine stretches gradual pitch
+changes and sustained sounds. It also preserves the timing of gradual fade-ins.
+Long stretches can still change the texture of low notes and layered loops.
 
-Integrated improves separation between nearby bass notes when stretching or transposing. Bass-heavy drum mixtures use a shorter analysis window to limit attack smearing. Bass-heavy audio can take longer to prepare. Drum attack protection remains active, and stereo channels retain their relationship. The engine remains experimental.
-
-Projects saved with Integrated revisions 2 through 6 upgrade to revision 7 when opened. The **Time stretch upgrade** dialog appears after audio preparation finishes. The sound can change. Use **Save** to store the new revision.
+Projects saved with Integrated revisions 2 through 7 rebuild their prepared audio
+when opened. The **Time stretch upgrade** dialog appears after preparation.
+The sound can change. Use **Save** to store revision 8.
 
 Set **Settings > Time stretch > Default engine** to choose the engine
 for new projects. Rubber Band is the initial default. Changing this preference
@@ -59,15 +56,8 @@ The engine choice saves with the project and applies to audio clip stretching an
 
 ## Current limits
 
-Audio clips support constant transpose in Clip settings. Live pitch automation is not available. Sampler changes pitch relative to its root note, across the full MIDI range. The experimental engine has automated checks, with broader listening acceptance complete for revision 7. Performance and platform acceptance remain incomplete. Use representative audio to judge it for a project.
+Audio clips support constant transpose in Clip settings. Live pitch automation is not available. Sampler changes pitch relative to its root note, across the full MIDI range. Broader listening, performance, and platform checks remain open for revision 8.
 
 Preparation time and memory use depend on the original recording's length, including when a clip uses only a trimmed part of it. Matching clip requests share prepared audio.
 
 Use the separate [command-line tool](../cli/timestretch.md) to compare engines or change the duration and pitch of a WAV file.
-
-Integrated uses a longer analysis window when low notes remain significant
-beneath stronger harmonics. During expansion it also preserves the phase of
-held low notes across attack regions. These changes target low-end pitch bending
-and distortion. The reported guitar case is confirmed fixed in revision 7.
-Broader listening acceptance is complete for revision 7. Longer windows can
-change attack and decay texture.

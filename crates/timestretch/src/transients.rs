@@ -87,6 +87,11 @@ impl Timing {
             return Ok(timing);
         }
         let onsets = analyze(request, input, detector, progress)?;
+        let onsets = if onsets.first() == Some(&0) && smooth_start(request, input) {
+            &onsets[1..]
+        } else {
+            &onsets
+        };
         timing
             .regions
             .try_reserve_exact(onsets.len())
@@ -155,4 +160,33 @@ impl Timing {
         };
         (position.round() as i64, None)
     }
+}
+
+// A detector's boundary marker is only an attack guard when the beginning
+// contains a sharp rise. Use a bounded, stereo-linked RMS envelope to reject
+// gradual fades without changing the detector or later onset anchors.
+fn smooth_start(request: crate::Request, input: &[f32]) -> bool {
+    const BLOCKS: usize = 24;
+    let block_frames = request.sample_rate as usize / 200;
+    let block_samples = block_frames * request.channels;
+    if input.len() < BLOCKS * block_samples {
+        return false;
+    }
+    let mut envelope = [0.0f64; BLOCKS];
+    for (rms, samples) in envelope.iter_mut().zip(input.chunks_exact(block_samples)) {
+        let power = samples.iter().map(|&s| f64::from(s).powi(2)).sum::<f64>();
+        *rms = (power / block_samples as f64).sqrt();
+    }
+    let peak = envelope.iter().copied().fold(0.0, f64::max);
+    if peak == 0.0 || envelope[0] > 0.10 * peak {
+        return false;
+    }
+    let low = envelope.iter().position(|&rms| rms >= 0.10 * peak).unwrap();
+    let high = envelope.iter().position(|&rms| rms >= 0.90 * peak).unwrap();
+    // At least 30 ms from 10% to 90%, with no sharp step or large reversal.
+    high >= low + 6
+        && envelope[..=high].windows(2).all(|pair| {
+            let delta = pair[1] - pair[0];
+            delta >= -0.04 * peak && delta <= 0.22 * peak
+        })
 }

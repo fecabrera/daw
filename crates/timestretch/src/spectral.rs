@@ -1,9 +1,13 @@
 //! Centered weighted overlap-add phase vocoder. See PROVENANCE.md for equations.
-use crate::{Error, Request, buffer, checkpoint};
+use crate::{
+    Error, Request, buffer, checkpoint,
+    phase_tracking::{PhaseFrame, PhaseTracker},
+    short_glide::ShortGlide,
+};
 use rustfft::{FftPlanner, num_complex::Complex};
 use std::{f64::consts::TAU, ops::ControlFlow};
 
-fn wrap(phase: f64) -> f64 {
+pub(super) fn wrap(phase: f64) -> f64 {
     (phase + std::f64::consts::PI).rem_euclid(TAU) - std::f64::consts::PI
 }
 
@@ -19,9 +23,20 @@ pub(crate) fn process(
     let ratio = request.ratio.as_f64();
     let tonal_width =
         ((request.sample_rate as usize * 40 / 1000).next_power_of_two()).clamp(1024, 8192);
-    let width = analysis_width(request, input, tonal_width, progress)?;
-    let mut timing =
-        crate::transients::Timing::analyze(request, input, width, frames_out, detector, progress)?;
+    let timing_width = analysis_width(request, input, tonal_width, progress)?;
+    let width = if timing_width < 2048 && sustained_broadband(request, input, progress)? {
+        2048
+    } else {
+        timing_width
+    };
+    let mut timing = crate::transients::Timing::analyze(
+        request,
+        input,
+        timing_width,
+        frames_out,
+        detector,
+        progress,
+    )?;
     let bins = width / 2 + 1;
     let half = (width / 2) as i64;
     // Limit both analysis and synthesis advances to 1/8 window, even at extremes.
@@ -49,7 +64,16 @@ pub(crate) fn process(
     let mut frequencies: Vec<_> = (0..bins)
         .map(|bin| TAU * bin as f64 / width as f64)
         .collect();
-    let mut peaks = Vec::with_capacity(bins);
+    let mut peaks = Vec::new();
+    peaks
+        .try_reserve_exact(bins)
+        .map_err(|_| Error::ResourceLimit)?;
+    let mut phase_tracker = (width >= 2048)
+        .then(|| PhaseTracker::new(bins, width, hop, request.sample_rate))
+        .transpose()?;
+    let mut short_glides = (ratio >= 2.0 && width > ShortGlide::WIDTH)
+        .then(|| ShortGlide::new(&mut planner, channels, request.sample_rate))
+        .transpose()?;
     let mut accum = buffer(frames_out * channels, 0.0f64)?;
     // Every synthesis center is a multiple of hop. With padded centers at both
     // ends, the window-square sum is periodic even at the returned boundaries.
@@ -149,6 +173,53 @@ pub(crate) fn process(
                 peaks.push(bin);
             }
         }
+        let phase_advance = (!first && !attack && previous_guard.is_none() && source > last_source)
+            .then_some((source - last_source) as f64);
+        if let Some(tracker) = &mut phase_tracker {
+            tracker.update(PhaseFrame {
+                peaks: &peaks,
+                powers: &magnitudes,
+                frequencies: &frequencies,
+                previous_rotations: &locked_rotations,
+                rotations: &mut rotations,
+                analysis_advance: phase_advance,
+            });
+        }
+        if let (Some(glide), Some(advance)) = (&mut short_glides, phase_advance) {
+            let candidates = glide.estimate(input, (source + last_source) / 2);
+            let bin_width = TAU / width as f64;
+            let mut updated_bin = None;
+            for &(frequency, motion_weight) in candidates {
+                // Short-window peaks are well separated before matching. Use the
+                // strongest long-window peak in the matching frequency region.
+                let low = (frequency / bin_width
+                    - (0.65 * width as f64 / ShortGlide::WIDTH as f64))
+                    .max(1.0);
+                let high = frequency / bin_width + (0.65 * width as f64 / ShortGlide::WIDTH as f64);
+                let first_peak = peaks.partition_point(|&bin| (bin as f64) < low);
+                let last_peak = peaks.partition_point(|&bin| (bin as f64) <= high);
+                let Some(bin) = peaks[first_peak..last_peak]
+                    .iter()
+                    .copied()
+                    .max_by(|&a, &b| magnitudes[a].total_cmp(&magnitudes[b]))
+                else {
+                    continue;
+                };
+                if updated_bin == Some(bin)
+                    || (frequencies[bin] - frequency).abs() > (0.9 * TAU / ShortGlide::WIDTH as f64)
+                {
+                    continue;
+                }
+                // Three short analyses estimate local frequency. The long
+                // spectrum supplies the actual input phase advance to remove.
+                let target = wrap(
+                    locked_rotations[bin] + frequency * hop as f64 - frequencies[bin] * advance,
+                );
+                rotations[bin] =
+                    wrap(rotations[bin] + motion_weight * wrap(target - rotations[bin]));
+                updated_bin = Some(bin);
+            }
+        }
         // Identity phase locking: neighboring bins share a peak's rotation.
         let mut peak_index = 0;
         for bin in 1..bins - 1 {
@@ -208,6 +279,46 @@ pub(crate) fn process(
 /// Broadband material needs short windows to keep attacks from spreading when expanded.
 /// Flatness is geometric / arithmetic spectral power, averaged by frame energy.
 /// Use summed channel powers so selection is symmetric and does not cancel anti-phase.
+/// Apply the synthesis floor only to broadband signals with a sustained body.
+fn sustained_broadband(
+    request: Request,
+    input: &[f32],
+    progress: &mut impl FnMut(f32) -> ControlFlow<()>,
+) -> Result<bool, Error> {
+    const MIN_BLOCKS: usize = 12;
+    let block_samples = request.sample_rate as usize / 100 * request.channels;
+    if input.len() / block_samples < MIN_BLOCKS {
+        return Ok(false);
+    }
+    let power = |block: &[f32]| block.iter().map(|&s| f64::from(s).powi(2)).sum::<f64>();
+    let mut peak = 0.0f64;
+    for (index, block) in input.chunks_exact(block_samples).enumerate() {
+        if index.is_multiple_of(128) {
+            checkpoint(progress, 0.10)?;
+        }
+        peak = peak.max(power(block));
+    }
+    if peak == 0.0 {
+        return Ok(false);
+    }
+    let threshold = peak * 0.01;
+    let mut active = 0;
+    for (index, block) in input.chunks_exact(block_samples).enumerate() {
+        if index.is_multiple_of(128) {
+            checkpoint(progress, 0.10)?;
+        }
+        if power(block) >= threshold {
+            active += 1;
+            if active >= MIN_BLOCKS {
+                return Ok(true);
+            }
+        } else {
+            active = 0;
+        }
+    }
+    Ok(false)
+}
+
 fn analysis_width(
     request: Request,
     input: &[f32],

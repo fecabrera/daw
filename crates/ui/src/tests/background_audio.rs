@@ -109,7 +109,7 @@ fn stretch_upgrade_opens_a_native_notice_after_preparation_and_other_prompts() {
     output.textures_delta.clear();
     assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
         egui::Shape::Text(text)
-            if text.galley.text().contains("upgraded from revision 4 to 7")
+            if text.galley.text().contains("upgraded from revision 4 to 8")
                 && text.galley.text().contains("Save to retain the new revision.")
     )));
     app.close_desktop_window(upgrade);

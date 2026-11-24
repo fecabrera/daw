@@ -270,7 +270,7 @@ impl AppSettings {
             settings.audio_quality = Default::default();
         }
         if settings.default_stretch_engine.id == daw_core::StretchEngineId::Integrated
-            && matches!(settings.default_stretch_engine.revision, 2..=6)
+            && matches!(settings.default_stretch_engine.revision, 2..=7)
         {
             settings.default_stretch_engine = daw_core::StretchEngine::INTEGRATED;
         }

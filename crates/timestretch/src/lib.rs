@@ -1,7 +1,9 @@
 //! Independent offline time stretching and pitch shifting, with interleaved f32 frames.
 //! Call on a worker: processing allocates and blocks. No files, devices, or threads.
 #![forbid(unsafe_code)]
+mod phase_tracking;
 mod pitch;
+mod short_glide;
 mod spectral;
 mod transients;
 pub use audio_analysis::TransientDetector;
@@ -10,7 +12,7 @@ use std::{fmt, ops::ControlFlow, str::FromStr};
 pub use transients::detect_transients;
 
 /// Processing identity for caches and reports; requests always use this implementation.
-pub const REVISION: u32 = 7;
+pub const REVISION: u32 = 8;
 pub const SAMPLE_RATES: [u32; 6] = [44100, 48000, 88200, 96000, 176400, 192000];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -227,7 +229,7 @@ impl Request {
         output_frames
             .checked_mul(self.channels)
             .and_then(|n| n.checked_mul(12))
-            .and_then(|n| n.checked_add(10 * 1024 * 1024))
+            .and_then(|n| n.checked_add(14 * 1024 * 1024))
             .and_then(|n| n.checked_add(transient_storage))
             .ok_or(Error::ResourceLimit)
     }

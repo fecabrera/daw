@@ -19,7 +19,7 @@ pub(crate) fn parse_manifest(content: &[u8]) -> Result<(Project, Option<u32>)> {
     // Share the loader's one-way legacy revision normalization. Inspection never
     // writes it; Session::open rebuilds prepared audio before publishing a session.
     let previous_revision = (project.stretch_engine.id == daw_core::StretchEngineId::Integrated
-        && matches!(project.stretch_engine.revision, 2..=6))
+        && matches!(project.stretch_engine.revision, 2..=7))
     .then_some(project.stretch_engine.revision);
     if previous_revision.is_some() {
         project.stretch_engine = daw_core::StretchEngine::INTEGRATED;
