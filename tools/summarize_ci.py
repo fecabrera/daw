@@ -11,9 +11,12 @@ def main():
     labels = {
         "checkout": "Checkout",
         "setup": "Native build setup",
+        "nextest_setup": "Nextest setup",
         "formatting": "Formatting",
         "clippy": "Clippy",
-        "tests": "Workspace tests",
+        "tests": "Workspace tests (Nextest)",
+        "au_registration": "Native Audio Unit registration",
+        "doctests": "Workspace doctests",
         "gtk_window": "Linux GTK window modes",
         "plugin_hosting": "External plugin hosting",
         "cli": "Headless CLI",

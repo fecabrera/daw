@@ -43,6 +43,43 @@ jobs:
         id: setup
         uses: ./.github/actions/setup-build
 
+      - name: Install Nextest 0.9.152
+        id: nextest_setup
+        run: |
+          version=0.9.152
+          case "$RUNNER_OS-$RUNNER_ARCH" in
+            Linux-X64)
+              target=x86_64-unknown-linux-gnu
+              checksum=d039b43c3e0958441b6ad0a39c8884d018b3d2e8fb9928f209074b1100b5e17a
+              ;;
+            macOS-ARM64)
+              target=universal-apple-darwin
+              checksum=2fadf57df4243e691f088ee3bff4f4ab9af16da0c95a1db84b5cb1685e098a76
+              ;;
+            Windows-X64)
+              target=x86_64-pc-windows-msvc
+              checksum=0384fc89a5a547d4fd5e183fcc101d31dba2837feafd8e64d5ea003a0ddb1941
+              ;;
+            *) printf 'Unsupported Nextest runner %s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" >&2; exit 1 ;;
+          esac
+          install_dir="$RUNNER_TEMP/nextest"
+          mkdir -p "$install_dir"
+          cd "$install_dir"
+          archive="cargo-nextest-$version-$target.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-$version/$archive" \
+            --output "$archive"
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 -c -
+          else
+            printf '%s  %s\n' "$checksum" "$archive" | sha256sum -c -
+          fi
+          tar -xzf "$archive"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            install_dir="$(cygpath -aw "$install_dir")"
+          fi
+          printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
+
       - name: Check formatting
         id: formatting
         run: |
@@ -55,7 +92,24 @@ jobs:
 
       - name: Run workspace tests
         id: tests
-        run: bash tools/capture_ci_log.sh work/ci-logs/tests.log cargo test --locked --workspace
+        run: |
+          cargo nextest --version
+          bash tools/capture_ci_log.sh work/ci-logs/tests.log \
+            cargo nextest run --locked --workspace --cargo-profile test --no-fail-fast \
+            -E 'not test(=native::tests::native_audio_component_registration_and_host_calls)'
+
+      - name: Check native Audio Unit registration
+        id: au_registration
+        if: runner.os == 'macOS' && runner.arch == 'ARM64'
+        run: |
+          bash tools/capture_ci_log.sh work/ci-logs/au-registration.log \
+            cargo nextest run --locked --workspace --cargo-profile test --no-fail-fast \
+            --test-threads 1 --no-tests=fail \
+            -E 'test(=native::tests::native_audio_component_registration_and_host_calls)'
+
+      - name: Run workspace doctests
+        id: doctests
+        run: bash tools/capture_ci_log.sh work/ci-logs/doctests.log cargo test --locked --workspace --doc
 
       - name: Check Linux GTK window modes
         id: gtk_window

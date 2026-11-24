@@ -4,17 +4,17 @@
 
 The [Test and build workflow](../../.github/workflows/build-and-test.yml) runs on pushes, pull requests, and manual dispatches. It calls the [platform workflow](../../.github/workflows/platform.yml) separately for Windows, macOS, and Linux. Each platform has separate `test` and `build` jobs. Tests run formatting, strict workspace/all-target Clippy, workspace tests, and the headless CLI smoke checks with the pinned Rust toolchain and locked dependencies. Build starts after that platform's tests pass, builds and packages release binaries on a fresh worker, and uploads artifacts retained for 14 days. A failure on one platform does not block or cancel another platform's build. Both jobs use the same [native build setup action](../../.github/actions/setup-build/action.yml).
 
-Workspace tests use the default Cargo test profile at optimization level 1, with
-debug assertions and integer overflow checks explicitly enabled. This keeps the
-full DSP matrices practical on hosted runners and preserves debug-only lifecycle
-checks such as egui texture cleanup. Test selection and the 90-minute job limit
-are unchanged. Release validation remains a separate local requirement; see
-[repository validation instructions](repository-instructions/build-and-validation-workflow.md#validation).
+Nextest 0.9.152 runs workspace unit and integration tests on all three platforms.
+Cargo runs workspace doctests in a separate step. On Apple Silicon, a separate
+Nextest step runs the native Audio Unit registration tests serially. Each step
+has its own log. Workspace tests use the Cargo test profile at optimization level
+1 with debug assertions and integer overflow checks enabled. Release validation
+follows the [repository validation instructions](repository-instructions/build-and-validation-workflow.md#validation).
 
 | Platform | Runner | Download |
 | --- | --- | --- |
 | Windows x64 | `windows-2025` | `DAW-windows-x64`: portable `daw-desktop.exe`, project license, and dependency notices |
-| macOS Apple Silicon | `macos-15` | `DAW-macos-arm64.dmg` |
+| macOS Apple Silicon | `xcode-27` | `DAW-macos-arm64.dmg` |
 | Linux x64 | `ubuntu-24.04` | `DAW-linux-x64.zip` |
 
 Download artifacts from the workflow run's summary. Windows downloads as a ZIP containing the executable and licenses; it is not an installer. The disk image and Linux ZIP upload directly as files. The macOS app is ad-hoc signed. These builds have no trusted publisher signature or macOS notarization and do not publish a GitHub release. The Linux package targets Ubuntu 24.04 and compatible systems; it is not a static binary for every distribution. Linux CI also runs the GTK titlebar switch smoke test under Xvfb. Native desktop interaction and audio-device checks remain separate from CI.
