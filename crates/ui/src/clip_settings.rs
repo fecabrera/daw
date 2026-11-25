@@ -380,6 +380,21 @@ impl super::DawUi {
             .iter()
             .find(|asset| asset.id == clip.asset_id)
             .map(source_label);
+        let tempo = if !contains_audio {
+            None
+        } else if clips.iter().any(|other| other.asset_id != clip.asset_id) {
+            Some((
+                "Multiple sources".into(),
+                "Select clips that share one audio source.".into(),
+            ))
+        } else {
+            let input = if self.media_ready() && self.job.is_none() {
+                self.session.tempo_source(clip.asset_id)
+            } else {
+                daw_project::TempoSource::Pending
+            };
+            Some(self.source_tempo.readout(clip.asset_id, input, ui.ctx()))
+        };
         let mut edit = self.clip_settings_draft.take();
         let was_editing = edit.is_some();
         let mut commands = Vec::new();
@@ -389,7 +404,12 @@ impl super::DawUi {
                 let label_width = ui
                     .painter()
                     .layout_no_wrap(
-                        "Transpose".into(),
+                        if tempo.is_some() {
+                            "Source tempo"
+                        } else {
+                            "Transpose"
+                        }
+                        .into(),
                         egui::TextStyle::Small.resolve(ui.style()),
                         theme::palette(ui.ctx()).text,
                     )
@@ -442,6 +462,14 @@ impl super::DawUi {
                             },
                         )
                         .inner;
+                    if let Some((text, tip)) = &tempo {
+                        panel.field_row(
+                            ui,
+                            label_width,
+                            |ui| field_label(ui, "Source tempo"),
+                            |ui| value_label(ui, text, tip, false, true, Sense::hover()),
+                        );
+                    }
                     let gain = panel
                         .field_row(
                             ui,

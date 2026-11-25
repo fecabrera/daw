@@ -50,6 +50,7 @@ mod portion;
 mod range_selection;
 mod regular_save;
 mod separation_models;
+mod source_tempo;
 pub use history::HistoryAction;
 mod granulizer_panel;
 mod noise_panel;
@@ -917,6 +918,7 @@ pub struct DawUi {
     view_mode: mixer::ViewMode,
     midi_editor: midi_editor::MidiEditor,
     editor_transients: editor_transients::State,
+    source_tempo: source_tempo::State,
     instrument_ui: instrument_panel::InstrumentUi,
     beat_ui: beat_editor::BeatUi,
     timeline_beats: beat_editor::TimelineState,
@@ -1127,6 +1129,7 @@ impl Default for DawUi {
             selected_effects: HashSet::new(),
             midi_editor: Default::default(),
             editor_transients: Default::default(),
+            source_tempo: Default::default(),
             instrument_ui: Default::default(),
             beat_ui: Default::default(),
             timeline_beats: Default::default(),
@@ -2562,6 +2565,7 @@ impl DawUi {
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        self.source_tempo.begin_frame();
         if self.view_mode != ViewMode::Timeline {
             self.timeline_clips_focused = false;
         }
@@ -3045,6 +3049,7 @@ impl DawUi {
         self.selection_text_focus = ctx
             .memory(|memory| memory.focused())
             .filter(|_| ctx.text_edit_focused());
+        self.source_tempo.finish_frame(&ctx);
     }
     fn file_menu(&mut self, ui: &mut egui::Ui) {
         ui.set_min_width(220.0);

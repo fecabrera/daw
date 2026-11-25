@@ -1,3 +1,5 @@
+mod source_tempo;
+pub use source_tempo::{TempoCatalog, TempoSource};
 mod bounce;
 mod bounce_tail;
 mod generated_media;
@@ -119,6 +121,7 @@ pub struct Session {
     pub stretched_audio: daw_media::ClipAudioCache,
     /// Worker-compiled sparse waveform clocks. No bins are allocated for gaps.
     pub compound_views: HashMap<Id, std::sync::Arc<daw_core::CompiledAudioTrack>>,
+    tempo_catalog: Option<std::sync::Arc<TempoCatalog>>,
     pub folder: Option<PathBuf>,
     pub warnings: Vec<String>,
     // A verified missing source may render silence; an undecoded source must wait.
@@ -280,6 +283,7 @@ impl Session {
             live_midi_pitches: Default::default(),
             stretched_audio: HashMap::new(),
             compound_views: HashMap::new(),
+            tempo_catalog: None,
             folder: Some(folder),
             temporary_stems: Vec::new(),
             recovery_owner: None,

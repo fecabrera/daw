@@ -213,13 +213,34 @@ impl AudioTrack {
         } else {
             u64::MAX
         };
-        Self::new_at_depth(plan, track, 0, &mut budget)
+        Self::new_at_depth(plan, track, 0, &mut budget, &|| false)
     }
-    fn new_at_depth(plan: &RenderPlan, track: &Track, depth: usize, remaining: &mut u64) -> Self {
-        let (view, mut compile_error) = match plan
-            .project
-            .compile_audio_track_view(track, |id| plan.audio.contains_key(&id))
-        {
+    pub(super) fn new_for_analysis(
+        plan: &RenderPlan,
+        track: &Track,
+        cancelled: &impl Fn() -> bool,
+    ) -> Self {
+        Self::new_at_depth(
+            plan,
+            track,
+            0,
+            &mut (daw_core::COMPOUND_METADATA_LIMIT / 4),
+            cancelled,
+        )
+    }
+
+    fn new_at_depth(
+        plan: &RenderPlan,
+        track: &Track,
+        depth: usize,
+        remaining: &mut u64,
+        cancelled: &impl Fn() -> bool,
+    ) -> Self {
+        let (view, mut compile_error) = match plan.project.compile_audio_track_view_cancellable(
+            track,
+            |id| plan.audio.contains_key(&id),
+            cancelled,
+        ) {
             Ok(view)
                 if depth < 64
                     && view.track.clips.len() as u64
@@ -266,7 +287,7 @@ impl AudioTrack {
                     .as_ref()?;
                 let mut local = track.clone();
                 local.clips = source.members.clone();
-                let child = Self::new_at_depth(plan, &local, depth + 1, remaining);
+                let child = Self::new_at_depth(plan, &local, depth + 1, remaining, cancelled);
                 if let Some(error) = child.source_error() {
                     compile_error = Some(error);
                 }
@@ -501,6 +522,23 @@ impl AudioTrack {
         } else {
             self.reader_indices[index]
         }
+    }
+
+    pub(super) fn limit_analysis_readers(
+        &mut self,
+        remaining: &mut usize,
+        budget: &std::sync::Arc<daw_media::OptionalReadBudget>,
+    ) -> Result<(), String> {
+        *remaining = remaining
+            .checked_sub(self.readers.len())
+            .ok_or("Tempo analysis disk reader limit exceeded")?;
+        for reader in &mut self.readers {
+            reader.limit_optional_reads(budget.clone());
+        }
+        for child in self.compounds.iter_mut().flatten() {
+            child.limit_analysis_readers(remaining, budget)?;
+        }
+        Ok(())
     }
 
     pub fn worker_window_available(&mut self, frame: u64) -> bool {

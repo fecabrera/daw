@@ -448,6 +448,25 @@ Silent clips stay silent when selected with audible clips. The audible clips rec
 
 If any selected clip contains audio, transpose previews for the whole group until release. All selected clips, including MIDI clips, change together after preparation succeeds. Failure or cancellation keeps the previous settings and audio for the whole group. Changing the selection cancels an unconfirmed text edit or transpose preview.
 
+### Source tempo
+
+The **Source tempo** row below **Source** estimates the BPM of the original
+audio. Clips that share one source show the same estimate even if you trim,
+stretch, or repeat them. The estimate leaves project tempo and clip timing
+unchanged.
+
+Analysis starts in the background when the row is visible. For long recordings,
+it samples the start, middle, and end. The detector can measure a pulse from
+recurring changes in the audio, including changes in notes or vocal tone when
+attacks are soft. When both half and double interpretations fit, the row shows
+the supported BPM closest to 100. If competing rates do not fit that
+relationship, it shows **Ambiguous tempo**. If the rhythm is too weak, it
+shows **Tempo unavailable**.
+
+For a complete loop, the detector can use its length to suggest a tempo when
+the audio supports it. Select clips that share a single audio source to see
+one result.
+
 ## Track Mixer
 
 Use the sliders button in the right toolbar, or **View > Track Mixer**, to show

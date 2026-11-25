@@ -112,6 +112,8 @@ Audio clips also share the [fade and crossfade handles](timeline.md#fades-and-cr
 
 The **Clip options** section shows the same Name, Source, Gain, Transpose, audio channel/polarity and audio fade controls as [Timeline clip settings](timeline.md#clip-settings). Select a clip in the arrangement strip to edit it; with no selection, the panel shows “Select a clip”. Changes appear in both views and support Undo/Redo. Switching tracks or views discards unconfirmed text and audio transpose previews.
 
+Clip options also shows the read-only [source tempo estimate](timeline.md#source-tempo).
+
 ### Audio clip repeats
 
 Audio clips repeat only the looped region; track, group and Master effect tails

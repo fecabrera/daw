@@ -15,3 +15,27 @@ in specs/audio/timestretch.md continues to apply.
 
 RustFFT 6.4.1 (MIT OR Apache-2.0) remains the only direct external dependency.
 Bundled notices in licenses/ cover its existing transitive dependencies.
+
+## Source tempo estimator
+
+The tempo module is an original streaming energy, onset and pulse-grid
+implementation. Autocorrelation and multiple pulse interpretations follow the
+general concepts in [Ellis, 2007](https://www.ee.columbia.edu/~dpwe/pubs/Ellis07-beattrack.pdf).
+The module uses no copied source, model data or new dependencies. Generated
+regression pulses are authored in the tests. Private Splice loops may be read
+locally for comparison and are excluded from repository fixtures.
+
+The loop fallback uses original duration, onset phase and interval checks.
+Its synthetic fixtures use generated tonal notes and pulse trains.
+
+The signed-energy recovery uses the estimator's existing three band levels.
+Its original implementation combines smoothed, compressed level changes,
+normalized lag correlation, phase checks across separate regions, and explicit
+competing-rate checks. The complete-loop hint can corroborate a repeat at one
+or two beats. No external implementation, model, or new library was used.
+
+The spectral fallback uses the existing RustFFT dependency. It averages stereo
+frames onto a smaller sample clock, measures fine-band level changes, and
+checks that the changes share a phase across the window. The pulse scoring
+reuses this module's original onset and interval checks. No external detector
+implementation or model was used.

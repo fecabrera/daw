@@ -26,6 +26,7 @@ Name, source, and gain are labels. Transpose is a label as well. Labels and valu
 | --- | --- |
 | Name | Double-click to edit. Enter commits a trimmed, nonempty name with no control characters through `Edit::SetClipName`. |
 | Source | Read-only file name in the secondary color. MIDI clips show “MIDI pattern”. The tooltip shows the path. |
+| Source tempo | Read-only BPM estimate below Source for audio clips. See [audio-source tempo detection](../audio/source-tempo.md) for selection, preparation and status. |
 | Gain | The label shows the value with a dB suffix, for example `0.0 dB`. Drag vertically in 0.1 dB steps. Shift uses 0.01 dB steps. Horizontal motion does not change the value. Double-click edits the number through `faders::format_gain` / `parse_gain`, including −∞. Typed and dragged values clamp to `SILENT_GAIN_DB..=CLIP_MAX_GAIN_DB` (+60 dB). Dragging up from silence starts at −60 dB. |
 | Transpose | The label shows the value with a semitones suffix, for example `0 semitones`. Drag vertically in 1 semitone steps. Shift uses 0.1 semitone steps and keeps the unused fraction until it reaches a whole semitone. Horizontal motion does not change the value. Double-click edits a whole number from −48 to +48. Dragging clamps to that range. Typed values outside it are rejected. |
 

@@ -17,6 +17,7 @@ impl DawUi {
     }
     pub(super) fn reset_background_media(&mut self) {
         self.background_media = State::default();
+        self.source_tempo.reset();
     }
 
     pub(super) fn present_ready_stretch_upgrade_notice(&mut self) {

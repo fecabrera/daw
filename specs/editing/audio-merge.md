@@ -129,6 +129,10 @@ stem ownership. Save As and collection relocate their paths without changing
 recipe references. Reopen prepares from the current original recordings and
 retains existing changed/missing-source warnings.
 
+[Source tempo analysis](../audio/source-tempo.md) reads the compound body on its
+own prepared source clock. Its source-only schedule retains captured loop-edge
+ownership and excludes outer clip processing and auxiliary routing audio.
+
 ## Admission and checks
 
 The compound metadata operation limit is 128 MiB. Admission counts recipe

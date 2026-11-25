@@ -42,6 +42,13 @@ fn temporary_file() -> Result<PcmFile> {
     Ok(PcmFile { file })
 }
 
+static FAILURE_REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Lets optional consumers invalidate results after a known backing failure.
+pub fn disk_failure_revision() -> u64 {
+    FAILURE_REVISION.load(Ordering::Acquire)
+}
+
 pub struct DiskAudio {
     file: PcmFile,
     frames: u64,
@@ -118,7 +125,9 @@ impl DiskAudio {
     }
     fn record_error(&self, error: Error) {
         *self.error.lock().unwrap() = Some(error.to_string());
-        self.failed.store(true, Ordering::Release);
+        if !self.failed.swap(true, Ordering::AcqRel) {
+            FAILURE_REVISION.fetch_add(1, Ordering::Release);
+        }
     }
 }
 
@@ -305,6 +314,31 @@ fn worker() -> Result<&'static std::sync::mpsc::Sender<Weak<ReadAhead>>> {
         .map_err(|e| Error(e.clone()))
 }
 
+/// Cumulative limit for positional reads by an optional worker.
+pub struct OptionalReadBudget {
+    remaining: std::sync::atomic::AtomicU64,
+    cancelled: Arc<AtomicBool>,
+}
+impl OptionalReadBudget {
+    pub fn new(bytes: u64, cancelled: Arc<AtomicBool>) -> Self {
+        Self {
+            remaining: std::sync::atomic::AtomicU64::new(bytes),
+            cancelled,
+        }
+    }
+    fn charge(&self, bytes: u64) -> Result<()> {
+        if self.cancelled.load(Ordering::Relaxed) {
+            return Err(Error("Tempo analysis cancelled".into()));
+        }
+        self.remaining
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |remaining| {
+                remaining.checked_sub(bytes)
+            })
+            .map_err(|_| Error("Tempo analysis disk read limit exceeded".into()))?;
+        Ok(())
+    }
+}
+
 /// Bounded worker reader. Clones share immutable blocks until the next worker read.
 #[derive(Clone)]
 pub struct FrameReader {
@@ -312,6 +346,7 @@ pub struct FrameReader {
     block: Option<Arc<FrameBlock>>,
     live: Option<Arc<ReadAhead>>,
     error: Option<Arc<String>>,
+    optional_budget: Option<Arc<OptionalReadBudget>>,
 }
 struct FrameBlock {
     start: u64,
@@ -325,7 +360,11 @@ impl FrameReader {
             block: None,
             live: None,
             error: None,
+            optional_budget: None,
         }
+    }
+    pub fn limit_optional_reads(&mut self, budget: Arc<OptionalReadBudget>) {
+        self.optional_budget = Some(budget);
     }
     /// Owned descriptor storage. PCM and read-ahead use shared media admission.
     pub fn heap_bytes(&self) -> u64 {
@@ -415,9 +454,13 @@ impl FrameReader {
         {
             return Ok(*value);
         }
-        let memory =
-            AudioReservation::new(STREAM_CHUNK_FRAMES as u64, STREAM_CHUNK_FRAMES as u64 * 8)?;
         let start = frame / STREAM_CHUNK_FRAMES as u64 * STREAM_CHUNK_FRAMES as u64;
+        let memory = if let Some(budget) = &self.optional_budget {
+            budget.charge((source.frames - start).min(STREAM_CHUNK_FRAMES as u64) * 8)?;
+            AudioReservation::optional(STREAM_CHUNK_FRAMES as u64 * 16)?
+        } else {
+            AudioReservation::new(STREAM_CHUNK_FRAMES as u64, STREAM_CHUNK_FRAMES as u64 * 8)?
+        };
         let mut frames = vec![[0.; 2]; STREAM_CHUNK_FRAMES];
         let count = match source.read(start, &mut frames, &mut Vec::new()) {
             Ok(count) => count,

@@ -2,6 +2,144 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## 100 BPM reference for half/double ambiguity — 2026-11-25
+
+Clip Settings now chooses the supported octave nearest to 100 BPM. Tests
+verify selection from both sides of the reference, the lower-rate tie rule,
+unrelated competitors, and the tooltip in both sampled and complete sources.
+The debug workspace suite passed 3,823 tests. The release suite passed all
+other targets, and the corrected audio-analysis test binary passed all 12
+tests in a separate run. Native Audio Unit registration tests were filtered
+out in both profiles. Formatting, strict Clippy, and local macOS app signature
+verification passed.
+
+## Preferred BPM for half/double ambiguity — 2026-11-25
+
+On the same 237 private Splice files, 10 of the 17 previously ambiguous
+results became supported half/double estimates. The other seven stayed
+ambiguous. All 145 previous numeric estimates, 62 weak results and 13 decode
+failures matched. This run used 120 BPM as the reference for octave-only
+results. An exact tie selected the lower BPM.
+
+Debug and release workspace suites each passed 3,823 tests, with 24 ignored
+and 22 native Audio Unit registration tests filtered out. The tests cover
+octave selection, unrelated competitors, sampled-window agreement, and the
+Clip Settings readout and tooltip. Formatting, strict Clippy, and local macOS
+app signature verification passed.
+
+## Spectral source tempo recovery — 2026-11-25
+
+The paired Splice rerun used the same 237 files and decoded 224. Numeric
+coverage rose from 123/224 (54.9%) to 145/224 (64.7%). Melodic and tonal
+coverage rose from 37/90 (41.1%) to 50/90 (55.6%), and vocal coverage rose
+from 8/14 (57.1%) to 10/14 (71.4%). All 123 previous BPMs and 16 ambiguous
+results matched. Of 22 new estimates, 21 were within 2 BPM after allowing
+half or double tempo. One loop labeled 120 BPM measured 114 BPM. The two
+previous outliers stayed the same. Across all decoded loops, the share
+with a numeric result within 2 adjusted BPM rose from 54.0% to 63.4%.
+
+| Percentile | Adjusted BPM error, previous → revised | Prepared analysis, previous → revised | First pass with decoding, previous → revised |
+| --- | ---: | ---: | ---: |
+| P90 | 0.115 → 0.104 BPM | 3.820 → 4.932 ms | 23.990 → 24.518 ms |
+| P95 | 0.157 → 0.156 BPM | 4.645 → 5.897 ms | 27.765 → 28.297 ms |
+| P99 | 8.113 → 8.232 BPM | 6.072 → 8.023 ms | 33.521 → 33.978 ms |
+
+Both detectors ran on the same prepared audio, alternating order. Prepared
+analysis times use the median of 27 calls per file across three paired runs.
+An allocator probe measured peak analysis heap of 881,808 bytes on the Splice
+files and 947,960 bytes on a sampled 40-second disk-backed noise control. Both
+fit the 1 MiB admission. The probe excludes prepared PCM and compound-reader
+reservations.
+
+Generated checks added nine correct tonal and four correct vocal-like results
+within 2 adjusted BPM. The same six of 100 no-pulse controls returned a
+number. The filename-derived benchmark informed refinement. Performance on
+independently labeled human vocals remains unverified.
+
+Debug and release workspace suites each passed 3,820 tests, with 24 ignored
+and 22 native Audio Unit registration tests filtered out. The new tests cover
+soft tonal recovery, opposite channel polarity, chunked input, cancellation,
+silence and a stationary tone. Formatting, strict workspace Clippy and the
+local macOS debug app signature check passed.
+
+## Signed-energy source tempo recovery — 2026-11-25
+
+On the same 237 private Splice files, numeric coverage increased from 110/237
+(46.4%) to 123/237 (51.9%). Among 224 decoded loops it increased from 49.1%
+to 54.9%. Melodic and tonal coverage rose from 28/90 (31.1%) to 37/90 (41.1%).
+Vocal coverage rose from 7/14 (50.0%) to 8/14 (57.1%). All 110 previous BPM
+estimates and all 16 ambiguous results matched. All 13 added estimates were
+within 2 BPM of the filename reference at the raw detected rate. The prior
+two outliers remained.
+
+Half/double-adjusted absolute error at P90, P95 and P99 changed from 0.120,
+0.160 and 9.220 BPM to 0.115, 0.157 and 8.113 BPM. Prepared analysis on the
+same decoded PCM changed from 3.838, 4.596 and 5.960 ms to 3.944, 4.593 and
+6.157 ms. First-pass P99 with decoding changed from 32.785 to 32.671 ms.
+Observed peak allocated heap during analysis was 190,416 bytes for the
+Splice files and 246,392 bytes for a sampled 40-second disk-backed control.
+These measurements exclude the prepared PCM and the separate compound
+reader's existing reservations.
+
+On fixed generated examples, adjusted-correct detections rose from 19/50
+to 37/50 for tonal phrases and from 8/50 to 30/50 for vocal-like phrases.
+The same six of 100 no-pulse controls returned a number. The Splice labels
+are filename-derived and the set informed detector refinement. Accuracy on
+independently labeled human vocals remains unverified.
+
+Debug and release workspace suites each passed 3,818 tests, with 24 ignored
+and 22 native Audio Unit registration tests filtered out. The suites cover
+six-rate tonal recovery, out-of-range abstention, cancellation and the original
+sampled read offsets. Formatting, strict workspace Clippy and macOS debug app
+signature verification passed. Native UI, audio-device contention, Windows and
+Linux runtime checks remain open.
+
+## Audio-source tempo coverage — 2026-11-25
+
+On the same 237 private Splice loops, both versions decoded 224 files. Numeric
+coverage increased from 50/224 (22.3%) to 110/224 (49.1%). Melodic and tonal
+coverage rose from 11/90 to 28/90. Vocal coverage rose from 1/14 to 7/14.
+All 50 previous estimates matched exactly. After accounting for half or double
+tempo, all 60 added estimates were within 2 BPM of the filename reference.
+The two previous misses remained. The 95th percentile adjusted absolute
+error fell from 0.922 to 0.160 BPM across numeric estimates.
+
+In an interleaved run on the same prepared audio, the 95th percentile
+analysis time was 5.379 ms before the change and 5.094 ms after it.
+The 99th percentile first-pass time, including decoding, was 33.988 ms
+before the change and 34.373 ms after it.
+
+Generated tests cover syncopated tonal recovery, insufficient or conflicting
+evidence, stationary tone, noise, and an out-of-range pulse even when the
+complete duration suggests an in-range candidate. Debug and release workspace
+tests each passed 3,815 tests, with 24 ignored and 22 native Audio Unit
+registration tests filtered out. Formatting and strict workspace Clippy passed.
+The rebuilt macOS debug app passed signature verification. The filename-labeled
+corpus informed the experiment. Generalization to unrelated recordings and the
+listener's preferred octave remain unverified.
+
+## Audio-source tempo in Clip Settings — 2026-11-25
+
+The private smoke test decoded 25 BPM-labeled Splice drum-loop WAVs at
+48 kHz and ran the same file adapter used by Clip Settings. Six estimates
+were within 2 BPM of the filename, ten were within 2 BPM after adjusting
+for half or double tempo, and nine gave no numeric result (six weak and
+three ambiguous). The filename labels serve as a comparison, without an
+independent beat annotation. A read-only rerun verified unchanged file
+hashes and modification times. No private audio or paths are part of the
+fixtures. See [source tempo detection](../audio/source-tempo.md).
+
+Automated coverage includes six-rate pulse fixtures, four-beat loops, weak and
+conflicting evidence, resident and disk PCM parity, optional read admission,
+compound source parity with captured loop-edge ownership, late worker
+completion, and the read-only Clip Settings row. The debug and release
+workspace suites passed 3,813 tests each. The 22 native Audio Unit registration
+tests passed separately outside the sandbox in each profile. Formatting,
+workspace Clippy, and the CLI smoke check passed. The locally
+packaged macOS debug app passed signature verification. Manual Clip Settings
+interaction, audio-device contention, and Windows and Linux behavior were not
+checked.
+
 ## Nextest in workspace CI — 2026-11-23
 
 The pinned Nextest archives for Linux, macOS, and Windows match their SHA-256

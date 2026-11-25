@@ -81,6 +81,7 @@ impl DawUi {
     }
     pub(super) fn release_optional_memory_for_job(&mut self) {
         self.editor_transients.cancel();
+        self.source_tempo.cancel();
         self.audio_preparation = None;
         self.audio_preparation_attempt = None;
         // Disposable cache ownership yields before optional undo states are removed.

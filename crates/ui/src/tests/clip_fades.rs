@@ -176,6 +176,9 @@ fn clip_settings_shape_edits_the_saved_envelope_and_painting_is_read_only() {
             .find_map(|s| match &s.shape {
                 egui::Shape::LineSegment { points, .. }
                     if points[0].y == points[1].y
+                        && points
+                            .iter()
+                            .all(|point| app.effects_bounds.clip_settings.contains(*point))
                         && points[0].y > previous.bottom()
                         && points[0].y < next.top() =>
                 {
@@ -186,7 +189,9 @@ fn clip_settings_shape_edits_the_saved_envelope_and_painting_is_read_only() {
             .expect("section divider");
         assert!(
             ((line - previous.bottom()) - (next.top() - line)).abs() <= 1.5,
-            "divider spacing must match above and below {after}"
+            "divider spacing must match above and below {after}: previous bottom {}, line {line}, next top {}",
+            previous.bottom(),
+            next.top()
         );
     }
     let label = shapes

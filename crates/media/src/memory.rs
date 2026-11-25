@@ -59,6 +59,15 @@ pub fn register_audio(audio: &AudioData) {
 }
 pub struct AudioReservation(u64);
 impl AudioReservation {
+    /// Optional analysis cannot evict existing buffers to gain admission.
+    pub fn optional(bytes: u64) -> Result<Self> {
+        state()
+            .lock()
+            .unwrap()
+            .reserve(bytes, AUDIO_MEMORY_BUDGET_BYTES)?;
+        Ok(Self(bytes))
+    }
+
     /// Reserve output PCM/peaks plus caller-owned temporary bytes before allocation.
     pub fn new(frames: u64, scratch_bytes: u64) -> Result<Self> {
         let bytes = frames

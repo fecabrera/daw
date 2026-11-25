@@ -1,3 +1,6 @@
+mod source_tempo;
+pub use audio_analysis::tempo::Tempo;
+pub use source_tempo::{audio_tempo, source_tempo};
 mod transients;
 use daw_core::{SAMPLE_RATE, SourceMetadata};
 mod stereo_fft;
@@ -52,7 +55,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 mod disk_audio;
 mod stream_decode;
-pub use disk_audio::{DiskAudio, DiskAudioWriter, FrameReader, ReadAhead, STREAM_CHUNK_FRAMES};
+pub use disk_audio::{
+    DiskAudio, DiskAudioWriter, FrameReader, OptionalReadBudget, ReadAhead, STREAM_CHUNK_FRAMES,
+    disk_failure_revision,
+};
 pub use stream_decode::STREAM_PCM_THRESHOLD_BYTES;
 
 #[derive(Clone)]

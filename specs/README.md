@@ -140,6 +140,8 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Stem separation backend evaluation](audio/stem-separation-evaluation.md): local quality, speed, memory, model-license evidence and original integration proposal.
 - [Charon CoreML benchmark](audio/stem-separation-coreml-evaluation.md): same-audio GPU/CPU quality, startup, memory, same-export control and reused-model measurements.
 
+- [Audio-source tempo detection](audio/source-tempo.md): bounded source-clock analysis and read-only Clip Settings status.
+
 ## Evidence
 
 - [DAW branch and PR review skill](../.agents/skills/daw-review/SKILL.md): compare a branch or PR against its base, or review a full branch snapshot without comparison. Uses independent Documentation, Code Quality and Dependencies reviews, scope gates, separate findings validation, and a PASS/FAIL report that excludes SKIPPED categories.

@@ -110,6 +110,7 @@ impl Session {
         self.stretched_audio = prepared.stretched_audio.clone();
         self.sampler_audio = prepared.sampler_audio.clone();
         self.compound_views = prepared.compound_views.clone();
+        self.tempo_catalog = prepared.tempo_catalog.clone();
     }
 
     /// MIDI and metadata changes can publish before their audio is ready.
@@ -181,6 +182,7 @@ impl Session {
         self.stretched_audio = candidate.stretched_audio;
         self.sampler_audio = candidate.sampler_audio;
         self.compound_views = candidate.compound_views;
+        self.tempo_catalog = candidate.tempo_catalog;
         Ok(())
     }
     /// May partially update derived maps on error. Pass only a private candidate.
@@ -232,6 +234,10 @@ impl Session {
         self.plan()
             .compound_schedule_bytes(cancelled)
             .map_err(error)?;
+        self.prepare_tempo_catalog(cancelled);
+        if cancelled() {
+            return Err(error("Audio preparation cancelled"));
+        }
         Ok(())
     }
 }

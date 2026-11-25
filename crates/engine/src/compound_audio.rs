@@ -1,15 +1,46 @@
 //! Worker source access without track, bus or Master processing.
 use crate::{RenderPlan, schedule::AudioTrack};
 use daw_core::{Id, Track};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 /// An independently prepared source clock. Its readers belong to the worker.
 /// Playback uses the same source scheduler through the owning track.
 pub struct CompoundAudioSource {
     source: AudioTrack,
     pub length_frames: u64,
+    analysis: Option<AnalysisBudget>,
 }
 impl CompoundAudioSource {
     pub fn new(plan: &RenderPlan, asset_id: Id) -> Result<Self, String> {
+        Self::build(plan, asset_id, None)
+    }
+
+    pub fn for_analysis(
+        plan: &RenderPlan,
+        asset_id: Id,
+        cancelled: Arc<AtomicBool>,
+    ) -> Result<Self, String> {
+        let mut spans = 4096;
+        let per_frame = inspect_recipe(plan, asset_id, &mut spans, &cancelled, 0, true)?;
+        Self::build(
+            plan,
+            asset_id,
+            Some(AnalysisBudget {
+                visits: 128_000_000,
+                per_frame,
+                cancelled,
+            }),
+        )
+    }
+
+    fn build(
+        plan: &RenderPlan,
+        asset_id: Id,
+        analysis: Option<AnalysisBudget>,
+    ) -> Result<Self, String> {
         let asset = plan
             .project
             .audio_asset(asset_id)
@@ -23,15 +54,65 @@ impl CompoundAudioSource {
         let mut track: Track = project.tracks.remove(0);
         track.id = id;
         track.clips = recipe.members.clone();
-        let source = AudioTrack::new(plan, &track);
+        let source = if let Some(budget) = &analysis {
+            let mut source = AudioTrack::new_for_analysis(plan, &track, &|| {
+                budget.cancelled.load(Ordering::Relaxed)
+            });
+            source.limit_analysis_readers(
+                &mut 16,
+                &Arc::new(daw_media::OptionalReadBudget::new(
+                    128 * 1024 * 1024,
+                    budget.cancelled.clone(),
+                )),
+            )?;
+            source
+        } else {
+            AudioTrack::new(plan, &track)
+        };
         if let Some(error) = source.source_error() {
             return Err(error);
         }
         Ok(Self {
             source,
             length_frames: asset.decoded_frame_count,
+            analysis,
         })
     }
+    pub fn read_analysis_frames(&mut self, start: u64, out: &mut [[f32; 2]]) -> Result<(), String> {
+        let budget = self
+            .analysis
+            .as_mut()
+            .ok_or("Expected an analysis-only source")?;
+        let end = start
+            .checked_add(out.len() as u64)
+            .filter(|end| *end <= self.length_frames)
+            .ok_or("Compound tempo range is outside its source")?;
+        budget.visits = budget
+            .visits
+            .checked_sub(budget.per_frame.saturating_mul(out.len() as u64))
+            .ok_or("Tempo analysis schedule visit limit exceeded")?;
+        for (index, (frame, output)) in (start..end).zip(out).enumerate() {
+            if index.is_multiple_of(256) {
+                if budget.cancelled.load(Ordering::Relaxed) {
+                    return Err("Tempo analysis cancelled".into());
+                }
+                if let Some(error) = self.source.source_error() {
+                    return Err(error);
+                }
+            }
+            if !self.source.worker_window_available(frame) {
+                return Err("Incomplete compound source range".into());
+            }
+            *output = self.source.sample(&[], frame, false).0;
+        }
+        // A worker-local admission error can be masked by the normal scheduler's
+        // silent fallback. Inspect errors even when shared disk state is healthy.
+        if let Some(error) = self.source.source_error() {
+            return Err(error);
+        }
+        Ok(())
+    }
+
     /// Worker-only. Read failures must never publish a successful silent extraction.
     pub fn sample(&mut self, frame: u64) -> Result<([f32; 2], Option<bool>), String> {
         self.sample_signed(i128::from(frame))
@@ -53,6 +134,94 @@ impl CompoundAudioSource {
         }
         Ok(sample)
     }
+}
+
+struct AnalysisBudget {
+    visits: u64,
+    per_frame: u64,
+    cancelled: Arc<AtomicBool>,
+}
+
+/// Preflight every main member, including sections outside the sampled windows.
+/// Count expanded instances before scheduler and channel layout construction.
+fn inspect_recipe(
+    plan: &RenderPlan,
+    id: Id,
+    remaining: &mut usize,
+    cancelled: &AtomicBool,
+    depth: usize,
+    audible: bool,
+) -> Result<u64, String> {
+    if depth >= 64 || cancelled.load(Ordering::Relaxed) {
+        return Err("Tempo analysis cancelled or compound nesting limit exceeded".into());
+    }
+    let recipe = plan
+        .project
+        .audio_asset(id)
+        .and_then(|asset| asset.compound_audio.as_ref())
+        .ok_or("Missing compound source")?;
+    *remaining = remaining
+        .checked_sub(recipe.members.len())
+        .ok_or("Tempo analysis compound span limit exceeded")?;
+    let mut worst_child = 0;
+    for clip in &recipe.members {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err("Tempo analysis cancelled".into());
+        }
+        let asset = plan
+            .project
+            .audio_asset(clip.asset_id)
+            .ok_or("Missing compound member")?;
+        let audible = audible && !clip.muted;
+        let transformed = clip.stretch.is_some()
+            || clip.transpose != 0
+            || plan.project.compound_window_requires_preparation(clip);
+        if asset.compound_audio.is_some() {
+            // A prepared transform can still construct a channel layout for
+            // descendants. Count those descriptors even when the clip is muted.
+            let cost = inspect_recipe(plan, asset.id, remaining, cancelled, depth + 1, audible)?;
+            if audible {
+                worst_child = worst_child.max(cost);
+            }
+            if !transformed {
+                continue;
+            }
+        }
+        if !audible {
+            continue;
+        }
+        let pcm = plan
+            .audio_for_clip(clip)
+            .ok_or("Missing or unprepared compound member")?;
+        if pcm.disk.as_ref().is_some_and(|disk| disk.failed()) {
+            return Err("Compound source read failed".into());
+        }
+        let length = clip
+            .repeat
+            .map_or(clip.length_frames, |repeat| repeat.length_frames);
+        if clip
+            .source_offset_frame
+            .checked_add(length)
+            .is_none_or(|end| end > pcm.frame_count())
+        {
+            return Err("Incomplete compound member range".into());
+        }
+        if transformed
+            && asset.compound_audio.is_some()
+            && daw_media::prepared_clip_audio(
+                clip,
+                &plan.audio,
+                &plan.stretched_audio,
+                plan.project.stretch_engine,
+            )
+            .is_none()
+        {
+            return Err("Compound source transform is unprepared".into());
+        }
+    }
+    // A frame can read the body and an internal transition. Readiness and
+    // sampling each walk those paths, including nested readers.
+    Ok(4 + 2 * worst_child.min(128_000_000))
 }
 
 impl RenderPlan {

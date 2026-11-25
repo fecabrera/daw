@@ -192,7 +192,7 @@ fn clip_settings_keep_form_spacing_while_catalog_rows_use_shared_list_spacing() 
                 .size()
                 .y
         }) + 2.0 * f32::from(theme::TOOLBAR_PADDING);
-        for (index, label) in ["Name", "Source", "Gain", "Transpose"]
+        for (index, label) in ["Name", "Source", "Source tempo", "Gain", "Transpose"]
             .into_iter()
             .enumerate()
         {
@@ -1102,7 +1102,7 @@ fn editor_audio_options_share_timeline_fields_layout_and_empty_selection_prompt(
         app.timeline_catalog_visible = false;
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
         let timeline_title = text_pos(&shapes, "Clip settings").unwrap();
-        let fields = ["Name", "Source", "Gain", "Transpose"];
+        let fields = ["Name", "Source", "Source tempo", "Gain", "Transpose"];
         let timeline_positions = fields.map(|label| text_pos(&shapes, label).unwrap());
         let before = app.session.project.clone();
         app.dirty = false;
@@ -1474,4 +1474,54 @@ fn clip_channel_and_polarity_controls_follow_transpose_and_edit_groups_with_undo
     app.perform_history_action(HistoryAction::Undo, &ctx);
     app.perform_history_action(HistoryAction::Undo, &ctx);
     assert_eq!(app.session.project, before);
+}
+
+#[test]
+fn detected_source_tempo_is_read_only_in_clip_settings() {
+    let mut app = DawUi::default();
+    let ctx = context();
+    let mut samples = vec![[0.0; 2]; 192_000];
+    for beat in 0..8 {
+        samples[400 + beat * 24_000..460 + beat * 24_000].fill([0.6, -0.6]);
+    }
+    let audio = daw_media::AudioData {
+        sample_rate_hz: 48_000,
+        samples: std::sync::Arc::new(samples),
+        disk: None,
+        metadata: daw_core::SourceMetadata {
+            sample_rate_hz: 48_000,
+            channels: 2,
+            sample_format: "ieee_float".into(),
+            bits_per_sample: 32,
+        },
+        peaks: std::sync::Arc::default(),
+    };
+    let clip = app
+        .session
+        .import_decoded(std::path::Path::new("pulse.wav"), audio, None, 0)
+        .unwrap();
+    let track = app.session.project.tracks[0].id;
+    app.clip_settings_visible = true;
+    app.select_clip(clip, track, false);
+    let project = app.session.project.clone();
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    let point = loop {
+        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+        if let Some(point) = text_pos(&shapes, "≈ 120 BPM") {
+            assert!(text_pos(&shapes, "Source").unwrap().y < point.y);
+            break point + Vec2::new(15.0, 5.0);
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "{:?}",
+            painted_text(&shapes)
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    click(&mut app, &ctx, point);
+    click(&mut app, &ctx, point);
+    assert!(app.clip_settings_draft.is_none());
+    assert_eq!(app.session.project, project);
+    assert!(!app.dirty);
+    assert!(app.output.is_none());
 }
