@@ -55,7 +55,8 @@ pub(super) fn estimate(
         .iter()
         .map(|&level| level >= floor)
         .collect::<Vec<_>>();
-    let last_active = (mode == Mode::Selection)
+    let last_active = mode
+        .targeted_selection()
         .then(|| active.iter().rposition(|&on| on))
         .flatten();
     let mut cursor = 0;
@@ -71,7 +72,7 @@ pub(super) fn estimate(
             }
         }
         // A duration-derived challenger applies only to a single active span.
-        let span_mode = if mode == Mode::Selection && (cursor > 0 || last_active != Some(last)) {
+        let span_mode = if mode.targeted_selection() && (cursor > 0 || last_active != Some(last)) {
             Mode::Legacy
         } else {
             mode
@@ -171,6 +172,7 @@ fn track_span(
         }
     }
     let mut left = 0;
+    let mut recovery = None;
     while left < path.len() {
         let Some(period) = path[left] else {
             left += 1;
@@ -199,13 +201,14 @@ fn track_span(
             if mode.rival_paths() {
                 let decision = verify::decide(
                     envelope,
-                    range,
+                    range.clone(),
                     &times[left..right],
                     &path[left..right],
                     &periods,
                     &disputes[left..right],
                     balanced,
                     loop_hint,
+                    false,
                     work,
                     cancelled,
                 )?;
@@ -236,7 +239,7 @@ fn track_span(
                                     periods.iter().map(|value| value * multiplier).collect();
                                 if let Decoded::Run(other) = decode(
                                     envelope,
-                                    range,
+                                    range.clone(),
                                     &rival_periods,
                                     balanced,
                                     false,
@@ -246,7 +249,7 @@ fn track_span(
                                     run.octave = Some(other.bpm);
                                 }
                             }
-                            if mode == Mode::Selection
+                            if mode.targeted_selection()
                                 && path[..left].iter().all(Option::is_none)
                                 && path[right..].iter().all(Option::is_none)
                                 && let Some(hint) = loop_hint
@@ -272,8 +275,36 @@ fn track_span(
                     }
                 }
             }
+            if mode == Mode::PercussionRecovery
+                && !any_guard
+                && loop_hint.is_some()
+                && result.ambiguous
+                && result.runs.is_empty()
+                && path[..left].iter().all(Option::is_none)
+                && path[right..].iter().all(Option::is_none)
+            {
+                recovery = Some((left..right, range, periods));
+            }
         }
         left = right;
+    }
+    if let Some((indices, range, periods)) = recovery
+        && let verify::Decision::Run(run) = verify::decide(
+            envelope,
+            range,
+            &times[indices.clone()],
+            &path[indices.clone()],
+            &periods,
+            &contexts[indices],
+            false,
+            loop_hint,
+            true,
+            work,
+            cancelled,
+        )?
+    {
+        result.ambiguous = false;
+        append_run(result, run, &periods);
     }
     result.outside |= any_guard && result.runs.is_empty();
     Ok(())

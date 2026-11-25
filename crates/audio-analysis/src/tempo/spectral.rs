@@ -70,7 +70,7 @@ impl Input {
         };
         let mut detector = TempoWindow::new(self.rate)?;
         detector.novelty = novelty;
-        let result = detector.score(None, cancelled)?;
+        let result = detector.score(None, false, cancelled)?;
         if result.range_veto {
             return Ok(Vote::Veto);
         }

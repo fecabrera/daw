@@ -384,6 +384,7 @@ pub(super) fn decide(
     contexts: &[Vec<Candidate>],
     balanced: bool,
     hint: Option<f64>,
+    percussion_only: bool,
     work: &mut Work,
     cancelled: &impl Fn() -> bool,
 ) -> Result<Decision, Error> {
@@ -404,6 +405,9 @@ pub(super) fn decide(
         * 2
         > contexts.len();
     if rivals.iter().all(Option::is_none) && !balanced && !guard_dominates {
+        if percussion_only {
+            return Ok(Decision::Ambiguous);
+        }
         // A clear broadband result incurs no optional path or ledger work.
         return Ok(
             match decode(envelope, range, periods, false, true, work, cancelled)? {
@@ -418,6 +422,16 @@ pub(super) fn decide(
         );
     }
     let evidence = Evidence::new(envelope, range.clone(), work)?;
+    if percussion_only {
+        work.visit(evidence.anchors.len() * 16)?;
+        if !crate::percussion::has_short_attacks(
+            range.len(),
+            |i| envelope.rms[range.start + i],
+            evidence.anchors.iter().map(|&(i, _)| i - range.start),
+        ) {
+            return Ok(Decision::Ambiguous);
+        }
+    }
     let leader = Contour {
         periods: periods.to_vec(),
         balanced,
@@ -475,6 +489,9 @@ pub(super) fn decide(
     let Scored { mut run, support } = decoded.swap_remove(index);
     if outside(6000.0 / run.bpm) {
         return Ok(Decision::Outside);
+    }
+    if percussion_only && !matches_loop(6000.0 / run.bpm, hint) {
+        return Ok(Decision::Ambiguous);
     }
     for other in decoded {
         if compatible(other.run.bpm, run.bpm) {

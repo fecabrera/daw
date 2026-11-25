@@ -34,6 +34,7 @@ struct WindowScore {
     tempo: Tempo,
     loop_support: bool,
     range_veto: bool,
+    percussion_vote: Option<Tempo>,
 }
 
 impl WindowScore {
@@ -42,6 +43,7 @@ impl WindowScore {
             tempo,
             loop_support: false,
             range_veto: false,
+            percussion_vote: None,
         }
     }
 }
@@ -127,8 +129,8 @@ impl TempoWindows {
         }
     }
 
-    /// Preserve the onset and duration results before scoring retained weak windows.
-    pub fn combine_evidence(
+    /// Combine window votes using Ellis before percussion ambiguity recovery.
+    pub fn combine_evidence_without_percussion(
         &self,
         windows: &[TempoEvidence],
         cancelled: &impl Fn() -> bool,
@@ -197,6 +199,44 @@ impl TempoWindows {
             self.combine(votes)
         } else {
             result
+        })
+    }
+
+    /// Retest ambiguous complete sources using duration and physical onset votes.
+    pub fn combine_evidence(
+        &self,
+        windows: &[TempoEvidence],
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<Tempo, Error> {
+        let original = self.combine_evidence_without_percussion(windows, cancelled)?;
+        let Some(hint) = self.loop_candidate.filter(|_| original == Tempo::Ambiguous) else {
+            return Ok(original);
+        };
+        if windows.iter().any(|window| window.score.range_veto) {
+            return Ok(original);
+        }
+        let mut recovered = false;
+        let mut votes = Vec::with_capacity(windows.len());
+        for score in windows.iter().map(|window| &window.score) {
+            let vote = if score.tempo == Tempo::Ambiguous {
+                let Some(vote) = score.percussion_vote else {
+                    return Ok(original);
+                };
+                recovered = true;
+                vote
+            } else {
+                score.tempo
+            };
+            if let Tempo::Estimate { bpm, .. } | Tempo::OctaveAmbiguous { bpm, .. } = vote
+                && !loop_family(bpm, hint)
+            {
+                return Ok(original);
+            }
+            votes.push(vote);
+        }
+        Ok(match recovered.then(|| self.combine(&votes)) {
+            Some(vote @ (Tempo::Estimate { .. } | Tempo::OctaveAmbiguous { .. })) => vote,
+            _ => original,
         })
     }
 
@@ -500,16 +540,33 @@ impl TempoWindow {
         loop_candidate: Option<f64>,
         cancelled: &impl Fn() -> bool,
     ) -> Result<(Tempo, bool), Error> {
-        let result = self.score(loop_candidate, cancelled)?;
+        let result = self.score(loop_candidate, false, cancelled)?;
         Ok((result.tempo, result.loop_support))
     }
 
     pub fn into_evidence(
-        mut self,
+        self,
         loop_candidate: Option<f64>,
         cancelled: &impl Fn() -> bool,
     ) -> Result<TempoEvidence, Error> {
-        let score = self.score(loop_candidate, cancelled)?;
+        self.finish_evidence(loop_candidate, true, cancelled)
+    }
+
+    pub fn into_evidence_without_percussion(
+        self,
+        loop_candidate: Option<f64>,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<TempoEvidence, Error> {
+        self.finish_evidence(loop_candidate, false, cancelled)
+    }
+
+    fn finish_evidence(
+        mut self,
+        loop_candidate: Option<f64>,
+        recover_percussion: bool,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<TempoEvidence, Error> {
+        let score = self.score(loop_candidate, recover_percussion, cancelled)?;
         let levels = if score.tempo == Tempo::Weak && !score.range_veto {
             self.levels.take().unwrap_or_default()
         } else {
@@ -530,6 +587,7 @@ impl TempoWindow {
     fn score(
         &self,
         loop_candidate: Option<f64>,
+        recover_percussion: bool,
         cancelled: &impl Fn() -> bool,
     ) -> Result<WindowScore, Error> {
         if cancelled() {
@@ -633,7 +691,7 @@ impl TempoWindow {
                 ..WindowScore::new(Tempo::Weak)
             });
         }
-        let rivals = candidates.into_iter().filter(|&(score, rival)| {
+        let rivals = candidates.iter().copied().filter(|&(score, rival)| {
             let margin = if is_half_double(bpm, rival) {
                 0.10
             } else {
@@ -641,8 +699,98 @@ impl TempoWindow {
             };
             tempo_ratio(rival, bpm) > 1.03 && best - score <= margin
         });
-        Ok(WindowScore::new(choose_octave(bpm, rivals)))
+        let mut result = WindowScore::new(choose_octave(bpm, rivals));
+        if recover_percussion
+            && result.tempo == Tempo::Ambiguous
+            && let Some(hint) = loop_candidate
+            && self.levels.as_ref().is_some_and(|levels| {
+                crate::percussion::has_short_attacks(
+                    levels.len(),
+                    |i| levels[i].iter().sum::<f64>(),
+                    onsets.iter().map(|&(i, _)| i),
+                )
+            })
+            && self.supports_loop(hint, cancelled)?
+        {
+            result.percussion_vote = recover_percussion_vote(
+                &candidates,
+                &onsets,
+                &anchors,
+                self.novelty.len(),
+                hint,
+                best,
+            );
+        }
+        Ok(result)
     }
+}
+
+fn loop_family(bpm: f64, hint: f64) -> bool {
+    [0.5, 1.0, 2.0]
+        .into_iter()
+        .any(|scale| tempo_ratio(bpm, hint * scale) <= 1.03)
+}
+
+fn recover_percussion_vote(
+    candidates: &[(f64, f64)],
+    onsets: &[(usize, f64)],
+    anchors: &[usize],
+    bins: usize,
+    hint: f64,
+    best: f64,
+) -> Option<Tempo> {
+    let supported = |&&(score, bpm): &&(f64, f64)| {
+        score >= best - 0.10
+            && (MIN_BPM..=MAX_BPM).contains(&bpm)
+            && loop_family(bpm, hint)
+            && phase_in_both_halves(onsets, anchors, bins, 6000.0 / bpm)
+    };
+    let &(score, bpm) = candidates
+        .iter()
+        .filter(supported)
+        .max_by(|a, b| a.0.total_cmp(&b.0))?;
+    Some(choose_octave(
+        bpm,
+        candidates
+            .iter()
+            .filter(supported)
+            .filter_map(|&(other, rate)| {
+                (is_half_double(rate, bpm) && score - other <= 0.10).then_some((other, rate))
+            }),
+    ))
+}
+
+fn phase_in_both_halves(
+    onsets: &[(usize, f64)],
+    anchors: &[usize],
+    bins: usize,
+    period: f64,
+) -> bool {
+    [1.0, 2.0].into_iter().any(|subdivision| {
+        let step = period / subdivision;
+        let tolerance = (step * 0.11).clamp(1.5, 3.0);
+        anchors.iter().any(|&phase| {
+            let mut previous = [None; 2];
+            let mut hits = [0; 2];
+            let mut repeats = [0; 2];
+            for &(i, _) in onsets {
+                let slot = (i as f64 - phase as f64) / step;
+                if (slot - slot.round()).abs() * step > tolerance {
+                    continue;
+                }
+                let half = usize::from(i >= bins / 2);
+                let slot = slot.round() as i32;
+                if previous[half] != Some(slot) {
+                    hits[half] += 1;
+                    if previous[half].is_some_and(|p| slot - p <= (2.0 * subdivision) as i32) {
+                        repeats[half] += 1;
+                    }
+                    previous[half] = Some(slot);
+                }
+            }
+            hits.iter().all(|&count| count >= 2) && repeats.iter().all(|&count| count >= 1)
+        })
+    })
 }
 
 fn tempo_ratio(a: f64, b: f64) -> f64 {
@@ -754,6 +902,52 @@ fn grid(onsets: &[(usize, f64)], anchors: &[usize], period: f64) -> Option<f64> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn percussion_recovery_requires_agreeing_windows_and_preserves_range_vetoes() {
+        let windows = TempoWindows::new(48_000, 48_000 * 16).unwrap();
+        assert_eq!(windows.loop_candidate(), Some(120.0));
+        let estimate = |bpm| Tempo::Estimate {
+            bpm,
+            sampled: false,
+        };
+        let evidence = |tempo, percussion_vote, range_veto| TempoEvidence {
+            score: WindowScore {
+                tempo,
+                percussion_vote,
+                range_veto,
+                loop_support: false,
+            },
+            levels: Vec::new(),
+            spectral: None,
+        };
+        let ambiguous = || evidence(Tempo::Ambiguous, Some(estimate(120.0)), false);
+        assert_eq!(
+            windows.combine_evidence(
+                &[ambiguous(), evidence(estimate(60.0), None, false)],
+                &|| false,
+            ),
+            Ok(Tempo::OctaveAmbiguous {
+                bpm: 120.0,
+                sampled: false
+            }),
+        );
+        for (vote, guard) in [(estimate(60.0), true), (estimate(95.0), false)] {
+            assert_eq!(
+                windows.combine_evidence(&[ambiguous(), evidence(vote, None, guard)], &|| false,),
+                Ok(Tempo::Ambiguous),
+            );
+        }
+    }
+
+    #[test]
+    fn percussion_phase_must_agree_across_both_halves() {
+        let onsets = [15, 65, 115, 165, 215, 265, 315, 365];
+        let attacks = onsets.map(|i| (i, 1.0));
+        assert!(phase_in_both_halves(&attacks, &[15], 400, 50.0));
+        let conflicting = onsets.map(|i| (if i >= 200 { i + 12 } else { i }, 1.0));
+        assert!(!phase_in_both_halves(&conflicting, &[15, 227], 400, 50.0));
+    }
 
     fn click_window(rate: u32, bpm: f64, beats: usize, phase: f64, gain: f32) -> Tempo {
         let period = 60.0 / bpm * f64::from(rate);

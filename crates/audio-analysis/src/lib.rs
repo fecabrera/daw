@@ -2,6 +2,7 @@
 //! Detection allocates; call it on a worker, never an audio callback.
 #![forbid(unsafe_code)]
 pub mod obtain;
+mod percussion;
 mod spectral_attacks;
 pub mod tempo;
 mod transients;

@@ -2,6 +2,63 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Default percussion ambiguity recovery — 2026-11-25
+
+Both standard detectors use percussion ambiguity recovery. Clip Settings
+continues to use Ellis for file and compound sources. Offline OBTAIN
+also includes targeted tempo selection.
+
+Default results exactly reproduced the earlier recovery results on
+224 decoded Splice inputs and 52 Groove holdout excerpts, including
+OBTAIN beat frames. The same 13 Splice files failed during preparation.
+The four-route comparison reproduced the pre-recovery and recovery
+result records. Single-file profiles confirmed default recovery on one
+formerly ambiguous source for each detector.
+
+Formatting and strict workspace Clippy passed. Debug and release suites
+each passed 3,834 tests, with 24 ignored and 22 native Audio Unit cases
+filtered. Both suites passed the Clip Settings tempo and compound-source
+tempo regressions.
+
+The local macOS release package built and passed strict signature
+verification. The offline linker required the cached, pinned ONNX Runtime
+archive via `ORT_LIB_PATH`. Native UI and audio-device checks remain open.
+
+## Percussion ambiguity recovery — 2026-11-25
+
+The headless comparison's `--percussion-recovery` option ran both
+standard detectors and both recovery variants on the same prepared
+sources at 48 kHz. The 237 Splice attempts reproduced 224 decodes,
+13 shared preparation failures, and every standard detector result.
+A frozen holdout used 52 Groove MIDI Dataset test excerpts across six
+performers, with 32 beats and 20 fills. [Dataset and license](https://magenta.withgoogle.com/datasets/groove)
+
+| Cohort | Ellis numeric | Ellis within 2 adjusted BPM | OBTAIN numeric | OBTAIN within 2 adjusted BPM |
+| --- | ---: | ---: | ---: | ---: |
+| Splice decoded | 155 → 159 / 224 | 152 → 156 / 224 | 140 → 150 / 224 | 123 → 132 / 224 |
+| Splice drums and percussion | 60 → 62 / 69 | 58 → 60 / 69 | 53 → 63 / 69 | 50 → 59 / 69 |
+| Groove holdout | 43 → 44 / 52 | 40 → 41 / 52 | 46 → 48 / 52 | 31 → 33 / 52 |
+
+Every existing result with a BPM matched. OBTAIN added one estimate with
+2.38 adjusted BPM error on Splice. Neither recovery added an error above
+10 BPM. Warm P95 analysis on the 69 Splice percussion files moved from
+3.81 to 3.75 ms for Ellis and from 18.56 to 18.70 ms for OBTAIN.
+
+Both OBTAIN modes reproduced all 29 generated beat fixtures and the
+separate active-gap inference. On the Groove metronome grid at ±70 ms,
+the recovered tracks raised recall from 364/624 to 379/624 and F1 from
+0.637 to 0.652. P95 absolute timing error moved from 47.34 to 47.43 ms
+and stayed at 47.34 ms on common matches. One recovered fill matched two
+of six predictions at the strict reference meter. The generated 43 and
+250 BPM controls reproduced the original range outcomes. Recovery was
+opt-in for this benchmark. The [headless comparison guide](../../docs/development/offline-obtain.md#compare-percussion-ambiguity-recovery)
+describes how to reproduce both sets of results.
+
+Formatting and strict workspace Clippy passed. Debug and release workspace
+suites each passed 3,834 tests, with 24 ignored and 22 native Audio Unit
+registration cases filtered. The comparison also passed single-file
+profile and legacy mode checks.
+
 ## Standard offline OBTAIN selection — 2026-11-25
 
 Targeted selection is the default for the portable offline tracker, media

@@ -6,10 +6,27 @@ const BLOCK: usize = 8192;
 
 /// Analyze selected ranges of the original prepared audio.
 pub fn audio_tempo(audio: &AudioData, cancelled: &impl Fn() -> bool) -> Result<Tempo> {
+    measure_audio_tempo(audio, true, cancelled)
+}
+
+/// Analyze a prepared source using Ellis before percussion ambiguity recovery.
+pub fn audio_tempo_without_percussion(
+    audio: &AudioData,
+    cancelled: &impl Fn() -> bool,
+) -> Result<Tempo> {
+    measure_audio_tempo(audio, false, cancelled)
+}
+
+fn measure_audio_tempo(
+    audio: &AudioData,
+    recover_percussion: bool,
+    cancelled: &impl Fn() -> bool,
+) -> Result<Tempo> {
     let mut raw = Vec::new();
-    source_tempo(
+    measure_source_tempo(
         audio.sample_rate_hz,
         audio.frame_count(),
+        recover_percussion,
         cancelled,
         |start, out| {
             if audio.read_frames(start, out, &mut raw)? != out.len() {
@@ -24,6 +41,16 @@ pub fn audio_tempo(audio: &AudioData, cancelled: &impl Fn() -> bool) -> Result<T
 pub fn source_tempo(
     rate: u32,
     frames: u64,
+    cancelled: &impl Fn() -> bool,
+    read: impl FnMut(u64, &mut [[f32; 2]]) -> Result<()>,
+) -> Result<Tempo> {
+    measure_source_tempo(rate, frames, true, cancelled, read)
+}
+
+fn measure_source_tempo(
+    rate: u32,
+    frames: u64,
+    recover_percussion: bool,
     cancelled: &impl Fn() -> bool,
     mut read: impl FnMut(u64, &mut [[f32; 2]]) -> Result<()>,
 ) -> Result<Tempo> {
@@ -50,15 +77,19 @@ pub fn source_tempo(
                 start += count as u64;
             }
         }
-        results.push(
-            detector
-                .into_evidence(candidate, cancelled)
-                .map_err(map_error)?,
-        );
+        let evidence = if recover_percussion {
+            detector.into_evidence(candidate, cancelled)
+        } else {
+            detector.into_evidence_without_percussion(candidate, cancelled)
+        };
+        results.push(evidence.map_err(map_error)?);
     }
-    windows
-        .combine_evidence(&results, cancelled)
-        .map_err(map_error)
+    if recover_percussion {
+        windows.combine_evidence(&results, cancelled)
+    } else {
+        windows.combine_evidence_without_percussion(&results, cancelled)
+    }
+    .map_err(map_error)
 }
 
 /// Analyze an immutable prepared file using the offline OBTAIN detector.

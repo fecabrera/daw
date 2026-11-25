@@ -36,9 +36,9 @@ a 1 MiB reservation. All reads and analysis run on a worker.
 
 ## Detector
 
-The production source tempo detector uses the Ellis-based estimator for
-both file and compound sources. The headless beat-tracking comparison
-also runs [offline OBTAIN](offline-obtain.md).
+The production source tempo detector uses the Ellis-based estimator with
+percussion ambiguity recovery for file and compound sources. The headless
+beat-tracking comparison also runs [offline OBTAIN](offline-obtain.md).
 
 Analyze up to 12 seconds per window. Read the whole source in one to three
 adjacent windows up to 36 seconds. Above 36 seconds, take three 12-second
@@ -102,6 +102,17 @@ vetoes. The existing complete-loop duration hint can provide a candidate;
 without it, the spectral changes must supply their own rate. Keep the earlier
 numeric and ambiguous results and use the same multi-window consensus, worker,
 memory admission, and cancellation path.
+
+## Percussion ambiguity comparison
+
+Ellis ambiguity recovery applies to complete sources. An ambiguous window
+must have repeated short attacks, a
+duration-supported tempo candidate, and repeated onset alignment at a
+common phase in both halves of the window. The recovered window votes
+use the ordinary cross-window consensus and the supported octave nearest
+100 BPM. A conflicting window or an out-of-range veto keeps the original
+ambiguous result. The headless comparison can also run the pre-recovery
+Ellis estimator on the same prepared input.
 
 ## Lifetime and status
 

@@ -133,8 +133,9 @@ pub enum Mode {
     Onsets,
     Rivals,
     Combined,
-    #[default]
     Selection,
+    #[default]
+    PercussionRecovery,
 }
 
 impl Mode {
@@ -147,7 +148,11 @@ impl Mode {
     }
 
     fn original_grid(self) -> bool {
-        matches!(self, Self::Legacy | Self::Selection)
+        self == Self::Legacy || self.targeted_selection()
+    }
+
+    fn targeted_selection(self) -> bool {
+        matches!(self, Self::Selection | Self::PercussionRecovery)
     }
 }
 
@@ -236,7 +241,8 @@ fn analyze_inner<E: From<Error>>(
         let result = track::estimate(&onset, schedule.loop_candidate(), mode, work, cancelled)?;
         let start = work.start();
         let before = analysis.runs.len();
-        let baseline_summary = matches!(mode, Mode::Legacy | Mode::Reuse | Mode::Selection);
+        let baseline_summary =
+            matches!(mode, Mode::Legacy | Mode::Reuse) || mode.targeted_selection();
         if baseline_summary && !result.runs.is_empty() {
             regions += 1;
         }

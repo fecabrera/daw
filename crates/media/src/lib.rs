@@ -4,7 +4,8 @@ pub use audio_analysis::obtain::{
 };
 pub use audio_analysis::tempo::Tempo;
 pub use source_tempo::{
-    audio_beats, audio_beats_mode, audio_beats_profile, audio_tempo, source_tempo,
+    audio_beats, audio_beats_mode, audio_beats_profile, audio_tempo,
+    audio_tempo_without_percussion, source_tempo,
 };
 mod transients;
 use daw_core::{SAMPLE_RATE, SourceMetadata};

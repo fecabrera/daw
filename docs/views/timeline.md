@@ -459,13 +459,14 @@ Analysis starts in the background when the row is visible. For long recordings,
 it samples the start, middle, and end. The detector can measure a pulse from
 recurring changes in the audio, including changes in notes or vocal tone when
 attacks are soft. When both half and double interpretations fit, the row shows
-the supported BPM closest to 100. If competing rates do not fit that
-relationship, it shows **Ambiguous tempo**. If the rhythm is too weak, it
-shows **Tempo unavailable**.
+the supported BPM closest to 100. If competing tempos remain after the
+detector checks the audio, it shows **Ambiguous tempo**. If the rhythm is
+too weak, it shows **Tempo unavailable**.
 
 For a complete loop, the detector can use its length to suggest a tempo when
-the audio supports it. Select clips that share a single audio source to see
-one result.
+the audio supports it. In a percussion loop with competing tempos, it can use
+repeated attacks to confirm one tempo. Select clips that share a single audio
+source to see one result.
 
 ## Track Mixer
 

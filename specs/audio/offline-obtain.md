@@ -4,9 +4,9 @@ The offline tracker analyzes one immutable prepared stereo source. It returns
 beat frames and local tempos in the source clock. It also reports a stable
 source BPM or a weak, ambiguous, variable or out-of-range outcome. A successful
 abstention is distinct from media, admission, resource and cancellation errors.
-Standard offline OBTAIN includes targeted tempo selection. Its entry point
-is a headless file comparison. Clip Settings uses the [production Ellis-based
-source tempo detector](source-tempo.md).
+Standard offline OBTAIN includes targeted tempo selection and percussion
+ambiguity recovery. Its entry point is a headless file comparison. Clip
+Settings uses the [production Ellis-based source tempo detector](source-tempo.md).
 
 ## Source clock and limits
 
@@ -123,6 +123,18 @@ phase seeds and landmark weights without changing their ranking.
   and phase disputes. Check the median supported interval against the local
   contour before rounding frames. The nearest-100 projection uses only a
   decoded compatible octave.
+
+## Percussion ambiguity comparison
+
+The tracker attempts recovery when its initial tempo contour is ambiguous.
+Recovery requires one active span
+on a complete source, repeated short attacks, and a duration-derived tempo
+family. It verifies the leader and up to two alternatives over the same
+span on the existing broadband onset evidence. The winner must have direct
+beat support and a clear score advantage over unrelated decoded contenders.
+A range guard or unresolved dispute keeps the original result. A recovered
+run reports its own decoded beat frames on the prepared source clock. The
+headless comparison can also run targeted selection before recovery.
 
 ## Entry point and validation
 

@@ -1,7 +1,7 @@
-//! Experimental headless comparison. Uses the production source BPM detector unchanged.
+//! Headless comparison of the production source BPM detector and offline OBTAIN.
 use daw_media::{
     BeatAnalysis, BeatMode, BeatProfile, BeatSummary, Tempo, audio_beats, audio_beats_mode,
-    audio_beats_profile, audio_tempo, decode_audio_bounded,
+    audio_beats_profile, audio_tempo, audio_tempo_without_percussion, decode_audio_bounded,
 };
 use serde_json::{Value, json};
 use std::{
@@ -17,6 +17,7 @@ struct Options {
     repeats: usize,
     experiment: Option<BeatMode>,
     profile: bool,
+    percussion_recovery: bool,
 }
 
 fn options(args: impl IntoIterator<Item = OsString>) -> Option<Options> {
@@ -27,10 +28,15 @@ fn options(args: impl IntoIterator<Item = OsString>) -> Option<Options> {
         repeats: 0,
         experiment: None,
         profile: false,
+        percussion_recovery: false,
     };
     while let Some(arg) = args.next() {
         if arg == "--profile" && !options.profile {
             options.profile = true;
+            continue;
+        }
+        if arg == "--percussion-recovery" && !options.percussion_recovery {
+            options.percussion_recovery = true;
             continue;
         }
         let value = args.next()?;
@@ -52,7 +58,10 @@ fn options(args: impl IntoIterator<Item = OsString>) -> Option<Options> {
             _ => return None,
         }
     }
-    (daw_core::SAMPLE_RATES.contains(&options.rate) && options.repeats <= 9).then_some(options)
+    (daw_core::SAMPLE_RATES.contains(&options.rate)
+        && options.repeats <= 9
+        && !(options.percussion_recovery && options.experiment.is_some()))
+    .then_some(options)
 }
 
 fn timed<T>(operation: impl FnOnce() -> T) -> (T, u64) {
@@ -125,17 +134,47 @@ fn compare(path: &Path, options: &Options, index: usize) -> Result<Value, (&'sta
     let cancelled = || false;
     let (audio, prepare) = timed(|| decode_audio_bounded(path, options.rate, &cancelled));
     let audio = audio.map_err(|error| ("decode_error", error.0))?;
-    let mut results: [Measurements; 3] = std::array::from_fn(|_| Measurements::default());
-    let names = ["baseline", "obtain", "experiment"];
-    let errors = ["baseline_error", "obtain_error", "experiment_error"];
-    let count = if options.experiment.is_some() { 3 } else { 2 };
+    let mut results: [Measurements; 4] = std::array::from_fn(|_| Measurements::default());
+    let (names, errors, count) = if options.percussion_recovery {
+        (
+            ["baseline", "obtain", "ellis_recovery", "obtain_recovery"],
+            [
+                "baseline_error",
+                "obtain_error",
+                "ellis_recovery_error",
+                "obtain_recovery_error",
+            ],
+            4,
+        )
+    } else {
+        (
+            ["baseline", "obtain", "experiment", ""],
+            ["baseline_error", "obtain_error", "experiment_error", ""],
+            if options.experiment.is_some() { 3 } else { 2 },
+        )
+    };
+    let obtain_mode = if options.percussion_recovery {
+        BeatMode::Selection
+    } else {
+        BeatMode::default()
+    };
     for round in 0..=options.repeats {
         let first = (index + round) % count;
         for offset in 0..count {
             let version = (first + offset) % count;
             let (outcome, elapsed) = timed(|| match version {
+                0 if options.percussion_recovery => {
+                    audio_tempo_without_percussion(&audio, &cancelled).map(Outcome::Tempo)
+                }
+                1 if options.percussion_recovery => {
+                    audio_beats_mode(&audio, obtain_mode, &cancelled).map(Outcome::Beats)
+                }
                 0 => audio_tempo(&audio, &cancelled).map(Outcome::Tempo),
                 1 => audio_beats(&audio, &cancelled).map(Outcome::Beats),
+                2 if options.percussion_recovery => {
+                    audio_tempo(&audio, &cancelled).map(Outcome::Tempo)
+                }
+                3 => audio_beats(&audio, &cancelled).map(Outcome::Beats),
                 _ => audio_beats_mode(&audio, options.experiment.unwrap(), &cancelled)
                     .map(Outcome::Beats),
             });
@@ -171,8 +210,13 @@ fn compare(path: &Path, options: &Options, index: usize) -> Result<Value, (&'sta
         output[format!("{name}_repeat_ns")] = json!(measurement.warm);
     }
     if options.profile {
-        for (name, mode) in std::iter::once(("obtain", BeatMode::default()))
+        for (name, mode) in std::iter::once(("obtain", obtain_mode))
             .chain(options.experiment.map(|mode| ("experiment", mode)))
+            .chain(
+                options
+                    .percussion_recovery
+                    .then_some(("obtain_recovery", BeatMode::default())),
+            )
         {
             let mut profile = BeatProfile::default();
             if let Ok(value) = audio_beats_profile(&audio, mode, &cancelled, &mut profile) {
@@ -242,7 +286,7 @@ fn run(options: &Options) -> io::Result<u8> {
 fn main() -> std::process::ExitCode {
     let Some(options) = options(std::env::args_os().skip(1)) else {
         eprintln!(
-            "Usage: source_beat_compare [--input PATH] [--rate HZ] [--repeats 0..9] [--experiment legacy|reuse|onsets|rivals|combined|selection] [--profile]"
+            "Usage: source_beat_compare [--input PATH] [--rate HZ] [--repeats 0..9] [--experiment legacy|reuse|onsets|rivals|combined|selection | --percussion-recovery] [--profile]"
         );
         return 2.into();
     };
