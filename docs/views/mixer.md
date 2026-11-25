@@ -1,24 +1,12 @@
 # Mixer
 
+Mixer controls track levels and the final project output. It uses the same track settings as Timeline, so edits in either view apply to playback and export.
+
+## Track controls
+
 MIDI tracks have an **R** button in its own group after M/S on the same row. Enable several tracks to receive live MIDI together. With none enabled, input follows the selected MIDI track; its R text shows the active color on the regular background. See [live MIDI](../instruments/live-midi.md) and [recording](../editing/midi-recording.md).
 
 Selected tracks use a highlighted strip background without a selection outline.
-
-Mixer controls track levels and the final project output. It uses the same track settings as Timeline, so edits in either view apply to playback and export.
-
-The Return and Master toggles stay at the bottom of the upper right toolbar.
-Opening the effects lane places them just above its toolbar. Closing the lane
-returns them to the bottom of the full-height toolbar.
-
-## Effects toolbar
-
-Use the left **Effects** button to open Mixer’s effects catalog. Use the bottom
-**Effects lane** button to show the selected track’s or Master’s effect chain.
-The lane starts open and its visibility carries across all views.
-
-Select a track, group, beat subtrack or Master to change the effect target. A beat subtrack targets its instrument Output effects; its parent targets the beat-track effects. Add effects from the catalog and use the same unit controls, reordering and compact mode as Timeline. The lane sits below the mixer; Master stays pinned at the right of the mixer area when shown. Toggling panels changes only the workspace layout.
-
-## Track controls
 
 Audio track headers show a waveform icon. MIDI track headers show a keyboard icon. Master shows a boom box icon. Each header centers its icon and semibold name together. In Light mode, header names and icons use the standard dark text color. In Dark and Mist modes, they use white. Selected strips use the selection background. The icon-to-label gap matches the vertical padding around the icon. Master uses the neutral unit-header background color.
 
@@ -70,9 +58,25 @@ Send rows always appear above Pan, with a grouped power button and Return dropdo
 
 ## Master
 
-Master stays at the right while tracks scroll, unless you hide it with its toolbar toggle. It controls the combined track mix. Master effects run before Master gain. Any gain after a Limiter can raise its output above the limiter ceiling.
+Master controls the combined track mix. Master effects run before Master gain. Any gain after a Limiter can raise its output above the limiter ceiling.
 
 The project Master is separate from [Instrument Output](../instruments/main.md), which controls the layers of one MIDI instrument. See [instruments and effects](instrument.md) for effect placement.
+
+### Show Returns and Master
+
+Master stays at the right while tracks scroll, unless you hide it with its toolbar toggle.
+
+The Return and Master toggles stay at the bottom of the upper right toolbar.
+Opening the effects lane places them just above its toolbar. Closing the lane
+returns them to the bottom of the full-height toolbar.
+
+## Effects toolbar
+
+Use the left **Effects** button to open Mixer’s effects catalog. Use the bottom
+**Effects lane** button to show the selected track’s or Master’s effect chain.
+The lane starts open and its visibility carries across all views.
+
+Select a track, group, beat subtrack or Master to change the effect target. A beat subtrack targets its instrument Output effects; its parent targets the beat-track effects. Add effects from the catalog and use the same unit controls, reordering and compact mode as Timeline. The lane sits below the mixer. Toggling panels changes only the workspace layout.
 
 ## Bounce to audio
 

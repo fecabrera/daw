@@ -183,7 +183,7 @@ Keep B01–B36 as confirmed requirements and accepted choices. B34–B35 were co
 
 Related documents: [modular audio units](../architecture/modular-audio-units.md), [scope and roadmap](../architecture/mvp-scope.md), [repository guidelines](../../AGENTS.md), and [validation history](../validation/README.md).
 
-### Compact lower editor layout
+## Compact lower editor layout
 
 The lower editor uses one horizontal topbar for Bars, resolution and shared
 fit/zoom controls. Add beat subtrack is the shared right-pinned Plus button in the
@@ -205,17 +205,54 @@ existing control/step alignment; Instrument retains its normal header geometry.
 Unavailable or stopped output displays empty rails. Meter clicks must not change
 project data, add hits, or start subtrack reordering.
 
-### Selected subtrack and final Output
+## Selected subtrack and final Output
 
 Instrument uses the [Tracks hierarchy](instrument-tracks.md). Beat parents disclose compact subtrack rows. A selected subtrack uses the standard MIDI instrument body without group indentation or a surrounding group header: Layers title and Plus, source layers, local LFO/Envelope lanes, and Output in one vertical scroll area. Cache presentation state by owner, but expose drop geometry only for the visible owner. Selecting another owner clears hidden layer selection. Keep all processing state in the shared project.
 
 Selecting the beat parent shows only its final Output and targets that bus for compatible catalog units. There are no kit-wide source, LFO or Envelope rows or Add layer action. The parent remains the selected real project track for effects and arrangement. Source/sample navigation must select the matching subtrack owner when opening a nested instrument. Parent disclosure is independent of Output collapse and does not change audio/history.
+
+Layer selection belongs to the Instrument view, even though per-subtrack UI state
+is cached separately. A plain primary interaction within a subtrack clears
+layer/provider/Output selections in the other cached owners before painting their
+outlines. Keep selection within the clicked owner for existing same-owner drag
+and Shift rules. Changing owners clears hidden owners’ layer selections, including final beat Output. Only the active subtrack can initialize a default layer selection. View-level Escape
+clears both current and cached layer selections. Preserve IDs, settings, project
+data, history and dirty state; do not treat popup clicks as background ownership.
+
+## Pattern selection and editing
 
 Double-click an empty beat lane in the arrangement to create a pattern.
 Double-click a beat clip to open the editor pane and fit the full source pattern. Retain subtrack controls without an active pattern, but show no source
 cells until a clip is selected. The arrangement shows all clips. The lower grid
 shows only the selected full source. Selecting a clip restores its source grid
 controls and fits that source, independently of clip trims and loops.
+
+Show only the selected beat clip’s complete source pattern in the lower grid.
+Use source-frame coordinates from tick zero through `BeatPattern::length_ticks`,
+independent of arrangement position, source offset, stretch, loop base or phase.
+Include steps excluded by clip trims; edit them through the existing
+`ReplaceBeatPattern` transaction without changing clip timing or other source users.
+Do not show other clips, loop repetitions or placeholder cells outside the source.
+With no selected clip, show the selection prompt and retain subtrack controls and
+standalone audition. The arrangement stays visible above the editor pane.
+
+The lower viewport fits the whole source on selection, retains manual source
+zoom/pan during edits, and bounds scrolling to that source. Its ruler uses the
+shared musical tick painter with source bars starting at 1.1, without project
+playhead/loop gestures. Upper-ruler seeking and loop selection keep the project
+clock. Playhead outlines on source cells still resolve the selected clip’s saved
+trim/stretch/repeat mapping during playback. Subdivision captions and beat
+spacing follow source ticks and the project time signature, not clip stretch.
+
+Index immutable steps by asset ID, prepare only the selected source and cull
+rows/slots before creating widgets. Source edits update playback repetitions of
+that clip; other users retain their previous content. Keep the selected clip and
+both view transforms during edits. Pointer edits require a point inside the painted
+tile, with its right edge exclusive. Beat gutters and space after the source must
+not activate a nearby step through egui’s extended hit radius. Preserve keyboard
+activation, velocity menus and guarded automatic audition.
+
+## Subtrack header and selection
 
 Selected beat editor subtrack rows reuse the track/layer selection palette through
 selected_track_background and selected_track_header_background. Paint the lane
@@ -270,13 +307,17 @@ adjacent step. Controls retain pointer and keyboard actions; only blank panel
 clicks claim header keyboard focus. Control presses do not grant header-only Delete.
 Selection alone must not edit the project, dirty state or clip/track selection.
 
-Layer selection belongs to the Instrument view, even though per-subtrack UI state
-is cached separately. A plain primary interaction within a subtrack clears
-layer/provider/Output selections in the other cached owners before painting their
-outlines. Keep selection within the clicked owner for existing same-owner drag
-and Shift rules. Changing owners clears hidden owners’ layer selections, including final beat Output. Only the active subtrack can initialize a default layer selection. View-level Escape
-clears both current and cached layer selections. Preserve IDs, settings, project
-data, history and dirty state; do not treat popup clicks as background ownership.
+Beat subtrack renaming in the beat editor pane and Instrument uses `rows::name_input`, shared
+with track and Instrument layer names. Keep the same font, full available width, standard control
+height, input frame/padding and initial full-name Unicode selection. Track Mixer
+headers retain their smaller font through the helper argument. Reuse
+`inline_edit_action`: Enter commits, Escape, window/field focus loss or disabled
+UI cancels. Keep beat empty-name rejection and transactional `BeatEdit::Rename`.
+In the beat editor pane, the header background also starts renaming on double-click. Child
+mix controls and meters retain their own input ownership; do not intercept their
+double-clicks for rename. Opening a name input does not edit the project.
+
+## Audition and scrolling
 
 The beat editor pane places subtrack header rows inside its existing left control panel, beneath
 the Beat subtracks header and aligned with their step rows. One lower-pane
@@ -299,31 +340,6 @@ changes, edits, Escape and existing job/dialog/focus guards cancel stale preview
 Reuse `instrument_lanes_header` for the Beat subtracks title and Plus action so
 button artwork, size, right inset, enablement and tooltip match Instrument.
 
-Show only the selected beat clip’s complete source pattern in the lower grid.
-Use source-frame coordinates from tick zero through `BeatPattern::length_ticks`,
-independent of arrangement position, source offset, stretch, loop base or phase.
-Include steps excluded by clip trims; edit them through the existing
-`ReplaceBeatPattern` transaction without changing clip timing or other source users.
-Do not show other clips, loop repetitions or placeholder cells outside the source.
-With no selected clip, show the selection prompt and retain subtrack controls and
-standalone audition. The arrangement stays visible above the editor pane.
-
-The lower viewport fits the whole source on selection, retains manual source
-zoom/pan during edits, and bounds scrolling to that source. Its ruler uses the
-shared musical tick painter with source bars starting at 1.1, without project
-playhead/loop gestures. Upper-ruler seeking and loop selection keep the project
-clock. Playhead outlines on source cells still resolve the selected clip’s saved
-trim/stretch/repeat mapping during playback. Subdivision captions and beat
-spacing follow source ticks and the project time signature, not clip stretch.
-
-Index immutable steps by asset ID, prepare only the selected source and cull
-rows/slots before creating widgets. Source edits update playback repetitions of
-that clip; other users retain their previous content. Keep the selected clip and
-both view transforms during edits. Pointer edits require a point inside the painted
-tile, with its right edge exclusive. Beat gutters and space after the source must
-not activate a nearby step through egui’s extended hit radius. Preserve keyboard
-activation, velocity menus and guarded automatic audition.
-
 The beat lower pane reuses `editor_scrollbar` with the standard
 `editor_content_scrollbar` identity, while the content viewport is active. Pin it
 to the canvas bottom, aligned with the ruler's left gutter. Reserve
@@ -337,15 +353,7 @@ In the Timeline editor, paint the divider between the audition gutter and
 step grid from below the ruler to the bottom of the pane. Paint it outside
 the row scroll area so it extends through the horizontal scrollbar space.
 
-Beat subtrack renaming in the beat editor pane and Instrument uses `rows::name_input`, shared
-with track and Instrument layer names. Keep the same font, full available width, standard control
-height, input frame/padding and initial full-name Unicode selection. Track Mixer
-headers retain their smaller font through the helper argument. Reuse
-`inline_edit_action`: Enter commits, Escape, window/field focus loss or disabled
-UI cancels. Keep beat empty-name rejection and transactional `BeatEdit::Rename`.
-In the beat editor pane, the header background also starts renaming on double-click. Child
-mix controls and meters retain their own input ownership; do not intercept their
-double-clicks for rename. Opening a name input does not edit the project.
+## Hit and clip controls
 
 The step Velocity context popup stays open for clicks inside it. Its standard
 drag input supports dragging and click/type/Enter entry, bounded to 1–127.
@@ -359,6 +367,8 @@ displaying sharps after the octave (C4, D3#). Accept both D3# and D#3 input.
 Retain the MIDI 0–127 range and default 60 (C4), whole-semitone dragging and
 transactional `BeatEdit::SetPitch`. Typed input publishes on Enter or field focus
 loss; Escape and invalid text preserve the saved pitch.
+
+## Clip length and subdivision
 
 Body-edge drags extend unlooped beat clips through the shared pattern resize
 path. Keep frame-based trims and the existing header-edge looping behavior.

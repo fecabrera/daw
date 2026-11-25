@@ -19,12 +19,16 @@ effects and mixing. Source meters can therefore show signal while downstream
 controls silence playback. These meters measure sample peaks, not loudness or
 True Peak.
 
+## Read and reset the meters
+
 The display spans −60 to 0 dBFS. A channel is green at or below 0 dBFS and red
 above it. The level rises immediately and falls with a 300 ms release. A thin
 grey marker holds the highest sample since reset. Hover to read current and held
 levels, including values above the display limit. Reset changes monitoring only;
 it does not change gain, automation, project data or Undo history. The next audio
 sample can raise the peak again.
+
+## Playback and bypass
 
 Disabling a unit empties its rails, clears held peaks and stops updates.
 Re-enabling resumes monitoring. Stop and Pause hide current levels while

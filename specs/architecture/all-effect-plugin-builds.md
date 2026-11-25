@@ -54,6 +54,14 @@ before a stopped reading response.
 
 CLAP shares prepared atomics with the editor. VST3 exchanges copied scalar snapshots only on the control thread. The original output-only products retain two wire values (`current`, `peak`); nine of the new products carry thirteen values: output current/hold, reduction current/hold, three signed band currents, three reduction holds, and three boost holds. Multiband EQ appends 64 linear band readings and 64 held sample peaks for 141 values, followed by sample rate, 512 spectrum magnitudes and coherent-frame metadata for 668 values total, with independent per-band peak reset requests. See [spectrum wire compatibility](#spectrum-wire-compatibility). Equalizer uses the existing three band-current fields for its linear band readings. Extra attributes use `meter.<index>`. Reset masks select independent held readings. Meter messages, appearance, and resets never enter parameter/state payloads.
 
+## Loudness Meter
+
+The stereo analyzer adds an independent typed contract, shared editor and CLAP/VST3
+products. Both editors use the 720-point shared history body. The product has four
+discrete parameters, zero audio latency/tail, bounded worker analysis and transient
+Hold/Reset actions outside automation. Its extended control-thread telemetry and
+measurement limits are defined in the [meter specification](../effects/loudness-meter.md).
+
 ## Multiband EQ prepared bank
 
 The plugin prepares 64 stable band slots, each with Enabled, Mode, Frequency, Gain, and Q parameters, plus Bypass and output Level (322 parameters). The first slot starts enabled. Slot identities are deterministic non-nil UUIDs 1–64 internal to the prepared bank; no DAW project identity is serialized. Disabled slots retain their parameters and suspend only after their 5 ms mode-weight fade reaches zero. Ordinary DAW bands retain warm filter histories and variable topology.
@@ -114,7 +122,9 @@ The plugin workflow runs registered products across three platforms (one job per
 
 ABI tests cover native metadata, latency at all rates, every parameter, choices, dense automation, legal in-place/irregular buffers, zero-frame flushes, state corruption and active recall. Product tests freeze identities and default state, validate mappings/text conversions, compare portable DSP and wrappers, and check bypass meter clearing. Platform-native editor/device and external-host checks remain separate from automated tests. Record executed checks and remaining limits in [validation history](../validation/README.md).
 
-## Runtime notice inventory — 2026-11-02
+## Runtime notices
+
+### Runtime notice inventory — 2026-11-02
 
 `tools/runtime_notices.json` records exact text hashes for the confirmed tracing,
 tracing-subscriber, libloading, ashpd, alsa-sys and ICU4X notice omissions. Their
@@ -129,15 +139,7 @@ Notices can be included conservatively on targets that do not
 link a component. This inventory closes those omissions; it is not a complete
 license or corresponding-source audit of every dependency and deliverable.
 
-## Loudness Meter
-
-The stereo analyzer adds an independent typed contract, shared editor and CLAP/VST3
-products. Both editors use the 720-point shared history body. The product has four
-discrete parameters, zero audio latency/tail, bounded worker analysis and transient
-Hold/Reset actions outside automation. Its extended control-thread telemetry and
-measurement limits are defined in the [meter specification](../effects/loudness-meter.md).
-
-## Runtime notice closure correction — 2026-11-03
+### Runtime notice closure correction — 2026-11-03
 
 The runtime inventory now retains all 36 selected normal-runtime omissions from
 the six-target/per-product audit, plus the shared legacy objc2 MIT grant containing
@@ -152,7 +154,7 @@ bounded regression record; dependency/feature changes still require a fresh
 license-closure assessment. Corresponding-source/relink release obligations remain
 separate from notice retention.
 
-## Supplemental source grants — 2026-11-04
+### Supplemental source grants — 2026-11-04
 
 The shared notice inventory retains the exact Valuable 0.1.1 MIT grant from upstream
 `9efc29b6e58cef28f6566a47aa7e142a55fead77`. Its registry source payload omits the grant.

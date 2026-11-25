@@ -6,6 +6,8 @@ tracks, groups, instrument layers and buses, beat instruments, and Master.
 
 Use **Ambient Reverb** for spacious, evolving textures and long reverb tails.
 
+## Controls
+
 | Strip | Control | Range | Default |
 | --- | --- | --- | --- |
 | Options | Quality | ECO / HQ | ECO |
@@ -34,6 +36,8 @@ retains the original filter, while 12 and 24 dB/oct use Butterworth filters. Eac
 mode is approximately −3 dB at the selected cutoff. Slope changes crossfade over
 5 ms and retain the reverb tail.
 
+## Input filters
+
 Lo-Pass adds an independent filter to the wet input, in addition to the reverb's
 existing brightness and damping. Its strip uses the same frequency knob, bottom
 Slope selector and power footer as Plate Reverb. Power disables its controls and
@@ -46,6 +50,8 @@ output transformer model, which processes the complete blend. Consequently,
 0% wet can still change the dry signal. Use header power for a dry comparison.
 Level at exact silence remains silent even with modulation.
 
+## Wet gain
+
 The wet signal has calibrated makeup gain before Dry/Wet. At the default 7.5 s
 Decay it adds 10 dB in ECO or 8.5 dB in HQ. Compensation decreases for longer
 decays and is bounded for shorter ones. Damping and short tails can still reduce
@@ -57,15 +63,21 @@ is unchanged.
 Existing projects use the louder wet output with their saved settings. Reduce
 Dry/Wet or Out Level as needed. Makeup gain does not impose an output ceiling.
 
+## Modulation
+
 All knobs accept shared modulation through the standard connection strips.
 Quality, Hi-Pass and Slope remain discrete. The unit uses the standard knob reset,
 Shift fine adjustment, power, collapse, selection, and effect-chain gestures.
 The Out rail measures final sample peaks. Click it to reset the held peak.
 
+## Playback and export
+
 Compatible edits, Pause, and looping retain the tail. Seeking prepares history;
 DAW Stop clears it. Export appends a tail up to ten seconds and warns when the
 reported tail budget exceeds that cap. For longer fades, extend the arrangement
 with silence. Reverbs that are bypassed add no tail budget.
+
+## Standalone plugin
 
 Independent [standalone plugin previews](plugins.md) use the same body and processor.
 This is an original ambient processor. Exact reference-plugin equivalence has not

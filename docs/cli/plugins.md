@@ -1,5 +1,7 @@
 # Inspect installed plugins
 
+## Scan for plugins
+
 Use `daw-cli plugin.catalog.scan` to discover VST3 and CLAP plugin descriptors. This command
 does not add plugins to a project. Use the [desktop plugin browser](../plugins.md)
 to install units. `project.export.mix` processes plugins already saved in a project.
@@ -22,16 +24,23 @@ Use `--mode rescan` to inspect unchanged modules again, including failed modules
 `--mode rebuild` rebuilds the local catalog; it does not change project data or
 uninstall plugins.
 
-`plugin.catalog.list` reads the saved catalog without loading plugin code or checking its
-current installation. Its availability labels describe the last scan. JSON
-includes the saved module paths, identities, scan status and metadata.
-
 The CLI launches itself in isolated scanner mode; no helper install is required.
 Use `--scanner PATH` to select an optional standalone helper. Use `--cache FILE` for a
 separate catalog. See the [development build instructions](../development/README.md#plugin-catalog-scanner).
 
+## List discovered plugins
+
+`plugin.catalog.list` reads the saved catalog without loading plugin code or checking its
+current installation. Its availability labels describe the last scan. JSON
+includes the saved module paths, identities, scan status and metadata.
+
+Legacy `plugins` retains its original flags and raw registry JSON output.
+
+## Scan failures
+
 Failed plugin scans produce unavailable entries and do not stop other scans.
-Cache/output/scanner setup errors return exit code 1. Invalid arguments return 2.
+Use `--mode retry-failed` to check failed modules again. Cache/output/scanner
+setup errors return exit code 1. Invalid arguments return 2.
 
 ## Render a project with plugins
 
@@ -46,5 +55,3 @@ quarantined plugins fail the export. The explicit degraded option warns for each
 missing unit, substitutes a latency-aligned dry effect or silent instrument, and
 keeps the saved project unchanged. Available-plugin processing or state failures
 still fail. Failed exports do not replace the destination.
-
-Legacy `plugins` retains its original flags and raw registry JSON output.

@@ -2,19 +2,6 @@
 
 A track group is a stereo processing bus. Its children send their output to the group instead of directly to Master. Groups can contain audio tracks, MIDI tracks, beat tracks, and other groups.
 
-## Track menus
-
-The Track menu separates its actions into six groups:
-
-- Add audio track, Add MIDI track, Add beat track.
-- Add group, Add subtrack.
-- Rename track, Duplicate track.
-- Group selected tracks, Ungroup tracks.
-- Mute, Solo.
-- Delete track.
-
-In Timeline and Mixer, right-click a track for three groups: Rename/Duplicate, Group/Ungroup, then Delete. A separator marks each group. These commands use the existing track selection and shortcuts. Beat-track menus also offer **Add subtrack** for the beat you right-clicked.
-
 ## Create and arrange a group
 
 Choose **Add group** from the Track menubar, the Tracks Plus menu or its blank-space context menu to create an empty group. Existing tracks keep their positions and group membership. The new group becomes selected. Right-click a group to add an audio, MIDI or beat track or a nested empty group inside it. The Tracks browser expands the parent to show its new child.
@@ -39,6 +26,8 @@ In Timeline or in Instrument’s **Tracks** panel, drag an audio, MIDI or beat t
 A beat parent joins a project track group as one track. Its [subtracks](../views/beat-editor.md#instrument-layers-and-output) remain inside that
 beat instrument; they are separate from project track groups.
 
+Dragging a selected project track moves all selected tracks in project order. Selected groups include their complete subtrees; selected descendants move once. Drop in the middle of an existing group row to add the selection to that group, including collapsed groups. Edge drops reorder the selection. The move commits as one undoable transaction on release.
+
 ## Mix and process
 
 Select the group to use the existing gain, pan, Mute, Solo, meters, and effects lane. Add, reorder, copy, collapse, bypass, and remove group effects as with track effects. Group pan balances the stereo sum.
@@ -61,6 +50,8 @@ A group cannot contain clips or an instrument. Add sources to its child tracks. 
 
 Group effects cannot use a child's instrument modulators as shared sources; those assignments remain scoped to their original track.
 
+Group Mute silences the normal group output while group and child sends keep running. Muting a child removes it from the group sum but retains that child’s own sends. See [track sends and Returns](track-sends.md).
+
 ## Ungroup, duplicate, and delete
 
 Select one group and choose **Ungroup tracks**, or press Command+Shift+G on macOS or Ctrl+Shift+G on Windows/Linux, to remove its bus and keep its children. The children move to the group's parent. The removed group's gain, pan, Mute, Solo, and effects stop affecting the sound.
@@ -69,6 +60,15 @@ Duplicate copies the group structure, instruments, and settings into new tracks.
 
 These edits support [undo and redo](undo-redo.md). Group membership, settings, effects, and collapsed state are saved with the project.
 
-Dragging a selected project track moves all selected tracks in project order. Selected groups include their complete subtrees; selected descendants move once. Drop in the middle of an existing group row to add the selection to that group, including collapsed groups. Edge drops reorder the selection. The move commits as one undoable transaction on release.
+## Track menus
 
-Group Mute silences the normal group output while group and child sends keep running. Muting a child removes it from the group sum but retains that child’s own sends. See [track sends and Returns](track-sends.md).
+The Track menu separates its actions into six groups:
+
+- Add audio track, Add MIDI track, Add beat track.
+- Add group, Add subtrack.
+- Rename track, Duplicate track.
+- Group selected tracks, Ungroup tracks.
+- Mute, Solo.
+- Delete track.
+
+In Timeline and Mixer, right-click a track for three groups: Rename/Duplicate, Group/Ungroup, then Delete. A separator marks each group. These commands use the existing track selection and shortcuts. Beat-track menus also offer **Add subtrack** for the beat you right-clicked.

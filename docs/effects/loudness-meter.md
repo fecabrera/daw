@@ -7,6 +7,8 @@ It is also available as a stereo CLAP or VST3 plugin.
 
 Use **Loudness Meter** to check loudness, true peaks and dynamics, and see how loudness changes over time.
 
+## Read the measurements
+
 | Strip | Readings or controls |
 | --- | --- |
 | Options | Target, TP quality and Clock |
@@ -26,6 +28,8 @@ least three seconds of audio. Silence and readings without enough audio show −
 PSR compares the latest 100 ms true peak with short-term loudness. PLR compares
 the highest true peak with integrated loudness. Both ratios have a minimum of zero.
 True peak estimates peaks between samples; the Out rail measures sample peaks.
+
+## Control a measurement
 
 | Option | Choices | Default |
 | --- | --- | --- |
@@ -52,6 +56,8 @@ parameter automation. Analysis continues when the meter panel is hidden.
 Header power turns analysis off, clears readings and empties the rail. Turning it
 on starts a fresh measurement. Projects and presets save options, not readings,
 History or Hold. Click the Out rail to reset its held sample peak independently.
+
+## Incomplete readings
 
 If the meter shows **Incomplete**, Reset and measure again. This can occur if
 analysis cannot keep up, invalid input reaches the analyzer, or loudness exceeds

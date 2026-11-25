@@ -2,6 +2,8 @@
 
 Use these guides to arrange audio, build MIDI instruments, and export a mix. For builds, packaging, and platform setup, see the [development guides](development/README.md).
 
+## Menus and shortcuts
+
 Dropdown and context menus use padded rows and the same corner rounding as standard controls. Unit selectors, including modulation sources, layer submenus and destinations, use smaller text. Their hover background matches unselected view buttons. Selected view and toolbar buttons keep their active background when hovered or pressed. Open a layer submenu to choose its modulation sources. Effects, Components and Chords catalogs and the Instrument Tracks panel use the same corner rounding, row spacing and inset selection highlights.
 
 On Windows and Linux, open the application menu for File, Edit, Clip, Track, Transport and View. Its categories and submenus use the same design as dropdown menus. Keyboard shortcuts appear beside the actions that support them. Unavailable actions appear dimmed.
@@ -10,15 +12,17 @@ Use **Transport** for Play or Pause, Stop, Loop, Record, Metronome, Count-in and
 
 Right-click an item to open its available actions. Context menus for clips, tracks, unit headers, and editable strips use the same design as dropdown menus. Independent plugin editors use it for their appearance menu and EQ band actions. Escape or a click outside the menu dismisses it without applying an action.
 
+## Control appearance
+
 Standard buttons, joined button groups and dropdowns use filled, rounded surfaces without outlines. Hover highlights the control; active choices retain their active color. Text inputs also have rounded corners without an outline, while the caret and text-selection highlight remain visible. Dividers occupy space between joined buttons and input fields without covering the controls. Frameless toolbar toggles use matching rounded backgrounds when hovered or active. The DAW and independent plugin editors share the standard control appearance.
 
 See [Tooltips and Details](views/tooltips.md) for hover values, actions and diagnostic reports.
 
-## Views
-
 Panel titles, including Tracks, Layers and Beat subtracks, use semibold text.
 The Timeline, Instrument and Mixer view buttons use semibold labels. Dragging a view button does not move the window.
 Unit strip footer labels use semibold text, including editable Macro names.
+
+## Views
 
 Press Command+1 for Timeline, Command+2 for Instrument, or Command+3 for
 Mixer on macOS. Use Ctrl with the same numbers on Windows and Linux.
@@ -35,8 +39,6 @@ checkmark shows whether the panel is open in the current view; it updates when
 you switch views or use a toolbar toggle. The panel items sit between the view
 choices and the full-screen command, with a divider on each side. Panels that
 need a selection retain their usual empty-selection prompts.
-
-- [External VST3 and CLAP plugins](plugins.md): effects, instruments, editors, modulation and audio sidechains.
 
 ## Instrument components
 
@@ -56,14 +58,11 @@ need a selection retain their usual empty-selection prompts.
 - [Loudness Meter](effects/loudness-meter.md)
 
 - [Standard unit output meters and held peaks](effects/output-meter.md)
-- [Saturator and Bitcrusher plugin previews](effects/distortion-plugins.md)
 
 - [3-band EQ](effects/equalizer.md)
 - [Multiband EQ](effects/multiband-eq.md)
 - [Drive](effects/drive.md)
-- [Drive plugin development builds](effects/drive-plugin.md)
 - [Drive v2](effects/drive-v2.md)
-- [Drive v2 plugin development builds](effects/drive-v2-plugin.md)
 - [Bitcrusher](effects/bitcrusher.md)
 - [Transient Shaper](effects/transient-shaper.md)
 - [Saturator](effects/saturator.md)
@@ -83,22 +82,46 @@ need a selection retain their usual empty-selection prompts.
 - [Ambient Reverb](effects/ambient-reverb.md)
 - [Shimmer Reverb](effects/shimmer-reverb.md)
 
+### Standalone effect plugins
+
+- [Effect plugins](effects/plugins.md): all exported products, unit slugs, controls, and limits.
+
+- [Saturator and Bitcrusher plugin previews](effects/distortion-plugins.md)
+
+- [Drive plugin development builds](effects/drive-plugin.md)
+
+- [Drive v2 plugin development builds](effects/drive-v2-plugin.md)
+
+## External plugin hosting
+
+- [External VST3 and CLAP plugins](plugins.md): effects, instruments, editors, modulation and audio sidechains.
+
 ## Workflows and limits
+
+### Record and recover
 
 - [Live MIDI input](instruments/live-midi.md).
 - [MIDI recording](editing/midi-recording.md).
 - [Autosave and recovery](projects/recovery.md).
 
+### Edit and render clips
+
 - [Bounce clips and tracks](editing/bounce.md): bake sound to audio and retain disabled originals.
 
 - [Normalize clip gain](editing/normalize-gain.md): set audio clips to individual peak or loudness targets.
 
-- [Modulation](modulation/README.md), [Audio sidechains](modulation/audio-sidechain.md), and [Oscillator modulation](modulation/oscillator-pitch.md).
-- [Track sends and Returns](editing/track-sends.md): shared effects and parallel routing.
-- [Track groups](editing/track-groups.md): shared processing buses and nested track organization.
 - [Undo and redo](editing/undo-redo.md).
 - [Moving and copying units](editing/units.md).
 - [Time stretching and offline pitch changes](audio/time-stretch.md).
+
+### Route and modulate
+
+- [Modulation](modulation/README.md), [Audio sidechains](modulation/audio-sidechain.md), and [Oscillator modulation](modulation/oscillator-pitch.md).
+- [Track sends and Returns](editing/track-sends.md): shared effects and parallel routing.
+- [Track groups](editing/track-groups.md): shared processing buses and nested track organization.
+
+### Manage projects and playback
+
 - [Projects, settings, and export](projects/README.md).
 - [Command-line interface](cli/README.md): track inspection, validation, source collection and export.
 - [Application Settings](projects/README.md#application-settings): Appearance, Playback, Time stretch, MIDI, Recording, Stem Separation, and Plugins.
@@ -111,5 +134,3 @@ need a selection retain their usual empty-selection prompts.
 ## Audio preparation
 
 - [Stem separation](audio/stem-separation.md): local models, four-stem groups, progress, and source retention.
-
-- [Effect plugins](effects/plugins.md): all exported products, unit slugs, controls, and limits.

@@ -69,7 +69,9 @@ cargo test -p timestretch --all-targets --locked
 cargo test -p timestretch --release --all-targets --locked
 ```
 
-Local raw artifacts (ignored): [detection CSV](../../work/transient-detector-benchmark/detection.csv), [render CSV](../../work/transient-detector-benchmark/render.csv), [initial detection CSV](../../work/transient-detector-benchmark/initial-detection.csv), [initial render/build log](../../work/transient-detector-benchmark/initial-render-and-build.log).
+The original run used the ignored directory `work/transient-detector-benchmark/`
+for `detection.csv`, `render.csv`, `initial-detection.csv`, and
+`initial-render-and-build.log`. These local artifacts are not included in the repository.
 The example regenerates fixtures and fingerprints without external media. No private recordings were used.
 
 Implementation file SHA-256 fingerprints for this measurement:

@@ -65,6 +65,8 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `specs` | Implementation requirements, architecture, data formats, acceptance criteria, and validation history. |
 | `work`, `target` | Ignored scratch files, dependency cache, logs, and build outputs. |
 
+## Shared ownership and dependencies
+
 - Put behavior in the crate that owns it. Do not duplicate rendering or validation in the UI or CLI.
 - Follow the accepted [source-container architecture](../../../specs/architecture/modular-audio-units.md#one-source-container-per-track): one processing root per track, with reusable source units inside MIDI instruments and independent lanes inside beat instruments. Keep immutable clip content separate from processing state.
 - Use focused modules for new cohesive behavior. Keep application composition and public entry points in `lib.rs` or `main.rs`; avoid adding unrelated responsibilities to large files.

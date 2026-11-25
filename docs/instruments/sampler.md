@@ -13,6 +13,10 @@ The sample name appears in the preview's clip header. Drag the selection-bar edg
 
 The ruler and waveform grid follow the region's effective playback duration and project tempo. A position marker shows playback; with overlapping notes it shows the furthest active position.
 
+Replacing audio selects the new full input while retaining an explicitly set duration target. Preparation failure or cancellation keeps the previous sample and playback. Missing recordings stay visible and play as silence; shortened recordings supply silence for unavailable parts. Saving and Save As retain external file references and do not bundle recordings.
+
+The source header menu offers **Choose sample…** and **Replace source with Granulizer**. Replacement retains the sample and selected region; see [Granulizer](granulizer.md) for grain controls.
+
 ## Controls
 
 | Control | Use |
@@ -53,8 +57,4 @@ Use the header's secondary-color dot to open connections. Gain accepts Per note 
 
 Existing projects use their saved root note for pitch playback. Non-root notes can therefore sound different from earlier versions.
 
-Replacing audio selects the new full input while retaining an explicitly set duration target. Preparation failure or cancellation keeps the previous sample and playback. Missing recordings stay visible and play as silence; shortened recordings supply silence for unavailable parts. Saving and Save As retain external file references and do not bundle recordings.
-
 Reverse playback, internal looping, slicing, automatic pitch/tempo detection, multisampling, and live pitch modulation are not available. See [time stretching](../audio/time-stretch.md) and [modulation](../modulation/README.md).
-
-The source header menu offers **Choose sample…** and **Replace source with Granulizer**. Replacement retains the sample and selected region; see [Granulizer](granulizer.md) for grain controls.

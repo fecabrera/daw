@@ -99,12 +99,16 @@ application startup. No separate scanner installation is required. The optional
 
 ## Processing and state contracts
 
+### Processor ownership and seeks
+
 Native handles remain in the main-thread broker. A unique processing lease is
 Send, never Clone or Sync. Dropping the lease returns ownership; the broker
 retires the instance, editor, COM objects and module. Preparation, export, seeks
 and bounce each obtain independent instances. Native graph checkpoints and
 parallel warming are disabled. Exact seeks replay on a cancellable worker.
 Fast seeks prepare fresh processors at the destination.
+
+### Fast edits during playback
 
 In Fast Seek mode, a single hosted effect insertion during playback can
 install at the next callback boundary. The worker prepares the candidate and
@@ -137,6 +141,8 @@ The callback finishes the already evaluated block before applying new
 compensation. Existing auxiliary audio and modulation delay histories must
 fit the new routing. Other changes use normal worker preparation.
 
+### Audio buses and modulation routes
+
 Native processors use bounded stereo/mono buses, one output bus, up to 32 input
 buses and at most one note input. Before setup/activation, VST3 negotiation
 requests mono for existing mono buses and stereo for other buses. This follows the
@@ -159,6 +165,8 @@ the graph quantum. Equal-offset events retain insertion order. VST3 MIDI mapping
 covers advertised controllers, pitch bend and pressure. Editor/output telemetry
 is separate from authored manual bases and never creates modulation feedback.
 
+### State publication and recovery
+
 CLAP state is opaque. VST3 component and controller state remain separate.
 Each stream is bounded to 16 MiB and verified by hash/length. Exact captures
 suspend at a processing boundary, remove transient modulation, restore manual
@@ -177,6 +185,8 @@ Strict CLI rendering fails for missing/quarantined plugins and unsupported saved
 `--allow-missing-plugins` enables delayed dry effects and silent instruments, with
 a warning for each unit. Processing/state failures of available plugins never
 silently enter degraded rendering.
+
+### Editor transactions and restart
 
 Native editor and mapped parameter gestures share project edits and history groups.
 Opaque state changes request an exact capture. Restart/latency notifications

@@ -34,11 +34,6 @@ Sample-rate conversion rejects extreme floating-point sample magnitudes above 1e
 
 ## Collect project sources
 
-Collection also saves the current Timeline track size, zoom, scroll positions,
-and whether arrangement lanes are expanded.
-
-For headless collection, save and close the desktop project, then use the [collect-sources CLI command](../cli/collect-sources.md). It collects saved assets without desktop Undo/Redo history.
-
 Collect sources before sharing or moving a project:
 
 1. Save the project first if it has no project folder yet.
@@ -57,6 +52,11 @@ Use an app version with source-collection support for collected projects. Saving
 Move the whole project folder, including `assets/` and `stems/`, rather than only `project.json`. Later imports stay external until you collect again. Regular Save does not collect them automatically. Save As copies media already included in the project and protects sources retained only by the active Undo/Redo history.
 
 A failure before saving retains the previous project and playback. If the report says sources were saved but active state was retained, close the report and reopen the saved destination. If commit could not be confirmed, keep all destination files and the candidate manifest named in the report. Recovery is not automatic. If cleanup reports retained files, those copies stay in place because the app cannot verify that it created them. Collection does not remove unused media or crash leftovers.
+
+Collection also saves the current Timeline track size, zoom, scroll positions,
+and whether arrangement lanes are expanded.
+
+For headless collection, save and close the desktop project, then use the [collect-sources CLI command](../cli/collect-sources.md). It collects saved assets without desktop Undo/Redo history.
 
 Merged audio clips still depend on their original recordings, including the
 sections hidden inside the merged clip. Collect sources before sharing a project
@@ -92,12 +92,18 @@ Settings groups controls into six categories:
 - **Stem Separation**: local model selection and validation.
 - **Plugins**: default and additional VST3/CLAP folders, scan/rescan, retry/cancel, and scan status.
 
+Changes apply on this computer and are retained across restarts. Close retains your choices. These preferences are separate from Project Settings.
+
+### Choose a theme and accent
+
 Choose **Dark**, **Light**, **Mist**, or **Midnight** under **Appearance > Theme**. Light uses near-white backgrounds and white panels, with darker grey for buttons, knobs, unit headers, and separators. Text fields and meter backgrounds use a cool grey. Mist uses cool grey backgrounds and pale panels. Midnight uses charcoal with a subtle cool tint. All themes keep your selected accent and clip colors.
 
 Choose an **Accent color** by clicking its swatch in **Settings > Appearance**.
 The ring marks the current choice. Hover over a swatch to see its name. Red
 is the default. Previously saved accents stay active until you choose
 a new one.
+
+### Edit a theme file
 
 To edit a theme while the app is running:
 
@@ -109,9 +115,9 @@ Set `button_background` inside `colors` to change the idle button fill. The stoc
 
 To add a theme, save a copy with its own name and an ID such as `user.blue-room`, then refresh the list and select it. To restore a stock theme, remove its override file and refresh the list. Appearance displays the actual folder, which is normally `~/Library/Application Support/DAW/themes` on macOS, `%LOCALAPPDATA%\DAW\themes` on Windows, and `$XDG_CONFIG_HOME/daw/themes` on Linux (usually `~/.config/daw/themes`).
 
-On Windows, **Appearance > Titlebar > Custom** combines the menu, project title, and view buttons in the titlebar. A continuous divider separates this row from playback controls in restored and maximized windows. **Native** is the default titlebar style.
+### Main window titlebar
 
-Changes apply on this computer and are retained across restarts. Close retains your choices. These preferences are separate from Project Settings.
+On Windows, **Appearance > Titlebar > Custom** combines the menu, project title, and view buttons in the titlebar. A continuous divider separates this row from playback controls in restored and maximized windows. **Native** is the default titlebar style.
 
 On Linux, **Appearance > Titlebar > Custom** combines the menu, project title and view buttons with actual GTK window buttons. **Native** uses the regular titlebar above the app toolbar. New preferences select Custom; saved choices are retained. Both modes work with the standard launcher. See [Linux setup](../development/linux.md) for prerequisites and remaining platform limits.
 
@@ -121,17 +127,21 @@ The main **Settings** window exposes **Output device** and **Input device** unde
 
 Input selection is saved for future recording. The app does not yet record or monitor input.
 
+The output device must support the project's output bit depth. If playback reports an unsupported format, choose another output bit depth in Project Settings or another device in Settings. Device output uses sample-rate conversion when needed and can adapt the hardware buffer size. These adaptations do not rewrite project quality. The driver may mix or convert the stream to a different physical hardware format. Internal processing remains floating point, and export encoding remains separate.
+
+### Audio quality defaults
+
 In **Settings → Playback**, find **Audio quality defaults** below the divider. Set the sample rate, output bit depth and buffer size for new projects. Initial values are **48 kHz, 32-bit float and 512 samples**. Apply saves the defaults. Cancel, Escape on the Playback page, or closing Settings discards unsaved changes. Escape closes an open dropdown first. Applying defaults leaves the current project and playback unchanged. You can set defaults without a connected audio device.
+
+New blank projects copy these values. Opened projects use their saved **Project Settings**, including output bit depth. To change the current project, use **File > Project Settings**. Older projects without a saved output format use 32-bit float; older projects without a buffer value use 512 samples. Application defaults do not replace saved project values.
+
+### Default time-stretch engine
 
 Under **Time stretch > Default engine**, choose **Rubber Band** (the
 initial default) or **Integrated (experimental)**. The choice is retained across
 app restarts and is copied into new blank projects, including the blank project
 shown after Close Project. It does not change the current project or playback.
 Use **File > Project Settings > Time stretch engine** to change an existing project.
-
-New blank projects copy these values. Opened projects use their saved **Project Settings**, including output bit depth. To change the current project, use **File > Project Settings**. Older projects without a saved output format use 32-bit float; older projects without a buffer value use 512 samples. Application defaults do not replace saved project values.
-
-The output device must support the project's output bit depth. If playback reports an unsupported format, choose another output bit depth in Project Settings or another device in Settings. Device output uses sample-rate conversion when needed and can adapt the hardware buffer size. These adaptations do not rewrite project quality. The driver may mix or convert the stream to a different physical hardware format. Internal processing remains floating point, and export encoding remains separate.
 
 Advice below these controls uses the same smaller grey text as separation model information.
 
@@ -166,6 +176,8 @@ All profiles preserve exact processing history. Balanced and Responsive can prep
 
 Changing profile keeps valid checkpoints where possible and does not stop playback or add an undo step. A smaller profile can discard checkpoints; a larger profile may need more preparation to build denser coverage. A first or distant seek can still take time, especially just after an edit. Use Light to reduce background load, or Responsive when frequent seeks matter and the computer has spare capacity. Parallel preparation helps most when several tracks have substantial processing. One expensive track or a heavy Master chain can limit the benefit.
 
+The app prepares exact seek history in the background before playback and between requests. A first or distant seek can still take time if that preparation is incomplete. Current playback continues until the requested position is ready; the app does not substitute approximate effect or modulation history.
+
 ## Split MIDI notes
 
 Open application Settings and choose **MIDI > Split MIDI notes**. Split into two is the default. A MIDI note that crosses the playhead becomes two notes. Preserve first keeps that note on the clip before the playhead and does not continue it on the new clip. The choice applies on this computer and is kept across restarts. It is not saved in the project. Audio clips are unaffected.
@@ -178,11 +190,11 @@ Choose **Details** beside the processing-rate and buffer-size label in the statu
 
 Playback preparation also limits retained processing state to an estimated 512 MiB. If it reports that this limit is exceeded, current playback continues. Reduce instrument voices or effects, or retry after pending work finishes. These estimates exclude some system, graphics and temporary memory.
 
-The app prepares exact seek history in the background before playback and between requests. A first or distant seek can still take time if that preparation is incomplete. Current playback continues until the requested position is ready; the app does not substitute approximate effect or modulation history.
-
 Repeated imports of the same unchanged file can share audio storage. They remain separate assets and clips. If a file changes while it is being prepared, retry the operation after the file has finished saving.
 
 ## Export
+
+### Choose a range and format
 
 In **Export audio**, drag the bar or beat digits in **Start** and **End** to
 adjust the range. The dialog starts with the enabled loop, otherwise the active
@@ -195,8 +207,7 @@ it. WAV offers 44.1, 48, 88.2, 96, 176.4, and 192 kHz. MP3 and AAC offer
 otherwise uses the new format's default. The export status reports the file's
 channel layout and sample rate.
 
-Click **Export** to open the system file picker. Close the Export window to
-cancel. WAV supports PCM16, PCM24, and float32, with PCM24 as the default.
+WAV supports PCM16, PCM24, and float32, with PCM24 as the default.
 MP3 supports 128, 192, 256, and 320 kbps, with 192 kbps as the default.
 
 AAC exports AAC-LC in an ADTS `.aac` file. Choose a target bitrate of 128,
@@ -209,9 +220,20 @@ exports include codec priming and a padded final frame. Reimported AAC clips can
 therefore start with a short delay and last slightly longer than the arrangement.
 Use WAV when exact sample alignment is required.
 
+### Include effect tails
+
 **Include audio tail** is on by default. It lets enabled effects decay for up
 to ten seconds after End. Clips stop at End. Clear the checkbox to end the file
-at the selected boundary. Bypassed effects add no tail. The completion report warns about the cutoff only if the rendered mix reaches −60 dBFS in the final 50 ms of a capped tail. Extend the arrangement with silence for longer fades. It follows the same mute, solo, pan, and effect settings as playback. Missing sources produce warnings and silence. Integer WAV, MP3, and AAC clamp clipping and report it. Float32 WAV retains levels above 0 dBFS without a warning. No automatic normalization is applied.
+at the selected boundary. Bypassed effects add no tail. The completion report warns about the cutoff only if the rendered mix reaches −60 dBFS in the final 50 ms of a capped tail. Extend the arrangement with silence for longer fades.
+
+### Save and check completion
+
+Export follows the same mute, solo, pan, and effect settings as playback.
+Missing sources produce warnings and silence. Integer WAV, MP3, and AAC clamp
+clipping and report it. Float32 WAV retains levels above 0 dBFS without a
+warning. No automatic normalization is applied.
+
+Click **Export** to open the system file picker. Close the Export window to cancel.
 
 Progress and completion appear in the **Export status** window with a system title bar. An existing destination opens the **Replace export?** window. Select **Replace** to continue, or close the confirmation to cancel. The status window can close after the export finishes. Failure leaves the previous destination intact.
 

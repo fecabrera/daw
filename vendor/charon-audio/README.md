@@ -16,24 +16,24 @@ in Rust: the [HTDemucs](https://github.com/facebookresearch/demucs)
 which finds and removes music under speech and sound effects. No Python at run time. On macOS the network runs on the GPU
 through CoreML. The pipeline reproduces Demucs 4.1.0 to float precision;
 every number in this file comes from a recorded measurement, summarized
-in [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
+in [docs/MEASUREMENTS.md](https://github.com/Valkyra-Labs/charon-audio/blob/bc045cd80f009ea863772c5afef15928101df66f/docs/MEASUREMENTS.md).
 
 ## Status
 
 | Area | State |
 |---|---|
-| HTDemucs 4-stem separation, CPU | **Works.** Parity with PyTorch Demucs: max sample difference 1.2e-4 on synthetic input, equal median SDR on MUSDB18 test previews ([measurements](docs/MEASUREMENTS.md)). |
+| HTDemucs 4-stem separation, CPU | **Works.** Parity with PyTorch Demucs: max sample difference 1.2e-4 on synthetic input, equal median SDR on MUSDB18 test previews ([measurements](https://github.com/Valkyra-Labs/charon-audio/blob/bc045cd80f009ea863772c5afef15928101df66f/docs/MEASUREMENTS.md)). |
 | HTDemucs on the GPU (macOS, CoreML) | **Works** with the CoreML-target export (`coreml` feature): one CoreML partition, all nodes on the GPU. Output within 2e-6 of PyTorch. Separation 3x faster than the CPU path (5.6 s for a 193 s track); loading the compiled model costs 7 s per process. |
 | Input: WAV, FLAC, MP3, OGG/Vorbis, AAC/M4A, ALAC, AIFF, CAF, MKV (Symphonia 0.6) | Works. Decoded samples are not clipped. Only WAV, FLAC and MP3 are exercised by tests or records. |
 | Output: WAV 16/24-bit int, 32-bit float; FLAC 16/24-bit | Works, round-trip tested. |
 | Resampling to the model rate (rubato) | Works, time-aligned (impulse tests). |
 | Memory | Split export: 3.4 GB peak on CPU, 2.6 GB on CoreML (ONNX Runtime activation memory). In-graph export: 2.1 GB with its low-memory preset. |
-| Speed, 193 s track on an Apple M4 Pro | Resident server on CoreML: 6.2-6.4 s per track (PyTorch on MPS, model resident: 7.3-7.6 s). Cold process: 14.1 s CoreML, 16.7 s CPU (PyTorch cold: 8.7 s MPS, 35.2 s CPU). Full table in [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md). |
+| Speed, 193 s track on an Apple M4 Pro | Resident server on CoreML: 6.2-6.4 s per track (PyTorch on MPS, model resident: 7.3-7.6 s). Cold process: 14.1 s CoreML, 16.7 s CPU (PyTorch cold: 8.7 s MPS, 35.2 s CPU). Full table in [docs/MEASUREMENTS.md](https://github.com/Valkyra-Labs/charon-audio/blob/bc045cd80f009ea863772c5afef15928101df66f/docs/MEASUREMENTS.md). |
 | TIGER-DnR music branch (music out of speech and effects), CPU | **Works** (0.1.2). Own ONNX export (`tools/export/export_tiger.py`, 25 MB), STFT/iSTFT in Rust. Full pipeline within 1.7e-5 frame RMS of PyTorch; with the authors' own window layout, 84 dB agreement with their pipeline. About 0.33 x real time per channel on an M4 Pro CPU. CoreML is not usable for it (1034 s and 28 GB for one minute). Weights Apache-2.0. |
 | Region-limited removal, streaming, progress and cancel | **Works** (0.1.2): `remove_in_regions` leaves the input bit-exact outside the regions; `separate_stream` keeps memory bounded and is bit-identical to whole-buffer separation. |
 | Other models (MDX-Net, RoFormer, Open-Unmix, htdemucs_ft/6s) | **Not supported.** Each needs its own tensor contract and parity check. |
 | CUDA, WebGPU | **Not supported.** CUDA is unmeasured (no hardware). WebGPU runs the in-graph export but slower than CPU. |
-| Split export hosting | Not hosted yet. Produce the files with `tools/export/export_htdemucs.py` (PyTorch + demucs 4.1.0); hashes, verification and the hosting steps are in [docs/MODELS.md](docs/MODELS.md). |
+| Split export hosting | Not hosted yet. Produce the files with `tools/export/export_htdemucs.py` (PyTorch + demucs 4.1.0); hashes, verification and the hosting steps are in [docs/MODELS.md](https://github.com/Valkyra-Labs/charon-audio/blob/bc045cd80f009ea863772c5afef15928101df66f/docs/MODELS.md). |
 | Real-time (CPAL) | Experimental, behind the `realtime` feature, not real-time safe, no tests. |
 | Model download / zoo | Not implemented. `ModelZoo` and `models/manifest.json` hold names, hashes and URLs; fetch the files yourself (below). |
 | `charon` binary | `charon separate`, and `charon serve`: a resident server that keeps the model (and the compiled CoreML model) loaded and answers jobs over a Unix socket. 6.3 s per 193 s track on CoreML with the server warm. |
@@ -91,7 +91,7 @@ The script checks each export against PyTorch before writing and prints
 the SHA-256. With demucs 4.1.0 and torch 2.14.0 the CPU export hashes
 to `6104c3de...8fe088f` every time; the CoreML export is structurally
 identical between runs but its bytes differ (the measured artifact was
-`782026bd...839607d`), see [docs/MODELS.md](docs/MODELS.md). Then:
+`782026bd...839607d`), see [docs/MODELS.md](https://github.com/Valkyra-Labs/charon-audio/blob/bc045cd80f009ea863772c5afef15928101df66f/docs/MODELS.md). Then:
 
 ```bash
 cargo run --release --example separate -- song.mp3 stems/ htdemucs_split.onnx --split
@@ -199,7 +199,7 @@ assess, and commercial use is not known to be authorised.
 ## Measurements
 
 Every record carries build hash, model hash, versions, host and method;
-[docs/MEASUREMENTS.md](docs/MEASUREMENTS.md) has the tables and
+[docs/MEASUREMENTS.md](https://github.com/Valkyra-Labs/charon-audio/blob/bc045cd80f009ea863772c5afef15928101df66f/docs/MEASUREMENTS.md) has the tables and
 `tools/parity/` the scripts. Summary, Apple M4 Pro:
 
 - Parity with PyTorch demucs 4.1.0 (`shifts=0`): max sample difference
@@ -259,12 +259,12 @@ execution provider, macOS), `realtime` (CPAL input, experimental),
 - `tools/parity/`: the measurement scripts; `tools/export/`: the
   split-transform ONNX export.
 - `models/`: manifest and checksums of the supported model files.
-- `docs/`: [MEASUREMENTS](docs/MEASUREMENTS.md), [MODELS](docs/MODELS.md),
-  [IMPLEMENTATION](docs/IMPLEMENTATION.md), [CONTRIBUTING](docs/CONTRIBUTING.md).
+- `docs/`: [MEASUREMENTS](https://github.com/Valkyra-Labs/charon-audio/blob/bc045cd80f009ea863772c5afef15928101df66f/docs/MEASUREMENTS.md), [MODELS](https://github.com/Valkyra-Labs/charon-audio/blob/bc045cd80f009ea863772c5afef15928101df66f/docs/MODELS.md),
+  [IMPLEMENTATION](https://github.com/Valkyra-Labs/charon-audio/blob/bc045cd80f009ea863772c5afef15928101df66f/docs/IMPLEMENTATION.md), [CONTRIBUTING](https://github.com/Valkyra-Labs/charon-audio/blob/bc045cd80f009ea863772c5afef15928101df66f/docs/CONTRIBUTING.md).
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md).
+See [CHANGELOG.md](https://github.com/Valkyra-Labs/charon-audio/blob/bc045cd80f009ea863772c5afef15928101df66f/CHANGELOG.md).
 
 ## License
 

@@ -7,6 +7,8 @@ Use **Multiband EQ** for targeted tonal corrections, resonant cuts and boosts, a
 The band, **+**, and **Out** strips follow the Oscillator layout. Each band has a Mode dropdown above three smaller knobs in one column.
 Expanded band labels align with the **Response** and **Out** footers.
 
+## Response graph
+
 The **Response** graph sits before the band strips and spans the three standard control rows. It shows each band's response, the combined EQ curve, and a live output spectrum. The combined curve and unselected band points use the unselected unit-header text color. The selected point uses the accent color; disabled bands and units remain muted. The spectrum uses both stereo channels, moves smoothly between analysis updates, and draws a rounded contour without adding peaks between measured bins. It clears when the unit is off. Compact mode keeps a read-only response graph and live output spectrum. Expand the row to edit the graph.
 
 The spectrum uses the same resolution across the full frequency range. It appears
@@ -21,7 +23,7 @@ Drag a numbered band point left or right to change Frequency. For Bell and shelf
 
 Dragging previews the curve, knobs, and sound. Release to apply the values. Escape or loss of focus restores the original values. In the DAW, release creates one Undo step for all Frequency, Gain, and Q changes made during that drag, including mode switches. Audible previews use the audio preparation worker and can follow the pointer with a delay in large projects. Standalone plugins send normal host parameter gestures during the preview. Modulation indicators retain the saved base values while the curves follow effective values.
 
-Click **+** to add a band. Right-click a band or its controls for **Enable band**/**Disable band**, checked **Solo**, and **Remove band**. There is no fixed band-count limit; more bands use more processing time. You can remove every band and use only Output Gain.
+## Band controls
 
 Choose the band’s filter type from the **Mode** dropdown. **High pass ×4** and **Low pass ×4** are four-pole filters with a 24 dB/octave roll-off. **High pass ×8** and **Low pass ×8** are eight-pole filters with a 48 dB/octave roll-off. Each band has these controls:
 
@@ -36,29 +38,11 @@ Bell boosts or cuts around Frequency. Shelves adjust the frequencies below or ab
 
 The band's power button bypasses that band and retains its settings. Header power bypasses the entire unit. The final **Out** strip adjusts the processed signal from silence to +12 dB, with a default of 0 dB.
 
-Each expanded band has a meter above its knobs. It shows the louder channel at that band's output, before later bands and Out Gain, on the shared −60 to 0 dBFS scale. Enabled bands use the track meter's green at or below 0 dBFS and red above 0 dBFS, independently of the accent color; disabled bands use grey. Header power clears the meters. Stopped or paused playback shows empty current-level fills while held peaks remain. Compact and collapsed units hide them. Monitoring does not change the sound.
+## Manage bands
 
-Each band level rail includes the shared held sample-peak marker. Click the rail
-to reset only that band's level hold. Holds retain peaks between UI updates and
-through pause, stop and band reordering. Turning the unit off clears them. Meter
-resets do not change settings, Solo, undo history or the Out peak. Disabled band
-rails retain the shared secondary-grey color.
-
-
-Open the header's modulation dot to connect shared Envelope, LFO, or Macro sources from the same MIDI instrument. In Destination, open **Band N** and select **Gain**, **Frequency** or **Q**. Select **Output · Gain** at the top level for the whole unit. Gain amounts use dB, Frequency uses octaves, and Q uses Q units. Knob arcs and live indicators show modulation while the pointer retains the saved base value. Mode and power are discrete controls.
-
-Removing a band removes its modulation connections. Other bands keep their connections when their displayed numbers change. Undo restores a removed band and its connections.
+Click **+** to add a band. Right-click a band or its controls for **Enable band**/**Disable band**, checked **Solo**, and **Remove band**. There is no fixed band-count limit; more bands use more processing time. You can remove every band and use only Output Gain.
 
 In the built-in effect, drag a band's label or unused strip space to reorder bands, as with oscillator strips. The insertion line shows the new position. Release within the band bank to apply the change. Escape, loss of focus, or release outside the bank cancels it. Drag near a lane edge to scroll. Knobs and Power keep their existing controls. Reordering retains each band's settings and modulation connections, changes the serial processing order, and supports Undo/Redo. In the standalone plugins, use the same gesture to change visual strip order. Release within the bank to save it; Escape, focus loss or an outside drop cancels. The saved presentation order changes which strip appears first. Automation IDs, slot bindings and DSP processing order stay fixed.
-
-The DAW uses the [standard stereo output meter](output-meter.md) in the gap after the unit. Standalone editors retain their horizontal output rail. Click a meter to reset its held peaks.
-
-This effect also has a [standalone plugin](plugins.md).
-
-Existing projects and plugin presets retain their filter modes. The new
-choices expand the plugin's Mode automation range. Check existing host Mode
-automation after updating: previously recorded automation can select a different
-filter mode.
 
 ## Solo
 
@@ -73,3 +57,30 @@ overlapping regions are not added as duplicate audio. The transition is smoothed
 Normal EQ histories keep running on a separate path. Solo does not change saved
 settings, modulation routes or undo history. Unit power off clears it. DAW export
 ignores Solo; standalone offline behavior follows the [plugin guide](plugins.md).
+
+## Output and monitoring
+
+Each expanded band has a meter above its knobs. It shows the louder channel at that band's output, before later bands and Out Gain, on the shared −60 to 0 dBFS scale. Enabled bands use the track meter's green at or below 0 dBFS and red above 0 dBFS, independently of the accent color; disabled bands use grey. Header power clears the meters. Stopped or paused playback shows empty current-level fills while held peaks remain. Compact and collapsed units hide them. Monitoring does not change the sound.
+
+Each band level rail includes the shared held sample-peak marker. Click the rail
+to reset only that band's level hold. Holds retain peaks between UI updates and
+through pause, stop and band reordering. Turning the unit off clears them. Meter
+resets do not change settings, Solo, undo history or the Out peak. Disabled band
+rails retain the shared secondary-grey color.
+
+The DAW uses the [standard stereo output meter](output-meter.md) in the gap after the unit. Standalone editors retain their horizontal output rail. Click a meter to reset its held peaks.
+
+## Modulation
+
+Open the header's modulation dot to connect shared Envelope, LFO, or Macro sources from the same MIDI instrument. In Destination, open **Band N** and select **Gain**, **Frequency** or **Q**. Select **Output · Gain** at the top level for the whole unit. Gain amounts use dB, Frequency uses octaves, and Q uses Q units. Knob arcs and live indicators show modulation while the pointer retains the saved base value. Mode and power are discrete controls.
+
+Removing a band removes its modulation connections. Other bands keep their connections when their displayed numbers change. Undo restores a removed band and its connections.
+
+## Standalone plugin and presets
+
+This effect also has a [standalone plugin](plugins.md).
+
+Existing projects and plugin presets retain their filter modes. The new
+choices expand the plugin's Mode automation range. Check existing host Mode
+automation after updating: previously recorded automation can select a different
+filter mode.

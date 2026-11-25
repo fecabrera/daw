@@ -6,6 +6,8 @@ or Output. It has the same Cutoff and Out controls as Auto-filter.
 
 Use **Filter** to remove unwanted frequency ranges or emphasize a resonant cutoff.
 
+## Controls
+
 | Section | Control | Range or choices | Default |
 | --- | --- | --- | --- |
 | Cutoff | Shape | Low-pass, High-pass, Band-pass, Notch | Low-pass |
@@ -24,11 +26,15 @@ Header power bypasses the unit. Changes transition smoothly. Double-click a knob
 to reset it. Compact mode keeps the Cutoff and Out labels; double-click the header
 to collapse the unit horizontally.
 
+## Modulation
+
 Frequency, Resonance, Level, and Dry/Wet accept shared Envelope, LFO, and Macro
 sources from the same MIDI instrument, including Output. Use the secondary-color
 header dot to open [modulation connections](../modulation/README.md). Per note
 sources are unavailable for this effect. Audio tracks and Master have no
 instrument modulation sources. Filter has no internal LFO controls or sweep.
+
+## Playback and export
 
 Filtering adds no processing latency. Ringing stays within the arranged export
 range; export does not append an extra tail. Power, controls, connections and

@@ -1,5 +1,7 @@
 # Application Settings
 
+## Navigation and layout
+
 The shared Settings surface has a left sidebar and a right content panel. List
 Appearance, Playback, Time stretch, MIDI, Recording, Stem Separation and
 Plugins in that order. Highlight the active group with the shared catalog selection style.
@@ -26,11 +28,15 @@ scroll state per group. Reuse shared field alignment, typography, dropdowns,
 buttons and the canonical tooltip presentation. The shared dialog's optional
 width override must leave other dialogs' defaults unchanged.
 
+## Playback defaults
+
 Show Audio quality defaults inline in Playback, below a separator after the
 device and seek cache controls. Use the shared field alignment. Apply saves
 validated defaults for new projects. Cancel or closing Settings discards the
 draft. Escape dismisses an open popup first, then discards an unsaved quality
 draft when Playback is active. With no active draft it closes Settings.
+
+## Native window and footer
 
 Desktop Settings uses a single native window with regular platform chrome
 and a standard close button. macOS WGPU and Windows Glow use a deferred eframe
@@ -54,6 +60,8 @@ white text for Accept, including Close on an acknowledgement dialog.
 Cancel and Deny use neutral buttons. Use the right edge for a progress dialog
 that only offers Cancel. Place Open last saved in the secondary position in
 the recovery footer.
+
+## Modality and picker ownership
 
 Treat the active native dialog as modal to the main window. The desktop
 host keeps the dialog above the owner and blocks owner input at normal
@@ -87,6 +95,8 @@ Settings redraw. A watched child reports graphics failure or successful
 presentation to root. Contain child surface failures without stopping the
 main renderer. The host checks that the child presents within the startup
 deadline and uses the embedded surface if it does not.
+
+## Validation
 
 Validate actual group clicks, exclusive page content, preference isolation,
 device selection and MIDI-note split interaction, theme/accent behavior, smaller

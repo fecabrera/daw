@@ -1,5 +1,7 @@
 # Persistence and export
 
+## Save and resolve project sources
+
 - Regular Save uses the independent snapshot worker in `regular_save.rs`; it must not disable or replace the live workspace. Route every committed UI project change through `changed` or `mark_dirty`, including worker publication and explicit seeks, so save completion cannot clear newer edits. Keep file-action/window-close guards and blocking Save As/save-before-continuation behavior.
 
 - Projects are folders with `project.json` and an `assets` directory. Normal imports retain external references. Collect project sources explicitly bundles complete original media; ordinary Save does not collect later imports. Reuse the shared collection/save/history receipt APIs and keep filesystem work on workers.
@@ -7,6 +9,9 @@
 - Keep saves and exports transactional. Write temporary outputs and publish only after success. Protect source files and manifests from export replacement, and retain explicit overwrite confirmation.
 - Preserve older manifests through appropriate serde defaults when adding optional fields. Add round-trip and invalid-input checks for model changes. Never silently reinterpret existing frame units or source references.
 - Missing sources retain clips, warnings, and silent rendering. Shortened sources render unavailable ranges as silence. Unsupported or damaged audio must produce a clear diagnostic.
+
+## Export formats and CLI results
+
 - Keep desktop and CLI export on the same backend. WAV supports PCM16, PCM24, and float32 at the six project rates. MP3 and AAC support 44.1 and 48 kHz. The export dialog opens at the project rate when the format supports it and at 48 kHz otherwise. Show the actual export rate in both export dialogs. Preserve deterministic output, format/codec validation, and progress reaching 100% only after file publication.
 - WAV imports support mono/stereo PCM16, PCM24, and float32. Desktop export offers stereo and mono. Stereo is the default. Mono averages the two master channels. Export defaults to PCM24 for WAV or 192 kbps for MP3, and offers MP3 constant bitrates of 128/192/256/320 kbps. Integer WAV uses deterministic triangular dither; float32 preserves headroom without dither. Device output, integer WAV, and MP3 clamp clipping. Integer and lossy exports report actual clipping; float32 preserves headroom without an above-0-dBFS notice. Remember accepted export options for the app session. After destination/replacement confirmation, show progress, finalization, destination, format, warnings, completion, and errors in the shared status dialog; keep long reports scrollable and editing blocked until it closes.
 - CLI exit codes are 0 for success, 1 for project/media/processing failures, and 2 for invalid arguments. Missing-source warnings do not fail export.

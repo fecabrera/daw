@@ -54,6 +54,8 @@ mode for each candidate. All desktop packagers include CLAP/VST3/libloading
 notices. Keep those notices with
 separately distributed CLI/scanner builds. See the [hosting specification](../../specs/architecture/external-plugin-hosting.md).
 
+### Native host fixtures
+
 Run owned native processing fixtures without loading user plugins:
 
 ```sh

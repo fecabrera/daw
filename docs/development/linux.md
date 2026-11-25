@@ -4,7 +4,11 @@
 
 Run commands from the repository root.
 
+## Prerequisites
+
 Install Rust through Rustup, a C++ compiler, CMake, Clang/libclang, GTK 4.8 or newer development libraries, ALSA development libraries, pkg-config, and OpenSSL development headers (for build-time runtime downloads). File dialogs use the XDG Desktop Portal service and the D-Bus client library (`libdbus-1.so.3`). Package names depend on your distribution.
+
+## Build and run the desktop app
 
 ```sh
 cargo build -p daw-desktop
@@ -15,6 +19,8 @@ The Linux desktop uses GTK with OpenGL 3.3. Under **Settings > Appearance > Titl
 
 Application Settings opens in a separate GTK window. Its model and plugin
 folder choosers use GTK and attach to that window.
+
+## Package a local ZIP
 
 Create a local portable ZIP from the current files without committing:
 
@@ -37,6 +43,8 @@ executable permissions and includes the same dependency notices as the other
 packages. It does not bundle system libraries: the destination needs compatible
 C/C++ runtime, GTK 4.8 or newer, OpenGL 3.3, ALSA, and the D-Bus client library
 and XDG Desktop Portal for file dialogs.
+
+## Distribution verification
 
 Desktop downloads also contain the exact [corresponding source and relinking
 materials](README.md#corresponding-source-in-desktop-packages). Distribution packaging requires

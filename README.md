@@ -60,9 +60,9 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 <summary><h2>Features</h2></summary>
 
 - **Bounce:** [render selected clips or complete tracks](docs/editing/bounce.md) to new audio tracks while retaining the disabled originals.
-- **Timeline:** arrange, trim, loop, stretch, transpose, split, merge, move, copy, and duplicate audio, MIDI and beat clips or a selected time range, with grid snapping, edit previews, clip settings, and a chord catalog. Audio clips support editable fades and adjacent crossfades.
+- **Timeline:** arrange, trim, loop, stretch, transpose, split, merge, move, copy, and duplicate audio, MIDI and beat clips or a selected time range, with grid snapping, edit previews, clip settings, and a chord catalog. Audio clips support editable fades and adjacent crossfades. The [Timeline editor pane](docs/views/editor.md) edits audio, MIDI, and beat clips.
 - **Beat editor:** build rhythms with [step patterns](docs/views/beat-editor.md) and independently configured subtrack instruments.
-- **Live MIDI:** play and record one or several MIDI tracks with R, selected-track fallback, sustain, count-in and private take recovery. See [live MIDI](docs/instruments/live-midi.md) and [recording](docs/editing/midi-recording.md).
+- **Live MIDI:** play and record one or several MIDI tracks with sustain, count-in and private take recovery. See [live MIDI](docs/instruments/live-midi.md) and [recording](docs/editing/midi-recording.md).
 - **MIDI editor:** create patterns and edit notes in a piano roll, with a project track browser, track controls and optional scale snapping.
 - **Instruments:** build layered synthesizers, samplers, and granular instruments, with instrument-wide LFO and Envelope lanes and a shared Output bus. Browse project tracks and groups from Instrument.
 - **Modulation:** Envelope, LFO, Macro and [audio sidechain sources](docs/modulation/audio-sidechain.md) control compatible instrument and effect parameters.
@@ -72,21 +72,12 @@ A desktop digital audio workstation for macOS, Windows and Linux, written in Rus
 - **Arrangement timing:** named markers and saved tempo/time-signature maps in the [Timeline](docs/views/timeline.md).
 - **Playback:** tempo and saved time-signature controls, a playback metronome, loop playback, stereo level meters, and [audio device settings](docs/projects/README.md#audio-devices) for device selection and new-project quality defaults. Each project saves its own sample rate, output bit depth and buffer size. Input-device selection is saved for future recording.
 - **Editing history:** [undo and redo](docs/editing/undo-redo.md) for project edits.
-- **Projects:** open the editor while audio prepares in the background, reuse saved audio caches, save projects, [collect media sources](docs/projects/README.md#collect-project-sources), and configure audio processing settings.
+- **Projects:** open the editor while audio prepares in the background, reuse saved audio caches, save projects, [collect media sources](docs/projects/README.md#collect-project-sources), and configure audio processing settings. Normal imports retain external references. Included recordings and saved stems stay inside the project folder. Missing audio remains visible and plays as silence.
 - **Appearance:** Dark, Light, and Mist themes, accent colors, and colored clips.
 - **Export and CLI.** Export stereo or mono WAV, MP3, or AAC at a selectable sample rate. The [CLI](docs/cli/README.md) edits saved projects, manages plugins and sources, and exports mixes, ranges, and stems.
 - **Standalone audio tools:** experimental offline time stretching and pitch shifting, with three-engine comparisons.
-
-Audio, MIDI and Beat workflows are available in three views: **Timeline**, **Instrument**, and **Mixer**. The [Timeline editor pane](docs/views/editor.md) edits audio, MIDI, and beat clips.
-
-Normal imports retain external references; included recordings stay inside the project folder. Generated stems use temporary storage before the first save, then stay inside the project folder. Missing audio files remain visible and play as silence.
-
-Stem separation supports four or six stems using local HTDemucs models through Charon, with CoreML on Apple Silicon macOS and CPU on supported platforms. Either validated model enables separation; CoreML takes priority, with optional CPU fallback. It creates aligned stem tracks in a group and retains the disabled original clip. See [Stem separation](docs/audio/stem-separation.md) for setup and limits.
-
-External VST3 and CLAP effects and instruments use the shared renderer. The desktop
-discovers standard plugin folders and provides mapped controls, native editors,
-shared modulation and audio sidechains. See [External plugins](docs/plugins.md)
-for use and platform limits.
+- **Stem separation:** use local HTDemucs models through Charon to create four or six aligned stem tracks in a group and retain the disabled original clip. See [Stem separation](docs/audio/stem-separation.md) for setup and limits.
+- **External plugins:** use VST3 and CLAP effects and instruments in the shared renderer, with plugin discovery, mapped controls, native editors, shared modulation and audio sidechains. See [External plugins](docs/plugins.md) for use and platform limits.
 </details>
 
 <details>

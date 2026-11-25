@@ -16,9 +16,7 @@ Oscillator generates tones for MIDI notes. Add it from Sources in the Instrument
 | Level (whole unit) | Silence through +12 dB | 0 dB |
 | Output Pitch (whole unit) | −48 to +48 semitones | 0 |
 
-The last column, **Out**, contains Level, Pitch, and Cents. Level controls the combined output of all oscillator sources before Amplitude and layer effects. Sources still sum independently without automatic normalization; adjust Level to balance their combined volume. Each layer saves its own Level.
-
-The gap after the unit holds its [stereo output meter and held-peak indicators](../effects/output-meter.md). It measures the sum across notes after source gains, unit Level and note velocity, before Amplitude and layer processing. Click the rail to reset only the held peak. The meter stays visible in compact/collapsed views; unit power-off clears it.
+### Add and adjust sources
 
 Use Plus inside the unit, before Out, to add another oscillator. Each source has independent controls and power. Drag unused strip space to reorder sources. The insertion line stays within the oscillator unit’s height. Right-click a source or its knob to remove it. Removing the last source leaves the layer silent.
 
@@ -29,6 +27,14 @@ Unison and Detune share one input group. Choose the voice count on the left; dra
 Cents adds fine tuning to Pitch. There are 100 cents in one semitone. Out Cents tunes all oscillator sources together.
 
 Drag Pitch, Cents, Width, and Gain knobs to adjust them, hold Shift for finer movement, or use arrow keys. Double-click restores a default.
+
+### Output controls and meter
+
+The last column, **Out**, contains Level, Pitch, and Cents. Level controls the combined output of all oscillator sources before Amplitude and layer effects. Sources still sum independently without automatic normalization; adjust Level to balance their combined volume. Each layer saves its own Level.
+
+The gap after the unit holds its [stereo output meter and held-peak indicators](../effects/output-meter.md). It measures the sum across notes after source gains, unit Level and note velocity, before Amplitude and layer processing. Click the rail to reset only the held peak. The meter stays visible in compact/collapsed views; unit power-off clears it.
+
+## Modulation
 
 Use [pitch, Cents, Width, gain, and Level modulation](../modulation/oscillator-pitch.md) for vibrato, pitch contours, or independent oscillator level movement. Use Amplitude with an [Envelope](envelope.md) for level shaping. Turning the Oscillator header off silences all its sources while retaining individual settings.
 

@@ -272,6 +272,17 @@ Duplicating clips into empty Timeline track space creates fresh tracks of the ma
 
 Copies receive new clip IDs and retain their asset, name, source range, loop, stretch, and color override. Group track gaps remain intact. Previews do not create saved tracks; drag release publishes tracks and clips together. Cancellation or invalid placement leaves the project unchanged. Ordinary moves into new track space retain the source MIDI instrument. The explicit Duplicate track action still copies track settings without clips.
 
+### New-track move ownership
+
+Moving clips to new MIDI tracks creates a new processing owner through
+`InstrumentSettings::duplicate`. Keep the original track and settings, preserve
+external sample assignments, and remap internal source/provider/effect identities
+and connections through that shared contract. Preview performs the same validated
+placement as release without publishing data. Prepare new Sampler banks through
+normal complete-session background publication. Group moves commit once; Escape
+retains the original arrangement, and one Undo restores all moved clips/tracks.
+Clip copies into new track space use the standard MIDI track defaults.
+
 ### Implementation and regression checks
 
 - [clip_lane.rs](../../crates/ui/src/clip_lane.rs) owns common clip-strip hit testing, gesture capture, selection, and context menus. The arrangement and editor pane reuse it. Keep pane-specific code responsible for layout and the active zoom/scroll transform.
@@ -505,14 +516,3 @@ Each source saves Cents (−100 to +100, default 0), Unison (Off/2/4/8, default 
 The portable oscillator prepares one backend per internal voice on the control thread. Voices use deterministic distinct initial phases, symmetric detuning from −Detune to +Detune, and symmetric stereo panning scaled by Width. Average the internal voices, then sum independent source strips without normalization. Width zero produces identical channels. Off retains the original single-voice samples. Suppress each voice at invalid/nonpositive/Nyquist frequencies. The engine carries stereo through the shared render path.
 
 Source and Out Cents compose with coarse Pitch and shared Pitch modulation. Pitch routes remain addressed by source UUID and apply equally to all internal voices. Cents and Width are typed modulation destinations through the [shared oscillator contract](../modulation/oscillator-pitch.md#cents-and-width-modulation--2026-11-09); Detune remains a base control. Continuous edits use 5 ms ramps and compatible phase/history transfer without callback allocation. Unison voice-count changes use prepared renderer replacement and the existing output transition. Reset and seek retain deterministic phases. The legacy mono source adapter averages the stereo output; the stereo source API and modulation destination expose stereo.
-
-### New-track move ownership
-
-Moving clips to new MIDI tracks creates a new processing owner through
-`InstrumentSettings::duplicate`. Keep the original track and settings, preserve
-external sample assignments, and remap internal source/provider/effect identities
-and connections through that shared contract. Preview performs the same validated
-placement as release without publishing data. Prepare new Sampler banks through
-normal complete-session background publication. Group moves commit once; Escape
-retains the original arrangement, and one Undo restores all moved clips/tracks.
-Clip copies into new track space use the standard MIDI track defaults.

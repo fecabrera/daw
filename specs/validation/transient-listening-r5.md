@@ -48,11 +48,15 @@ performance measurements.
 
 ## Audition protocol
 
-1. Open the [listening instructions](../../work/transient-listening/splice-r5-current/LISTENING.md) and use only `audition/` while scoring.
+The historical listening pack was stored locally under
+`work/transient-listening/splice-r5-current/`. The repository does not include the pack.
+
+1. Open `LISTENING.md` in the listening pack and use only `audition/` while scoring.
 2. Compare A and B with the original; keep `private/` hidden until scores are complete.
 3. Record overall and applicable transient, tonal, vocal, stereo and boundary
    impairment from 1 (unusable) to 5 (no objectionable artifact), plus comments.
-4. Use [the blank score sheet](../../work/transient-listening/splice-r5-current/ratings.csv), with a separate copy per listener. Obtain three independent listeners before unblinding.
+4. Use `ratings.csv` in the pack as the blank score sheet. Make a separate copy
+   per listener. Obtain three independent listeners before unblinding.
 
 One common attenuation per A/B/original set prevents peak clipping. There is no
 limiter, per-file RMS normalization or claim of LUFS matching.

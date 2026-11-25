@@ -6,6 +6,8 @@ bands, split at 200 Hz and 2 kHz.
 
 Use **Multiband Compressor** to control dynamics in separate frequency ranges, with independent compression settings and band audition.
 
+## Response graph and crossovers
+
 **Split** sets the boundaries between ranges. The lowest range extends to DC;
 the highest extends to Nyquist. Boundaries cannot cross in the DAW. Scroll the
 Split strip vertically when it contains more controls than fit.
@@ -35,6 +37,8 @@ after about 0.1 seconds of processed audio and updates about every 22 ms. At
 Unit power off clears the spectrum. Compact and collapsed units hide the graph.
 Monitoring does not change the sound or add playback latency.
 
+## Band curves and history
+
 Use the small buttons to the left of the graph to choose a view. **A** shows the
 general spectrum, crossover and threshold view. The numbered buttons form a
 vertical group. Select a number to show that band's compressor curve, live input
@@ -52,6 +56,8 @@ The background shows four seconds of that band's input level and gain reduction,
 with the newest point at the right edge. Capture continues in other views. Band
 power off clears its graph readings; removing the selected band returns to **A**.
 View selection is temporary and is not saved in the project or preset.
+
+## Band controls
 
 Each band has these controls:
 
@@ -75,6 +81,8 @@ readout shows compression before Makeup. Click the reduction readout to reset
 its held peak. Band power bypasses compression and Makeup, keeping the frequency
 range audible.
 
+## Solo
+
 Click **S** to hear only that band's processed range. Multiple S buttons combine
 their ranges. S also works when band power is off. Solo excludes the full-range
 dry signal, including at 0% Dry/Wet. Solo is temporary: it does not change the
@@ -82,22 +90,30 @@ project, presets or undo history. Unit power off clears Solo. DAW export ignores
 it. Standalone hosts must declare offline rendering for export to ignore Solo;
 real-time recording captures what you hear.
 
+## Manage bands
+
 Plus splits the widest range. Right-click anywhere in a band for **Enable band**
 or **Disable band**, checked **Solo**, and **Remove band**. Removal merges its
 range with a neighbor. At least one band remains in the DAW.
 Drag a footer or unused band space to change its visual position. Its frequency
 range, settings and connections stay with it. Escape cancels a drag.
 
+## Output and monitoring
+
 **Out** has Level and Dry/Wet. The dry blend follows the crossover phase, which
 avoids cancellation against the compressed ranges. Header power passes the
 original input without output gain. Crossovers use a fixed 24 dB/oct slope.
 There is no lookahead, automatic makeup or external sidechain.
+
+## Modulation
 
 The six continuous band controls and Out controls accept shared modulation from
 the same instrument. Open the header's connection dot to add routes. Split and
 Peak/RMS remain manual choices. In Destination, open a **Band N** submenu to
 choose a band control. Out controls stay at the top level. Band submenus follow
 the displayed strip order and retain their frequency-range numbers.
+
+## Standalone plugin
 
 This effect also has [standalone plugin previews](plugins.md), with up to 64 band
 slots and horizontal scrolling. More bands use more CPU and memory.

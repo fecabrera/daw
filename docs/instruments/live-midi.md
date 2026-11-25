@@ -1,8 +1,12 @@
 # Live MIDI input
 
+## Choose an input
+
 Open Application Settings and choose a MIDI input and channel in the MIDI section.
 Choose All channels to accept all 16 MIDI channels. Off disconnects the input.
 The device selection belongs to the app, not the project.
+
+## Choose tracks and play
 
 Select a MIDI track to play its instrument. Enable **R** on one or more MIDI
 tracks to play those tracks together. R sits in its own button group after M/S
@@ -19,6 +23,8 @@ pedal affect playback. Repeated presses of the same key release in press order.
 New Sampler pitches prepare in the background. A target whose exact pitch is
 not ready stays silent for that press. Press the key again after preparation;
 held notes do not start late. Recording still captures the performance.
+
+## Restore live input
 
 Stop, loss of window focus, device disconnection, and queue pressure release live
 voices. **Transport > Panic** also releases live voices and ends an active take.

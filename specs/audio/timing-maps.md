@@ -69,6 +69,8 @@ rebuilding audio.
 
 ## Timeline
 
+### Lane display and grid
+
 Allocate three pinned rows with the shared beat editor subtrack lane height
 (32 points) after the existing ruler and before the first track: Markers, Tempo,
 Signature. Keep the existing control-column width and
@@ -92,6 +94,8 @@ once with its ruler label. Do not skip it by rounding the musical index upward.
 The Timeline editor reuses map-aware rulers and note coordinates,
 without metadata lanes. Sampler's local source view retains its source clock.
 
+### Add and select timing events
+
 Double-click empty lane space or use its menu to add. Each expanded lane header
 has a right-aligned shared compact Lucide Plus panel button (18-point square,
 12-point artwork), vertically centered with an 8-point right inset. Lane labels
@@ -111,6 +115,8 @@ Empty lane clicks clear selection. Selection stays in UI state without seeking
 or editing the project. The section context menu offers Seek here.
 Keyboard/context Delete removes the selected metadata through one guarded batch,
 retaining the tempo/signature origin. Input fields keep their keys.
+
+### Resize, rename and drag
 
 Both block types use an 8-point resize area. Capture a touching boundary only
 within 3 points of the exact edge at the initial press; keep that gesture for
@@ -164,6 +170,9 @@ the committed clock and commits once on release. Shift bypasses snapping.
 Escape, focus loss, outside release, a changed revision or a conflicting job
 cancels the drag. Origin event positions remain fixed. Focused metadata Delete removes
 only the metadata event. Coincident markers are available in the context menu.
+
+### Saved visibility and transport controls
+
 The track toolbar has Add and Duplicate at the left and an arrangement toggle
 at the right. View > Arrangement lanes also controls visibility and collapse.
 Arrangement lanes start collapsed. Save stores the expanded or collapsed state

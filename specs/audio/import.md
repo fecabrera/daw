@@ -1,5 +1,7 @@
 # Audio import
 
+## Supported inputs and decoded metadata
+
 `daw-media` owns source decoding. `decode_audio_cancellable` probes file content;
 WAV uses the existing strict Hound header and Symphonia PCM path. MP3 and AAC-LC
 use Symphonia 0.5.5 with the `mp3`, `aac` and `isomp4` features. Ogg Opus uses
@@ -60,6 +62,18 @@ Guarded tiny-file tests cover oversized packet/table declarations, atom/file
 bounds, aggregate metadata, chunk/index/fragment coordinates and unchanged
 ordinary M4A output. A private streaming predicate lets tests compare resident
 and disk-backed PCM/metadata/peaks at three rates without allocating a long source.
+
+### Timing tables and checked coordinates
+
+MP4 timing tables check cumulative sample coordinates before publication.
+Sample/timestamp lookup uses checked sums and subtracts the entry's first sample
+before multiplying duration; do not form an overflowing intermediate sum.
+Impossible coordinates return a decode error. Empty fragmented timing tables,
+zero-duration entries and valid coordinates near the 32-bit sample limit retain
+their existing exclusive-end behavior. Bounded parser and shared media tests
+run in both debug and release configurations.
+
+## Worker preparation and verified cache
 
 Run decoding, Rubato conversion and peaks on workers. Do not allocate from a
 compressed duration header. Admit PCM and peaks in bounded growth increments
@@ -130,11 +144,3 @@ Codec/binding copyright and license texts are in `crates/media/assets/licenses`;
 all desktop packagers already copy that directory. Keep the adapter MIT/Apache,
 opusic-sys BSD and bundled Opus COPYING notices and exact source links together.
 Import support adds no Opus export mode.
-
-MP4 timing tables check cumulative sample coordinates before publication.
-Sample/timestamp lookup uses checked sums and subtracts the entry's first sample
-before multiplying duration; do not form an overflowing intermediate sum.
-Impossible coordinates return a decode error. Empty fragmented timing tables,
-zero-duration entries and valid coordinates near the 32-bit sample limit retain
-their existing exclusive-end behavior. Bounded parser and shared media tests
-run in both debug and release configurations.

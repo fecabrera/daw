@@ -4,13 +4,19 @@
 
 Run commands from the repository root.
 
+## Prerequisites
+
 Install Rust through Rustup and the native C++ development tools with Clang/libclang. Install CMake for the bundled Opus decoder (for example,
-`brew install cmake`). Build and run with:
+`brew install cmake`).
+
+## Build and run from source
 
 ```sh
 cargo build -p daw-desktop
 cargo run -p daw-desktop
 ```
+
+## Build and run the app bundle
 
 Create a local app bundle from the current files without committing:
 
@@ -35,6 +41,8 @@ The bundle uses a layered Icon Composer icon with an orange split waveform
 and native graphite background. macOS controls its shape, size and appearance.
 Direct Cargo launches use an Apple-rendered static version with native padding.
 
+## Package a disk image
+
 Create a disk image with `sh tools/package_macos_dmg.sh release`. Use `debug` for
 a debug build. The image is `target/<profile>/DAW-macos-arm64.dmg` on Apple Silicon
 or `DAW-macos-x64.dmg` on Intel. Open the image and drag DAW to Applications. The
@@ -48,6 +56,8 @@ Open Anyway if macOS offers it. See [Apple’s guidance](https://support.apple.c
 Do not use this override for a package whose integrity cannot be established.
 
 Stem separation requires Apple Silicon on macOS. Intel builds omit that backend and disable its controls; the other app features remain available.
+
+## Distribution verification
 
 Desktop downloads also contain the exact [corresponding source and relinking
 materials](README.md#corresponding-source-in-desktop-packages). Distribution packaging requires

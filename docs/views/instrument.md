@@ -7,16 +7,6 @@ The bottom **Effects lane** toggle shares its open or closed state with the othe
 
 An instrument creates audio from MIDI notes. Effects change audio from an instrument layer, a track, or the project Master. Use Instrument to build a MIDI instrument, and use the Effects catalog in Timeline, Instrument or Mixer to add effects.
 
-## Instrument tabs
-
-- **Sources** opens first. It shows the sources and processors in each layer.
-- **Effects** shows the effects in each layer and on Output. Output scrolls with the layers.
-- **Modulation** shows LFO, Envelope, and then Macros. Layer-owned Macros appear under their layer names.
-
-Switching tabs changes which lanes you can edit. All units continue to process audio or modulation. When a catalog is open, the Effects tab shows the Effects catalog. Sources and Modulation show the Instrument components catalog.
-
-Use **Track Mixer** at the top of the right toolbar or in **View** to show the selected track and its output bus. It starts closed and remembers its visibility separately from Timeline.
-
 ## Project tracks
 
 Use **Tracks** in the left toolbar to open the project track list. It shows audio, MIDI and beat icons, with group chevrons and indented children in project order. Tracks, Instrument components and Effects share the same panel space; opening one hides the other.
@@ -36,6 +26,16 @@ Double-click a track or group name, or right-click its row and choose **Rename**
 Drag a track's name or icon to reorder it. Drop in the middle of a group to add it; drop near a row edge to reorder. Drop at the left edge to move to an outer group, or below the last row to return to Master. A group moves with its children. Subtracks can move only within their original beat track. Release to apply; Escape, focus loss or an outside drop cancels. Controls keep their own gestures.
 
 With focus in the list, use Up/Down to move through visible rows without wrapping. Left/Right collapse or expand groups; Left on a child moves focus to its group. Enter toggles a group or selects a track. Scroll when the list does not fit. Browsing and expanding groups do not change project data.
+
+Use **Track Mixer** at the top of the right toolbar or in **View** to show the selected track and its output bus. It starts closed and remembers its visibility separately from Timeline.
+
+## Instrument tabs
+
+- **Sources** opens first. It shows the sources and processors in each layer.
+- **Effects** shows the effects in each layer and on Output. Output scrolls with the layers.
+- **Modulation** shows LFO, Envelope, and then Macros. Layer-owned Macros appear under their layer names.
+
+Switching tabs changes which lanes you can edit. All units continue to process audio or modulation. When a catalog is open, the Effects tab shows the Effects catalog. Sources and Modulation show the Instrument components catalog.
 
 ## Instrument components
 
@@ -76,16 +76,29 @@ Selected layers use the same header and lane shades as selected Timeline tracks
 in Dark, Light and Mist. This also applies to Output, LFO and Envelope. Each
 selected regular layer is highlighted when several layers are selected.
 
-Layer controls stay in the left column; installed components appear to their right. Use the Layers Plus button in Sources or Effects to add another layer. Each layer has gain, pan, mute, and solo controls. Mute and Solo share the same joined M / S button group as tracks, with independent toggles. Layer gain/pan and Output gain use compact knobs without text-entry fields. Output has no pan knob. On the second row, layer Mute and Solo sit at the left; Pan then Gain sit at the right. Output’s single gain knob also sits at the right. Regular layers and Output have the same stereo level meters as tracks, beside the gain knob. Each layer meter shows its signal after effects, gain, pan and layer mute/solo. Output shows their combined signal after Output effects and gain, before track controls. Either channel exceeding 0 dBFS lights both clipping indicators; click either rail to clear them. Meters do not change sound or project data. Each layer, including Output, has an expand/collapse button at the top of its own right toolbar. The toolbar stays at the right edge while components scroll horizontally. Hover or drag a knob to see its value in the tooltip. Solo applies among the layers of that instrument. [Output](../instruments/main.md) controls their combined output and can hold Macro controls.
+Layer controls stay in the left column; installed components appear to their right. Use the Layers Plus button in Sources or Effects to add another layer.
 
-## Amplitude
+### Add or replace a source
 
-[Amplitude](../instruments/amplitude.md) controls the level of notes in a layer. Connect an Envelope to shape attack and release, or an LFO for repeated level changes. Without an active Amplitude contour, notes use a short gate. Turning Amplitude off bypasses its level shaping while retaining note gating.
+Adding a source from the component catalog replaces the selected layer's source.
+Adding Oscillator to an existing Oscillator appends a strip. Other layer settings,
+effects and modulators remain. Drop an audio file on a regular layer to install
+Sampler with that file; this also replaces Oscillator or Granulizer. These rules
+apply to MIDI instruments and beat subtracks. Output and modulation lanes do not
+accept source or file drops. Failed or cancelled preparation retains the layer.
+
+### Layer and Output levels
+
+Each layer has gain, pan, mute, and solo controls. Mute and Solo share the same joined M / S button group as tracks, with independent toggles. Layer gain/pan and Output gain use compact knobs without text-entry fields. Output has no pan knob. On the second row, layer Mute and Solo sit at the left; Pan then Gain sit at the right. Output’s single gain knob also sits at the right. Regular layers and Output have the same stereo level meters as tracks, beside the gain knob. Each layer meter shows its signal after effects, gain, pan and layer mute/solo. Output shows their combined signal after Output effects and gain, before track controls. Either channel exceeding 0 dBFS lights both clipping indicators; click either rail to clear them. Meters do not change sound or project data. Each layer, including Output, has an expand/collapse button at the top of its own right toolbar. The toolbar stays at the right edge while components scroll horizontally. Hover or drag a knob to see its value in the tooltip. Solo applies among the layers of that instrument. [Output](../instruments/main.md) controls their combined output and can hold Macro controls.
 
 Layer and Output meters show the shared held-peak marker for each stereo
 channel. Peaks remain visible when the signal becomes silent. Click either
 rail or the gap between them to reset both held peaks and the clipping warning.
 This changes monitoring only.
+
+## Amplitude
+
+[Amplitude](../instruments/amplitude.md) controls the level of notes in a layer. Connect an Envelope to shape attack and release, or an LFO for repeated level changes. Without an active Amplitude contour, notes use a short gate. Turning Amplitude off bypasses its level shaping while retaining note gating.
 
 ## Effects
 
@@ -116,10 +129,3 @@ The header power control turns a unit on or off. Right-click a header for **Enab
 Audio units have a vertical [output meter](../effects/output-meter.md) in the gap
 after each unit, including when collapsed. Click a meter to reset its held peak.
 Modulation units do not show audio meters.
-
-Adding a source from the component catalog replaces the selected layer's source.
-Adding Oscillator to an existing Oscillator appends a strip. Other layer settings,
-effects and modulators remain. Drop an audio file on a regular layer to install
-Sampler with that file; this also replaces Oscillator or Granulizer. These rules
-apply to MIDI instruments and beat subtracks. Output and modulation lanes do not
-accept source or file drops. Failed or cancelled preparation retains the layer.

@@ -1,5 +1,7 @@
 # Windows and Linux desktop packaging
 
+## Distribution and local modes
+
 Distribution mode remains the default. It checks the clean committed tracked
 tree before building, then includes the source archive, manifest and access
 notice through `tools/package_sources.py`.
@@ -10,6 +12,8 @@ vendoring source dependencies. It adds `DAW/LOCAL-BUILD.txt` and omits
 executable, project license, dependency notices and platform resources. It does
 not commit, modify the index or collect user data.
 
+## Linux inputs and outputs
+
 Linux accepts `tools/package_linux.sh [debug|release] [--local]`. The profile
 defaults to debug and the flag can precede or follow it. Reject unknown
 arguments and duplicate profiles with exit code 2 before building. The native
@@ -17,6 +21,8 @@ host check remains required. The build helper overrides Cargo target-directory
 and target settings, validates the native executable and retains the existing
 architecture-specific ZIP name. Both modes include runtime requirements,
 desktop entry and hicolor icons.
+
+## Windows inputs and outputs
 
 Windows accepts `tools/package_windows.ps1 [debug|release] --local` and the
 standard `-Local` spelling. The switch's `-local` alias handles `powershell.exe
@@ -35,11 +41,15 @@ can have different representations. Preserve literal spaces, Unicode, `%` and
 `#` in entry names. Keep PowerShell 5.1 compatibility and validate the executable,
 local marker and dependency-notice hashes inside the archive.
 
+## Staging and publication
+
 Both modes build fresh staging directories and publish only complete ZIP files.
 Failures preserve the previous archive. Fresh staging excludes stale distribution
 metadata from local packages and excludes the local marker from distributions.
 Linux uses its existing archive move; Windows uses the existing file replace or
 move operation. Temporary directories are removed after success or failure.
+
+## Verification
 
 POSIX fixtures cover both Linux modes, contents, native-target selection and
 failure preservation. PowerShell fixtures exercise the Windows script with fake

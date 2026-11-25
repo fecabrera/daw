@@ -1,5 +1,7 @@
 # Inspect tracks
 
+## Inspect existing tracks
+
 ```sh
 daw-cli --project examples/demo track.list
 daw-cli --project examples/demo track.list --name "Bass synth"
@@ -47,6 +49,8 @@ daw-cli --project ./Song track.rename --track "name:New MIDI" --name "Lead"
 A rename preserves the track ID, clips and routing. Setting the current name
 again succeeds without writing the manifest. List tracks first if you need an
 ID to disambiguate a name. Use `track.rename --help` for the options.
+
+## Legacy commands
 
 The legacy `tracks [NAME] [--project FOLDER]` command still defaults to the
 current folder and shows all name matches. Add with

@@ -6,6 +6,8 @@ Run commands from the repository root.
 
 The registered effect products have separate CLAP/VST3 and macOS AUv2 development builds. Multiband Exciter is built-in only; `--units all` packages every available plugin product. They reuse the portable DAW processors, shared controls, and meters. See the [plugin list and controls](../../docs/effects/plugins.md).
 
+## Build and package locally
+
 Use the [native platform prerequisites](README.md) and Python 3.11 or later. Use a unit slug from the [plugin list](../../docs/effects/plugins.md) for `<unit>`, and select `<target>` below:
 
 | Platform | Target |
@@ -43,6 +45,8 @@ ZIPs, checksums, licenses and installation instructions go to
 directory. Debug and release artifacts can share an output directory. A run that
 selects an API subset writes an API-specific checksum file, preserving checksum
 files for the other API or both APIs.
+
+## CI builds
 
 The [plugin CI workflow](../../.github/workflows/plugins.yml) builds and tests each product on all three platforms. Download `<product>-CLAP-<target>`, `<product>-VST3-<target>`, `<product>-AUv2-<target>` on macOS, and `<product>-checksums-<target>` artifacts. Extract the inner ZIP before installation. Artifacts and logs are retained for 14 days.
 

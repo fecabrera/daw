@@ -29,6 +29,8 @@ Transposing retains the clip duration, trimming, repeats, and original recording
 
 Saved audio transpose values now affect playback, including values saved before audio transpose was connected. Missing values remain 0. Large pitch shifts can change timbre or remove high-frequency content; vocal formants are not preserved.
 
+Audio clips support constant transpose in Clip settings. Live pitch automation is not available. Sampler changes pitch relative to its root note, across the full MIDI range. Broader listening, performance, and platform checks remain open for revision 8.
+
 ## Choose an engine
 
 Open File > Project Settings and choose Time stretch engine.
@@ -54,10 +56,8 @@ does not change the current project; opened projects keep their saved engine.
 
 The engine choice saves with the project and applies to audio clip stretching and transpose, including [Sampler duration and note pitch](../instruments/sampler.md). It is not a per-clip choice. Engine changes retain clip positions, source selection, and stretch ratios.
 
+Use the separate [command-line tool](../cli/timestretch.md) to compare engines or change the duration and pitch of a WAV file.
+
 ## Current limits
 
-Audio clips support constant transpose in Clip settings. Live pitch automation is not available. Sampler changes pitch relative to its root note, across the full MIDI range. Broader listening, performance, and platform checks remain open for revision 8.
-
 Preparation time and memory use depend on the original recording's length, including when a clip uses only a trimmed part of it. Matching clip requests share prepared audio.
-
-Use the separate [command-line tool](../cli/timestretch.md) to compare engines or change the duration and pitch of a WAV file.

@@ -2,18 +2,28 @@
 
 Saturator and Bitcrusher are available as separate CLAP, VST3 and macOS AUv2 development previews. Each uses the same processor and controls as its built-in DAW effect. They have separate plugin identities and presets.
 
-Download the product and platform artifact from the [plugin build workflow](../../.github/workflows/plugins.yml). Extract the inner ZIP, keep the included licenses, copy the plugin file or bundle to a folder your host scans, and rescan. Build and package instructions are in the [development guide](../development/plugins.md). Close the host before replacing or removing an installed copy.
+## Products and controls
 
 | Product | Left strip | Output strip |
 | --- | --- | --- |
 | [Saturator](saturator.md) | Shape, Clip Mode, Drive | Level, Dry/Wet |
 | [Bitcrusher](bitcrusher.md) | Drive, Resolution, Downsampling | Level, Dry/Wet |
 
+## Install a plugin
+
+Download the product and platform artifact from the [plugin build workflow](../../.github/workflows/plugins.yml). Extract the inner ZIP, keep the included licenses, copy the plugin file or bundle to a folder your host scans, and rescan. Build and package instructions are in the [development guide](../development/plugins.md). Close the host before replacing or removing an installed copy.
+
+## Use the editor and meters
+
 The host provides bypass. The editor omits the DAW header and modulation connections. Knob drag, fine adjustment, keyboard changes, and reset use the same controls as the built-in effect. Saturator retains its Shape and Clip Mode lists. Bitcrusher retains whole-bit Resolution and whole-ratio Downsampling.
 
 Both Output strips include the [shared level meter and held sample peak](output-meter.md). Click the rail to reset its peak without changing parameters. Right-click the editor background to select Dark, Light, or Mist. Deep Orange is the default accent. Appearance is local to the editor instance and is not saved in a preset.
 
+## Host delay compensation
+
 Saturator reports its 32-frame processing delay to the host, including bypass. Bitcrusher reports zero delay. Use the host's delay compensation for aligned mixing.
+
+## Supported hosts and formats
 
 The previews accept stereo 32-bit floating-point audio at 44.1, 48, 88.2, 96, 176.4, and 192 kHz. Other rates, mono buses, 64-bit processing, MIDI input, and DAW modulation routes are not supported. Use the AUv2 export in Logic Pro; see the [shared installation instructions](plugins.md).
 

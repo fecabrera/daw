@@ -14,6 +14,8 @@ daw-cli --project "My project" project.source.collect --dry-run
 daw-cli --project "My project" project.source.collect
 ```
 
+## Review collection results
+
 `--dry-run` checks sources and reports files to copy, files already included and additional bytes. It does not copy files or save changes. Allow extra space for temporary files; the command does not measure available disk space. A successful check does not guarantee that a later collection will succeed.
 
 Collection copies complete original media without trimming or re-encoding. It includes unused saved assets and Sampler/Granulizer inputs. Originals stay unchanged. Embedded MIDI stays in the project. Desktop Undo/Redo history is unavailable to this command; use desktop collection before closing the app if those sources must travel too.

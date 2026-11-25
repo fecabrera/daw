@@ -86,9 +86,9 @@ unchanged. Tempo ramps and moving complete song sections remain planned.
 Mapped projects require a version of the app that supports timing maps. Older
 versions can ignore these events and play the project with a constant tempo.
 
-MIDI tracks have an **R** button in its own group after M/S on the same row. Enable several tracks to receive live MIDI together. With none enabled, input follows the selected MIDI track; its R text shows the active color on the regular background. See [live MIDI](../instruments/live-midi.md) and [recording](../editing/midi-recording.md).
+## Track controls and display
 
-The left toolbar lists **Effects** and **Chords**. **Clip settings** uses the toolbar at the right of the timeline area, from the playback toolbar down to the effects lane.
+MIDI tracks have an **R** button in its own group after M/S on the same row. Enable several tracks to receive live MIDI together. With none enabled, input follows the selected MIDI track; its R text shows the active color on the regular background. See [live MIDI](../instruments/live-midi.md) and [recording](../editing/midi-recording.md).
 
 Timeline arranges audio and MIDI clips on tracks. Use the editor pane for MIDI notes, Instrument for MIDI sounds, and Mixer for track levels. Its horizontal scrollbar floats over the content, like the effects lane’s scrollbar; hover near the bottom of the timeline to reveal and expand it.
 
@@ -101,26 +101,11 @@ sits on the right. These buttons share the rounded, borderless M/S style.
 
 Click the arrow beside a beat track to show or hide its subtracks. They start collapsed. Subtracks appear inside the parent, with the same indentation and selection style as track groups. Each row has Mute, Solo, Pan, Gain and level meters shared with the beat editor and Instrument. Subtrack names use the same hoverable name buttons as other tracks. A single click selects; double-click the name to rename it. Click a subtrack header to select it; Shift-click selects several. Escape clears subtrack selection. The child timeline lanes stay empty; arrange clips on the parent and edit beat hits in the lower editor pane. The project saves each beat folder’s open/closed state. Expanding or collapsing it supports Undo/Redo, like track groups.
 
-Touching clips have a small visual gap. At a crossfade, the gap follows the owning clip’s fade endpoint. Audio, MIDI and beat clips have no selection border. Selected clips use a lighter shade of their color family in the header. Headers have rounded top corners and square bottom corners. The same style applies in the track overview and audio editor.
-
-The musical grid uses a subtle overlay in active audio, MIDI and beat clip
-bodies, below their waveforms and notes. Clip backgrounds remain opaque, and
-their colors and headers stay unchanged.
-These overlay lines use the dark palette's colors in every theme so they remain
-visible against colored clips.
-
 **M** and **S** share one joined button group with a divider. They remain independent: either or both can be enabled. The same group appears in Instrument, the beat editor, the Tracks panel, and Mixer.
 
 Each L/R meter bar has a held-peak marker. Click either bar or the gap between them to reset both held peaks and the clipping warning. This applies to tracks, groups, Returns and Master. Held levels are shared with Mixer.
 
 Use the **Track height** slider between Fit all clips and horizontal zoom to choose a size from **1** to **3**, including decimals. A divider separates these sliders from the buttons. Size 2 is the default. The slider sticks slightly near whole numbers. Arrow keys allow fine adjustments away from them. Height scales continuously; the controls use the selected value rounded down for their layout. For example, 1.5 uses the one-row layout, and 2.5 uses two rows. Size 3 adds a middle row containing the track’s send-level knobs, with the name above and M/S, Pan and Gain below. Each row uses the same vertical slot height. Headers keep the same spacing whether they appear first, in the middle, or last. Scroll the sends row horizontally when its knobs do not fit. The row remains empty for tracks without sends. The expand/collapse button switches between sizes 1 and 2. Master stays on one row. Save the project to retain Timeline track size, horizontal zoom, and horizontal/vertical scroll positions. Changing these display settings does not change audio or add an Undo step.
-
-Use the **Return tracks** arrow and **Master track** boom box buttons in the
-right toolbar to show or hide the pinned Return rows and Master. The buttons sit
-at the bottom, with Returns above Master. Both start enabled. Timeline and
-Mixer remember separate choices for the app session. You can also use **View >
-Returns** and **View > Master**. Hidden tracks keep processing audio, and their
-selection stays unchanged.
 
 The Tracks header’s Add track (Plus) button opens a dropdown with **Add audio track**, **Add MIDI track**, and **Add beat track**. Choose an item to create and select a new empty track. Opening or dismissing the menu does not add a track.
 
@@ -134,9 +119,59 @@ Rename (Command/Ctrl+R), Group (Command/Ctrl+G), and Ungroup (Command/Ctrl+Shift
 
 Press Escape to clear selected clips or a selected clip time range first. Tracks and Master stay selected. If no clips or clip time range are selected, Escape clears track or Master selection. Text entry, open menus and active gestures take precedence. Holding Escape does not advance through these steps.
 
+### Toolbar panels
+
+The left toolbar lists **Effects** and **Chords**. **Clip settings** uses the toolbar at the right of the timeline area, from the playback toolbar down to the effects lane.
+
+Use the **Return tracks** arrow and **Master track** boom box buttons in the
+right toolbar to show or hide the pinned Return rows and Master. The buttons sit
+at the bottom, with Returns above Master. Both start enabled. Timeline and
+Mixer remember separate choices for the app session. You can also use **View >
+Returns** and **View > Master**. Hidden tracks keep processing audio, and their
+selection stays unchanged.
+
 The Return and Master toggles stay at the bottom of the upper right toolbar.
 Opening the effects lane places them just above its toolbar. Closing the lane
 returns them to the bottom of the full-height toolbar.
+
+Each view retains its own upper left toolbar panel choice for the app session. Opening a panel closes the other upper panels in that view. Switching views restores that view's choice, including a closed panel. The left toolbar stays available when its panels are closed.
+
+## Import and arrange
+
+1. Add an audio or MIDI track from the Track menu or the Tracks header.
+2. Use Clip > Import clip for WAV, MP3, AAC, or Opus audio, or drop a supported audio file on an audio track. Dropping into empty Timeline space creates a new audio track.
+3. Drag a clip header to move it. Hold Option on macOS or Ctrl on Windows/Linux to copy it.
+4. Release to apply the change. Escape or focus loss cancels an active gesture.
+
+Moves and copies take priority over destination clips. Covered neighbors are trimmed, split, or removed. The preview shows those changes before release. Shift bypasses grid snapping.
+
+Audio clips can move or copy only to audio tracks; MIDI clips can move or copy only to MIDI tracks. This applies over both track headers and timeline lanes. An incompatible destination shows the invalid-action cursor. Releasing there rejects the entire selected group without an error dialog. Continue dragging to a compatible track to complete the move or copy.
+
+Group buses cannot hold clips: dragging onto a bus shows an invalid-action cursor, and releasing there keeps all dragged clips unchanged. Drop clips onto child tracks.
+
+Audio file drags over MIDI tracks or group buses show the invalid-action cursor. Drops there are ignored without an error dialog. Drop audio files onto audio tracks or empty Timeline space instead.
+
+## Supported imports
+
+Import mono or stereo WAV, MP3, AAC-LC, or Opus clips. AAC-LC can use `.aac` (ADTS),
+`.m4a`, or `.mp4` containers. Opus uses Ogg `.opus` or `.ogg` files.
+WAV supports PCM16, PCM24, and float32. Audio is converted to the project processing rate, and its waveform is prepared before
+the clip is added. The original recording remains unchanged and must remain
+available when reopening the project.
+
+HE-AAC, protected audio, other codecs inside MP4 files, and files with more than
+two channels are unsupported. Opus supports one mono/stereo stream
+with the standard channel mapping (family 0); chained or multiplexed streams
+and Ogg Vorbis are unsupported. Recorder files without a final end marker can
+load if they end on a complete page. A rejected import leaves the arrangement intact.
+M4A/MP4 imports reject metadata above 8 MiB or a single compressed packet above
+16 MiB. Malformed table sizes and out-of-file packets return an import error.
+Re-encode files that exceed these limits; the failed import leaves the project unchanged.
+
+MP3 encoder delay and padding are removed when the file provides that information.
+Opus imports remove encoder delay and end padding and apply the header output gain.
+AAC files can retain encoder padding, so their clip length can be slightly longer
+than the original uncompressed recording.
 
 ## Add chords
 
@@ -155,20 +190,56 @@ With catalog focus, Up/Down navigates visible rows. Shift+Up/Down extends or red
 
 Chords use the normal clip overwrite rules and Undo/Redo. Audio and group tracks reject chord drops. Catalog browsing and filtering do not change the project; inserted chords save as ordinary MIDI patterns. On playback, a newly created MIDI track uses its default sine-wave Oscillator.
 
-## Import and arrange
+## Navigate and play
 
-1. Add an audio or MIDI track from the Track menu or the Tracks header.
-2. Use Clip > Import clip for WAV, MP3, AAC, or Opus audio, or drop a supported audio file on an audio track. Dropping into empty Timeline space creates a new audio track.
-3. Drag a clip header to move it. Hold Option on macOS or Ctrl on Windows/Linux to copy it.
-4. Release to apply the change. Escape or focus loss cancels an active gesture.
+### Transport and seeking
 
-Moves and copies take priority over destination clips. Covered neighbors are trimmed, split, or removed. The preview shows those changes before release. Shift bypasses grid snapping.
+Use [Seek mode](../projects/README.md#seek-mode) to choose how playback starts
+from a selected position or jumps when you click or drag the ruler. Fast
+starts fresh at the destination. Exact reconstructs the notes and effect
+tails you would hear in continuous playback.
 
-Audio clips can move or copy only to audio tracks; MIDI clips can move or copy only to MIDI tracks. This applies over both track headers and timeline lanes. An incompatible destination shows the invalid-action cursor. Releasing there rejects the entire selected group without an error dialog. Continue dragging to a compatible track to complete the move or copy.
+The toolbar groups the elapsed time and bars and beats readouts in one field.
+The time signature and Tempo share a separate field. Its background stays the
+same during playback. Pause or stop to edit either value.
 
-Group buses cannot hold clips: dragging onto a bus shows an invalid-action cursor, and releasing there keeps all dragged clips unchanged. Drop clips onto child tracks.
+Play, Stop and Loop are separate standard buttons. They use the standard hover highlight and keep their green, red and gold active colors.
 
-Audio file drags over MIDI tracks or group buses show the invalid-action cursor. Drops there are ignored without an error dialog. Drop audio files onto audio tracks or empty Timeline space instead.
+Playback can start anywhere, including an empty project or silence after the last clip. It continues until you pause or stop. With Loop enabled, it repeats the selected range. Export duration still ends at the last clip.
+
+Press Space to play or pause from any view, pane, or focused control. Text fields take precedence: Space inserts a space while you edit text. Holding Space does not toggle playback repeatedly. Dialogs and blocking background jobs still disable the shortcut.
+
+Seeking and editing notes during playback keep the current audio and playhead running while the change is prepared. A seek then fades to the requested position. A note edit takes effect at the current playback position, without pausing or returning to an earlier position. Changes to effect latency use the same continuous playback behavior.
+
+Recently prepared positions use cached sound state for faster seeks. The first seek, a seek outside the cached range, or a seek after a project edit can still require history reconstruction. This can delay when a change becomes audible. Rapid changes replace pending changes. Pause stops the active audio even while a seek or edit is being prepared; ordinary pause and resume retain the current sound state.
+
+### Tempo and metronome
+
+The transport toolbar groups **Metronome**, **time signature**, and **Tempo**, in that order, after a divider. Set the **time signature** between Metronome and Tempo. It starts at **4/4**. Drag the upper number up or down in steps of one to change beats per bar. Drag the lower number through **2, 3, 4, 6, 8, 12, 16** to change the beat note value. Double-click either number, type an integer from **1 to 65,535**, and press Enter. The text field keeps the displayed number’s width; longer input scrolls inside it. Escape or clicking elsewhere cancels text entry. The ruler and grid update during the drag. Release to apply the value to the project; Escape or loss of window focus cancels the drag.
+
+The signature is saved with the project and supports Undo/Redo. It updates bar/beat positions, rulers, grids, snapping, and the metronome. Tempo stays in quarter notes per minute. Clips, notes, the playhead, and the loop range keep their exact timing. Existing pattern lengths and source duration settings keep their original durations.
+
+Use **Metronome**, immediately before the time signature, to hear a click on each
+beat during playback. A higher click marks the first beat of each bar. In 6/8, it plays six eighth-note clicks per bar. It
+follows the project tempo and playhead through seeks and loops, and fades out
+when playback pauses or stops. The button uses the standard idle and hover appearance, with a gold active
+background. It starts off and remembers its choice
+for the app session. It does not change the saved project. The click is a playback
+aid; exports retain the project mix.
+
+### Loop playback
+
+The ruler uses the saved time signature, with bars and beats counted from 1. In dark mode, labels outside the loop range use light text. Text on the enabled loop highlight uses dark text for contrast. Click to set the playhead. New projects start with bar 1 selected and Loop off. Use Loop or press Command+L on macOS or Ctrl+L on Windows and Linux to toggle looping. Drag the selection band to choose a different range. Changing tempo keeps clip starts and the loop range at their musical positions. Audio clip duration stays unchanged; MIDI and beat timing follow tempo.
+
+At a transport loop boundary, MIDI and beat releases and one-shot samples
+continue into the next iteration. Audio clips repeat only the selected loop
+region. Track, group and Master effect tails continue across the boundary.
+
+### Zoom and scroll
+
+Use **Fit all clips**, immediately left of the playback toolbar’s zoom control, to show every clip across all tracks. It fits from the earliest clip start to the latest clip end, including gaps. The button is disabled when there are no clips. It changes only the view.
+
+Horizontal scrolling moves the timeline while track controls stay fixed. Pinch zoom keeps the pointer's time in place where possible. Double-click a clip to open and fit it in the [Timeline editor](editor.md).
 
 ## Clip menu
 
@@ -189,6 +260,14 @@ Right-click a clip to access its clip actions. Edit, Disable and Stem separation
 Choose **Reverse** from the **Clip** menu or an audio clip's context menu. It plays the audible slice of each selected audio clip backward, including its trims, time stretch, and repeats. Clip position, duration, transpose, and timeline fades stay in place. Reverse again to restore the original direction, or use Undo to revert the edit.
 
 ## Select and edit clips
+
+Touching clips have a small visual gap. At a crossfade, the gap follows the owning clip’s fade endpoint. Audio, MIDI and beat clips have no selection border. Selected clips use a lighter shade of their color family in the header. Headers have rounded top corners and square bottom corners. The same style applies in the track overview and audio editor.
+
+The musical grid uses a subtle overlay in active audio, MIDI and beat clip
+bodies, below their waveforms and notes. Clip backgrounds remain opaque, and
+their colors and headers stay unchanged.
+These overlay lines use the dark palette's colors in every theme so they remain
+visible against colored clips.
 
 Click a clip to select it. Shift-click toggles group membership. Drag a rectangle in empty space to select intersecting clips; Shift-drag toggles them against the starting selection.
 
@@ -214,6 +293,8 @@ Split the selected clips at the playhead with Clip > Split at playhead, or with 
 MIDI notes that cross the playhead follow Settings > MIDI > Split MIDI notes. Split into two is the default: the note becomes two notes. Preserve first keeps the part before the playhead on the original clip and does not continue it. The choice is saved on this computer, not in the project. Undo restores both pieces in one step. If a looping MIDI clip needs note rewriting, one split operation can unfold up to 4,096 note occurrences across the selection. A larger operation reports an error and leaves the project unchanged. Shorten the looping clips before retrying. Splitting between notes does not have this limit.
 
 Duplicating into new track space creates fresh track defaults. Group paste also creates fresh tracks when needed and preserves gaps between tracks. A new MIDI track starts with a sine-wave Oscillator in Layer 1. Existing destination tracks keep their settings. Moving MIDI clips to new track space retains their instrument.
+
+Right-click a disabled clip and choose **Enable clip** to restore it. **Disable clip** silences only that clip. Its header and content become neutral grey, and its translucent body lets the grid show through in Timeline and its editor pane. These actions support Undo and Redo.
 
 ## Merge audio clips
 
@@ -267,49 +348,6 @@ retrying.
 
 Beat patterns also support **Merge** with the same command and shortcut. See
 [Merge beat patterns](beat-editor.md#merge-beat-patterns) for grid and length limits.
-
-## Navigate and play
-
-Use [Seek mode](../projects/README.md#seek-mode) to choose how playback starts
-from a selected position or jumps when you click or drag the ruler. Fast
-starts fresh at the destination. Exact reconstructs the notes and effect
-tails you would hear in continuous playback.
-
-The toolbar groups the elapsed time and bars and beats readouts in one field.
-The time signature and Tempo share a separate field. Its background stays the
-same during playback. Pause or stop to edit either value.
-
-Play, Stop and Loop are separate standard buttons. They use the standard hover highlight and keep their green, red and gold active colors.
-
-Playback can start anywhere, including an empty project or silence after the last clip. It continues until you pause or stop. With Loop enabled, it repeats the selected range. Export duration still ends at the last clip.
-
-Press Space to play or pause from any view, pane, or focused control. Text fields take precedence: Space inserts a space while you edit text. Holding Space does not toggle playback repeatedly. Dialogs and blocking background jobs still disable the shortcut.
-
-The transport toolbar groups **Metronome**, **time signature**, and **Tempo**, in that order, after a divider. Set the **time signature** between Metronome and Tempo. It starts at **4/4**. Drag the upper number up or down in steps of one to change beats per bar. Drag the lower number through **2, 3, 4, 6, 8, 12, 16** to change the beat note value. Double-click either number, type an integer from **1 to 65,535**, and press Enter. The text field keeps the displayed number’s width; longer input scrolls inside it. Escape or clicking elsewhere cancels text entry. The ruler and grid update during the drag. Release to apply the value to the project; Escape or loss of window focus cancels the drag.
-
-The signature is saved with the project and supports Undo/Redo. It updates bar/beat positions, rulers, grids, snapping, and the metronome. Tempo stays in quarter notes per minute. Clips, notes, the playhead, and the loop range keep their exact timing. Existing pattern lengths and source duration settings keep their original durations.
-
-Use **Metronome**, immediately before the time signature, to hear a click on each
-beat during playback. A higher click marks the first beat of each bar. In 6/8, it plays six eighth-note clicks per bar. It
-follows the project tempo and playhead through seeks and loops, and fades out
-when playback pauses or stops. The button uses the standard idle and hover appearance, with a gold active
-background. It starts off and remembers its choice
-for the app session. It does not change the saved project. The click is a playback
-aid; exports retain the project mix.
-
-The ruler uses the saved time signature, with bars and beats counted from 1. In dark mode, labels outside the loop range use light text. Text on the enabled loop highlight uses dark text for contrast. Click to set the playhead. New projects start with bar 1 selected and Loop off. Use Loop or press Command+L on macOS or Ctrl+L on Windows and Linux to toggle looping. Drag the selection band to choose a different range. Changing tempo keeps clip starts and the loop range at their musical positions. Audio clip duration stays unchanged; MIDI and beat timing follow tempo.
-
-At a transport loop boundary, MIDI and beat releases and one-shot samples
-continue into the next iteration. Audio clips repeat only the selected loop
-region. Track, group and Master effect tails continue across the boundary.
-
-Seeking and editing notes during playback keep the current audio and playhead running while the change is prepared. A seek then fades to the requested position. A note edit takes effect at the current playback position, without pausing or returning to an earlier position. Changes to effect latency use the same continuous playback behavior.
-
-Recently prepared positions use cached sound state for faster seeks. The first seek, a seek outside the cached range, or a seek after a project edit can still require history reconstruction. This can delay when a change becomes audible. Rapid changes replace pending changes. Pause stops the active audio even while a seek or edit is being prepared; ordinary pause and resume retain the current sound state.
-
-Use **Fit all clips**, immediately left of the playback toolbar’s zoom control, to show every clip across all tracks. It fits from the earliest clip start to the latest clip end, including gaps. The button is disabled when there are no clips. It changes only the view.
-
-Horizontal scrolling moves the timeline while track controls stay fixed. Pinch zoom keeps the pointer's time in place where possible. Double-click a clip to open and fit it in the [Timeline editor](editor.md).
 
 ## Fades and crossfades
 
@@ -441,32 +479,6 @@ A drop selects the destination track or Master and the transferred effects. Effe
 ## Stem separation
 
 Right-click an audio clip and choose **Stem-separation** to create a group with aligned Drums, Bass, Other, and Vocals tracks. The original stays in place, disabled. Select local models in Settings first. Unsaved projects use temporary stem storage until the first save. See [Stem separation](../audio/stem-separation.md) for setup, progress, cancellation, and file storage.
-
-Right-click a disabled clip and choose **Enable clip** to restore it. **Disable clip** silences only that clip. Its header and content become neutral grey, and its translucent body lets the grid show through in Timeline and its editor pane. These actions support Undo and Redo.
-
-## Supported imports
-
-Import mono or stereo WAV, MP3, AAC-LC, or Opus clips. AAC-LC can use `.aac` (ADTS),
-`.m4a`, or `.mp4` containers. Opus uses Ogg `.opus` or `.ogg` files.
-WAV supports PCM16, PCM24, and float32. Audio is converted to the project processing rate, and its waveform is prepared before
-the clip is added. The original recording remains unchanged and must remain
-available when reopening the project.
-
-HE-AAC, protected audio, other codecs inside MP4 files, and files with more than
-two channels are unsupported. Opus supports one mono/stereo stream
-with the standard channel mapping (family 0); chained or multiplexed streams
-and Ogg Vorbis are unsupported. Recorder files without a final end marker can
-load if they end on a complete page. A rejected import leaves the arrangement intact.
-M4A/MP4 imports reject metadata above 8 MiB or a single compressed packet above
-16 MiB. Malformed table sizes and out-of-file packets return an import error.
-Re-encode files that exceed these limits; the failed import leaves the project unchanged.
-
-MP3 encoder delay and padding are removed when the file provides that information.
-Opus imports remove encoder delay and end padding and apply the header output gain.
-AAC files can retain encoder padding, so their clip length can be slightly longer
-than the original uncompressed recording.
-
-Each view retains its own upper left toolbar panel choice for the app session. Opening a panel closes the other upper panels in that view. Switching views restores that view's choice, including a closed panel. The left toolbar stays available when its panels are closed.
 
 ## Bounce to audio
 

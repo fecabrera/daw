@@ -6,6 +6,8 @@ on tracks, groups, instrument layers and buses, beat instruments, and Master.
 
 Use **Plate Reverb** to add a dense stereo tail, give a sound depth or create a short gated reverb.
 
+## Controls
+
 | Strip | Control | Range | Default |
 | --- | --- | --- | --- |
 | Options | Quality | ECO / HQ | ECO |
@@ -37,16 +39,7 @@ longer convolution span. Color changes the tail damping. Width affects only the
 wet signal: zero makes it mono. Dry/Wet uses a curved blend, so its midpoint is
 not a half-amplitude linear mix.
 
-The wet signal has calibrated makeup gain before Dry/Wet. At the default 3 s
-Decay it adds 16 dB in ECO or 13 dB in HQ. Compensation decreases for longer
-decays and is bounded for shorter ones. Very short and gated tails remain
-quieter. Compensation rises gradually when settings change, so a stored tail
-does not receive a sudden boost. The gain follows the settings, not the incoming
-audio, so it does not raise a fading tail automatically. Drive intensity and
-feedback decay are unchanged. Out Level still adjusts the complete blend.
-
-Existing projects use the louder wet output with their saved settings. Reduce
-Dry/Wet or Out Level as needed. Makeup gain does not impose an output ceiling.
+## Input filters
 
 Filter frequency readouts use whole Hz below 1 kHz and one decimal place in kHz
 from 1 kHz upward. The labels below each frequency knob show its range.
@@ -56,6 +49,8 @@ unchanged. Each Slope selector offers 6, 12 and 24 dB/oct, with 12 as the defaul
 The filters use Butterworth responses, approximately −3 dB at cutoff, without a
 resonance boost. Power and slope changes use 5 ms ramps and retain the reverb
 tail. Existing projects keep both filters on with 12 dB/oct selected.
+
+## Wet Drive
 
 Drive processes only the wet signal before the dry/wet blend. At 0% wet, Drive
 has no effect on the dry signal. Out Level still applies to the complete blend.
@@ -75,14 +70,33 @@ Header power bypasses the complete unit while keeping
 its internal history running. The Out rail shows final sample peaks; click it to
 reset the held peak. Double-click a knob to reset it and hold Shift for fine drag.
 
+## Wet gain
+
+The wet signal has calibrated makeup gain before Dry/Wet. At the default 3 s
+Decay it adds 16 dB in ECO or 13 dB in HQ. Compensation decreases for longer
+decays and is bounded for shorter ones. Very short and gated tails remain
+quieter. Compensation rises gradually when settings change, so a stored tail
+does not receive a sudden boost. The gain follows the settings, not the incoming
+audio, so it does not raise a fading tail automatically. Drive intensity and
+feedback decay are unchanged. Out Level still adjusts the complete blend.
+
+Existing projects use the louder wet output with their saved settings. Reduce
+Dry/Wet or Out Level as needed. Makeup gain does not impose an output ceiling.
+
+## Modulation
+
 All knobs accept shared modulation through the standard connection strips.
 Discrete selectors are not modulation destinations. A compatible edit preserves
 the tail. Pause and looping retain history; seeking prepares history before
 playback. DAW Stop clears it.
 
+## Playback and export
+
 Export with **Include audio tail** appends an effect tail, capped at ten seconds after End. A
 warning reports truncation. Leave silence at the end of the arrangement when a
 longer tail must fit inside the export. Bypassed reverbs add no tail budget.
+
+## Standalone plugin
 
 Independent [standalone plugin previews](plugins.md) have the same controls and sound.
 This is an original plate-style processor. Sample-identical reproduction of a

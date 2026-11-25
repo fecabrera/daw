@@ -1,5 +1,7 @@
 # Live MIDI input
 
+## Device ownership and callback input
+
 The desktop adapter owns `midir` device discovery and connections. Engine,
 project and CLI remain independent of MIDI devices. Preferences store one device
 identity, an optional channel filter and a recording offset bounded to ±200 ms.
@@ -11,6 +13,8 @@ locking. Monotonic arrival timestamps and one sequence counter order input and
 control changes. A broker processes physical key ownership, FIFO repeated pitches,
 sustain and panic independently of painting. Physical releases after panic cannot
 release a newer press. CC120/123 release sounding notes.
+
+## Event timing and track routing
 
 Attach the input broker only after the current complete project renderer is published. The startup renderer has no tracks; revision equality alone does not establish readiness, and early route commands cannot survive its replacement. Keep the unique MIDI producer available until that publication.
 
@@ -30,6 +34,8 @@ Stopped monitoring advances a separate clock without moving the playhead. After 
 Transport-cache snapshots omit live reserves. The output worker must recreate these reserves after replacing its renderer with a restored snapshot, then reconcile memory admission before publication. Offline export does not allocate live reserves. Voice stealing is bounded and
 old token releases cannot release a replacement. Panic forces a 5 ms release.
 
+## Voice and Sampler preparation
+
 An idle live route on a paused track keeps its scheduled provider history
 frozen. Process the buses and effects with silent instrument input and the
 last published provider values. Live input on another track does not thaw
@@ -40,6 +46,8 @@ Sampler preparation unions requested live pitches with saved pitches on workers.
 A target without every required exact enabled-layer pitch suppresses that attack;
 no pitch transform runs in the callback and held attacks are not replayed late.
 Compatible renderer updates preserve held voices and stable target identities.
+
+## Native verification
 
 Physical keyboard timing, audible latency, device loss and native Windows/Linux
 behavior require platform checks. Synthetic checks do not establish these results.

@@ -6,11 +6,15 @@ User guides: [Plate Reverb](../../docs/effects/plate-reverb.md) and [Ambient Rev
 
 ## Accepted presentation
 
+### Shared controls
+
 Both products use shared `unit-ui` bodies. The DAW owns the normal unit shell,
 selection, collapse, drag handling, and modulation connection strips. Native
 plugin editors embed the same headerless body. Use standard 90-point strips,
 three 52-point control rows, shared padding, dividers, dropdowns, footers and Out
 meter. Derive height from `layout::unit_control_height`.
+
+### Plate Reverb
 
 Plate's High-pass and Low-pass knobs reuse Drive v2's shared frequency formatter:
 whole Hz below 1 kHz and one decimal place in kHz at or above 1 kHz, for both
@@ -23,12 +27,6 @@ and standalone editor parity.
 | Top | ECO/HQ | Pre-delay | High-pass | Low-pass | Mode | Level |
 | Middle | Normal/Gated | Decay | Empty | Empty | Drive | Width |
 | Bottom | Bright/Dark | Empty | Slope | Slope | Tone | Dry/Wet |
-
-| Ambient row | Options | Reverb | Hi-Pass | Lo-Pass | Out |
-| --- | --- | --- | --- | --- | --- |
-| Top | ECO/HQ | Decay | Frequency | Low-pass | Level |
-| Middle | Empty | Bloom | Empty | Empty | Width |
-| Bottom | Empty | Modulation | Slope | Slope | Dry/Wet |
 
 Gate selects a short algorithm, not a level-triggered gate. Disable the Quality
 control while gated, retaining its saved choice. Drive power disables Mode, Drive and Tone, retaining their saved values. Confirm Color's bright/dark mapping before freezing labels.
@@ -60,6 +58,15 @@ continues to apply after the blend. Crossfade modes over
 5 ms with normalized shared ramps, including interrupted changes, without clearing
 reverb history. Append plugin parameter 117 (0/1/2); Plate v4 accepts v1/v2/v3
 states with Soft as the missing-mode default. Missing project fields also use Soft.
+
+### Ambient Reverb
+
+| Ambient row | Options | Reverb | Hi-Pass | Lo-Pass | Out |
+| --- | --- | --- | --- | --- | --- |
+| Top | ECO/HQ | Decay | Frequency | Low-pass | Level |
+| Middle | Empty | Bloom | Empty | Empty | Width |
+| Bottom | Empty | Modulation | Slope | Slope | Dry/Wet |
+
 Ambient's
 `Hi-Pass` power/label replaces the Texture footer and aligns with the other strip
 footers, including compact mode. Reverb holds Decay, Bloom and Modulation.

@@ -1,5 +1,7 @@
 # Timeline editor
 
+## Open the editor and choose a track
+
 Double-click an audio, MIDI, or beat clip in Timeline to open the editor pane
 and fit the clip. For beat clips, the step grid fits the full source pattern.
 Use [Timeline Editor](timeline.md#lower-editor) on the left toolbar to show or
@@ -23,11 +25,15 @@ arrangement. Beat gaps separate source beats without dots. The lower ruler shows
 source bars; use the upper ruler to seek and select a project loop. Use the
 arrangement to move, trim, loop or stretch the complete clip.
 
-MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Several clips can use the same pattern content.
-
 Press Escape to deselect clips and clear a selected time range. The displayed track,
 zoom and scroll stay unchanged. Escape first cancels an active edit or drag. In
 the beat editor, it first clears selected subtracks; press it again to deselect clips.
+
+## Editor zoom and scroll
+
+The Timeline arrangement and lower editor have independent horizontal viewports. The playback toolbar’s zoom control and the scrollbar below the arrangement control the arrangement. **Fit all clips**, immediately left of that zoom control, shows all clips in the arrangement, including gaps between them. It leaves the lower editor’s view unchanged and is disabled when the project has no clips. The **Fit clip** button (outward arrows between two vertical edges), the zoom control immediately to its right above the lower ruler, and the bottom scrollbar control the waveform or piano roll. Pinch or scroll horizontally over the pane you want to change. The selected clip initially fills the lower editor width. Fit clip restores that view; while fitted, resizing the window keeps the clip fitted. For beat tracks, the lower fit/zoom/scroll controls apply to the full source pattern rather than the clip’s visible playback range.
+
+Zoom out in either audio or MIDI content to see other clips on that track. MIDI note selection and group edits across clips keep the working viewport. Single-click a clip in the arrangement to select it and scroll the lower pane to its start while keeping the current zoom. Double-click it to open the pane and fit the clip. Both rulers control the same project loop. In either ruler’s upper band, drag the loop body to move it, drag an edge to resize it, or drag empty space to select a new range. Click the range to turn looping on or off. Hold Shift to bypass snapping. Escape or loss of window focus cancels a drag. The lower band positions the playhead. The lower ruler uses its own zoom and scroll, and loop gestures keep both viewports unchanged. Zoom, scroll, and Fit clip do not modify the project. Seeking retains the arrangement ruler’s saved-navigation behavior.
 
 ## Create and edit a pattern
 
@@ -41,35 +47,13 @@ Each pattern has a named header below the lower ruler and a lighter header when 
 
 In the piano roll, notes take priority over clip edges. You can resize a note that reaches a clip boundary. Hold Command on macOS or Ctrl on Windows/Linux to draw in empty space at a clip edge; this disables clip-edge dragging beside the notes.
 
-Drag a header to move the selected patterns. Drag a header edge to loop them, or an edge beside the notes to trim them. Hold Option on macOS or Ctrl on Windows/Linux while dragging either edge to stretch. Hold Shift to bypass snapping. Changes preview during the drag and apply on release; Escape cancels. These gestures keep the lower editor’s zoom and scroll.
-
-Trimming a MIDI clip hides notes outside its visible range. It keeps the complete
-notes, including notes that cross an edge. Drag the edge back to restore them.
-Expansion beyond the original source adds empty space. Hidden notes survive
-saving and reopening. Use **Merge** to consolidate only the visible notes into
-a new pattern.
+MIDI patterns contain notes. A MIDI track's instrument supplies their sound. Several clips can use the same pattern content.
 
 Right-click a header or border for the shared clip menu, including Velocity and Delete note when a note is selected.
 
 Selecting a clip keeps its notes in their original colors. Selected notes use the same lighter color as that clip’s selected header and have no outline.
 
 A plain empty-space drag selects notes with a rectangle. Shift-click toggles individual notes; Shift-drag toggles notes within the rectangle. Delete or Backspace removes selected notes. Hold Option on macOS or Ctrl on Windows/Linux while moving notes to copy them. Escape cancels an active gesture.
-
-To select several clips, drag a rectangle from empty space in the arrangement,
-the audio waveform pane, or the MIDI clip-header strip. Every clip touched by
-the rectangle is selected. Hold Shift to toggle clips in the rectangle. Escape
-or loss of window focus cancels the selection and restores the previous group.
-Dragging a clip still moves it; dragging in the piano-roll note area still selects
-notes. The arrangement and lower pane keep their own zoom and scroll.
-
-Use the Timeline arrangement for time-range selection. Both the arrangement and the editor support clip selection, copy and paste, split, move, trim, loop, and stretch. Delete or Backspace removes all selected clips when clip editing is active. Note and beat-step editing keep Delete in their own pane. Click a clip header to switch back to clip deletion; selecting notes gives note deletion priority. A selected time range takes precedence and removes only that range. Clip deletion supports Undo and keeps source media. Text fields, active gestures, dialogs and unfocused windows retain their existing keyboard protection. Command-drag on macOS, or Ctrl-drag on Windows and Linux, selects a time range on the clip strip. The pointer uses the same crosshair as creating a loop range. Split at playhead uses the same Clip menu command and shortcut as Timeline. MIDI notes that cross the playhead follow Split MIDI notes in Settings. Timeline also supports vertical placement onto other compatible tracks or new track space. Clip moves inside the editor keep their track assignments. Shift bypasses grid snapping.
-
-To join MIDI clips with or without gaps, select them and choose **Merge** from the **Clip**
-menu or a selected clip’s context menu. Press **Command+J** on macOS or **Ctrl+J**
-on Windows and Linux. See [Merge MIDI clips](timeline.md#merge-midi-clips) for limits.
-The same command joins [beat patterns with or without gaps](beat-editor.md#merge-beat-patterns).
-Select one looped or trimmed MIDI or beat clip to consolidate its visible range
-with **Merge**, using the same menus and shortcut.
 
 ## Track and scale controls
 
@@ -96,11 +80,23 @@ The circular **Headphones** button centered in the blank area left of the lower 
 
 Previews use velocity 100 and sustain while the mouse button is held. Releasing sends note-off, even outside the editor. A quick click keeps the previous minimum gate of one beat, capped at half a second. The instrument’s release and effect tails can continue for up to one second. A new preview replaces the previous one. Stop, Escape, turning audition off, leaving Editor, changing tracks, losing window focus, or blocked editing cancels it. Sample-based instruments can need preparation time. Empty instruments remain silent. Mute silences the direct preview path; sends follow the normal [send routing](../editing/track-sends.md), including its mute behavior. Previews retain group, Return and Master processing; unrelated clips do not play. Audition itself does not change the project or move the playhead. The toggle is temporary UI state.
 
-## Editor zoom and scroll
+## Add sound
 
-The Timeline arrangement and lower editor have independent horizontal viewports. The playback toolbar’s zoom control and the scrollbar below the arrangement control the arrangement. **Fit all clips**, immediately left of that zoom control, shows all clips in the arrangement, including gaps between them. It leaves the lower editor’s view unchanged and is disabled when the project has no clips. The **Fit clip** button (outward arrows between two vertical edges), the zoom control immediately to its right above the lower ruler, and the bottom scrollbar control the waveform or piano roll. Pinch or scroll horizontally over the pane you want to change. The selected clip initially fills the lower editor width. Fit clip restores that view; while fitted, resizing the window keeps the clip fitted. For beat tracks, the lower fit/zoom/scroll controls apply to the full source pattern rather than the clip’s visible playback range.
+1. Open Instrument and select the MIDI track and a layer.
+2. Add Oscillator or [Sampler](../instruments/sampler.md) from the component catalog.
+3. Play the pattern. Add Amplitude and an Envelope if you want level shaping.
 
-Zoom out in either audio or MIDI content to see other clips on that track. MIDI note selection and group edits across clips keep the working viewport. Single-click a clip in the arrangement to select it and scroll the lower pane to its start while keeping the current zoom. Double-click it to open the pane and fit the clip. Both rulers control the same project loop. In either ruler’s upper band, drag the loop body to move it, drag an edge to resize it, or drag empty space to select a new range. Click the range to turn looping on or off. Hold Shift to bypass snapping. Escape or loss of window focus cancels a drag. The lower band positions the playhead. The lower ruler uses its own zoom and scroll, and loop gestures keep both viewports unchanged. Zoom, scroll, and Fit clip do not modify the project. Seeking retains the arrangement ruler’s saved-navigation behavior.
+See [Oscillator](../instruments/oscillator.md), [Sampler](../instruments/sampler.md), and [Amplitude](../instruments/amplitude.md) for sound controls.
+
+## Envelope unit
+
+An [Envelope](../instruments/envelope.md) shapes a parameter across Attack, Decay, Sustain, and Release. Its guide explains Time/Note timing and Per note, Retrigger, and Legato modes. Connect it through the receiving unit's [modulation controls](../modulation/README.md).
+
+## MIDI clip repeats
+
+During MIDI clip repeats and transport looping, instrument releases and one-shot
+samples continue across the seam. New notes can replace a tail if they reuse
+the same voice.
 
 ## Audio clips
 
@@ -116,27 +112,8 @@ Audio clips also share the [fade and crossfade handles](timeline.md#fades-and-cr
 
 The **Clip options** section shows the same Name, Source, Gain, Transpose, audio channel/polarity and audio fade controls as [Timeline clip settings](timeline.md#clip-settings). Select a clip in the arrangement strip to edit it; with no selection, the panel shows “Select a clip”. Changes appear in both views and support Undo/Redo. Switching tracks or views discards unconfirmed text and audio transpose previews.
 
-## Add sound
+### Audio clip repeats
 
-1. Open Instrument and select the MIDI track and a layer.
-2. Add Oscillator or [Sampler](../instruments/sampler.md) from the component catalog.
-3. Play the pattern. Add Amplitude and an Envelope if you want level shaping.
-
-See [Oscillator](../instruments/oscillator.md), [Sampler](../instruments/sampler.md), and [Amplitude](../instruments/amplitude.md) for sound controls.
-
-## Envelope unit
-
-An [Envelope](../instruments/envelope.md) shapes a parameter across Attack, Decay, Sustain, and Release. Its guide explains Time/Note timing and Per note, Retrigger, and Legato modes. Connect it through the receiving unit's [modulation controls](../modulation/README.md).
-
-## Copy clips to new tracks
-
-Duplicating a clip into empty Timeline track space creates a fresh audio or MIDI track. Group paste also creates fresh tracks when needed. New MIDI tracks start with a sine-wave Oscillator in Layer 1. Existing destination tracks keep their instruments.
-
-Copies retain the clip's audio or pattern, name, trim, loop, stretch, and color override. Group timing and track gaps stay intact. Release completes a drag; Escape or focus loss cancels it. Moving MIDI clips to new track space retains their instrument. The separate Duplicate track action copies track settings into an empty track.
-
-During MIDI clip repeats and transport looping, instrument releases and one-shot
-samples continue across the seam. New notes can replace a tail if they reuse
-the same voice.
 Audio clips repeat only the looped region; track, group and Master effect tails
 continue into the next iteration.
 
@@ -161,6 +138,38 @@ If a source exceeds the 128 MiB analysis memory
 limit or cannot be analyzed, a short status label and its **Details** action provide the complete error;
 editing and playback remain available. Toggle the option off and on to retry a
 failed analysis. Original recordings remain unchanged.
+
+## Shared clip operations
+
+Drag a header to move the selected patterns. Drag a header edge to loop them, or an edge beside the notes to trim them. Hold Option on macOS or Ctrl on Windows/Linux while dragging either edge to stretch. Hold Shift to bypass snapping. Changes preview during the drag and apply on release; Escape cancels. These gestures keep the lower editor’s zoom and scroll.
+
+Trimming a MIDI clip hides notes outside its visible range. It keeps the complete
+notes, including notes that cross an edge. Drag the edge back to restore them.
+Expansion beyond the original source adds empty space. Hidden notes survive
+saving and reopening. Use **Merge** to consolidate only the visible notes into
+a new pattern.
+
+To select several clips, drag a rectangle from empty space in the arrangement,
+the audio waveform pane, or the MIDI clip-header strip. Every clip touched by
+the rectangle is selected. Hold Shift to toggle clips in the rectangle. Escape
+or loss of window focus cancels the selection and restores the previous group.
+Dragging a clip still moves it; dragging in the piano-roll note area still selects
+notes. The arrangement and lower pane keep their own zoom and scroll.
+
+Use the Timeline arrangement for time-range selection. Both the arrangement and the editor support clip selection, copy and paste, split, move, trim, loop, and stretch. Delete or Backspace removes all selected clips when clip editing is active. Note and beat-step editing keep Delete in their own pane. Click a clip header to switch back to clip deletion; selecting notes gives note deletion priority. A selected time range takes precedence and removes only that range. Clip deletion supports Undo and keeps source media. Text fields, active gestures, dialogs and unfocused windows retain their existing keyboard protection. Command-drag on macOS, or Ctrl-drag on Windows and Linux, selects a time range on the clip strip. The pointer uses the same crosshair as creating a loop range. Split at playhead uses the same Clip menu command and shortcut as Timeline. MIDI notes that cross the playhead follow Split MIDI notes in Settings. Timeline also supports vertical placement onto other compatible tracks or new track space. Clip moves inside the editor keep their track assignments. Shift bypasses grid snapping.
+
+To join MIDI clips with or without gaps, select them and choose **Merge** from the **Clip**
+menu or a selected clip’s context menu. Press **Command+J** on macOS or **Ctrl+J**
+on Windows and Linux. See [Merge MIDI clips](timeline.md#merge-midi-clips) for limits.
+The same command joins [beat patterns with or without gaps](beat-editor.md#merge-beat-patterns).
+Select one looped or trimmed MIDI or beat clip to consolidate its visible range
+with **Merge**, using the same menus and shortcut.
+
+## Copy clips to new tracks
+
+Duplicating a clip into empty Timeline track space creates a fresh audio or MIDI track. Group paste also creates fresh tracks when needed. New MIDI tracks start with a sine-wave Oscillator in Layer 1. Existing destination tracks keep their instruments.
+
+Copies retain the clip's audio or pattern, name, trim, loop, stretch, and color override. Group timing and track gaps stay intact. Release completes a drag; Escape or focus loss cancels it. Moving MIDI clips to new track space retains their instrument. The separate Duplicate track action copies track settings into an empty track.
 
 ## Bounce to audio
 

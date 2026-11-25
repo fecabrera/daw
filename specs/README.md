@@ -32,11 +32,11 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Targeted effect updates](architecture/effect-updates.md): asynchronous controls and chain transactions, compatible DSP state, revision checks and full reconstruction fallback.
 - [Saved audio caches and background preparation](architecture/background-audio-preparation.md): staged plan for persistent media caches, early editor loading, nonblocking MIDI edits, and bounded background work.
 - [Stem-separation native dependency audit](audio/stem-native-dependencies.md): pinned native components, advisories, licenses and platform packaging.
-- [Parallel cache preparation validation — 2026-10-19](validation/parallel-cache-preparation-2026-10-19.md).
 - [Architecture review — 2026-10-19](architecture/review-2026-10-19/README.md): current architecture, pipelines, workflow stages, cache ownership, findings and review decisions.
 
-## Projects and storage
+- [All effect plugin builds](architecture/all-effect-plugin-builds.md): remaining ten products, fixed EQ bank, timing, meters, packaging, and CI.
 
+## Projects and storage
 
 - [Project media source bundling](projects/source-bundling.md): staged plan for explicit collection, source verification, transactional copying, Save As, history and portability acceptance.
 - [Source bundling Stage 0](projects/source-bundling-stage0.md): storage compatibility, included-path containment, content verification and frozen copying/commit rules.
@@ -48,6 +48,8 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [CLI track creation](projects/cli-track-creation.md): add named empty audio, MIDI and beat tracks through shared project save.
 - [CLI source collection](projects/source-bundling-cli.md): headless collection and read-only preflight over the shared backend.
 - [Source bundling Stage 5](projects/source-bundling-stage5.md): portability/interruption tests, native acceptance matrix and open release gates.
+
+- [Autosave and recovery](projects/autosave-recovery.md).
 
 ## Instruments and editing
 
@@ -72,7 +74,10 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Audio fades and crossfades](editing/fades.md): edge handles, midpoint shaping, fixed-boundary transitions and shared rendering.
 - [Clip gain normalization](editing/normalize-gain.md).
 - [Chord catalog](editing/chords.md).
-- [Audio sidechain modulation plan](modulation/audio-sidechain-plan.md): high-priority track/group/Return sources and configurable audio-to-control mapping.
+- [MIDI recording](editing/midi-recording.md).
+
+### Views
+
 - [Mixer strip output destinations](views/mixer.md).
 - [Application Settings](views/application-settings.md): sidebar groups, active-page controls and transient navigation state.
 - [View menu panels](views/view-menu.md): shared panel toggles, view availability and checked states.
@@ -82,6 +87,10 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Beat editor design](views/beat-editor.md): implemented MVP and native acceptance criteria.
 - [Beat model and rendering](views/beat-model.md): versioned embedded patterns, scoped instruments, retained hidden hits, rejected cross-track destinations and shared rendering.
 - [Beat tracks and editor plan](views/beat-tracks-plan.md): shared subtrack controls, step rows, independent Instrument groups with LFO/Envelope sublanes, creation menus and staged delivery.
+
+- [Timeline editor transient indicators](views/audio-transients.md): optional analysis, marker mapping, caching and display.
+
+- [Timeline display state](views/timeline-display.md): track heights, send rows and saved zoom/scroll.
 
 ## Effects
 
@@ -107,11 +116,12 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Stereo Spread](effects/stereo-spread.md)
 - [Chorus](effects/chorus.md)
 
+- [Shimmer Reverb](effects/shimmer-reverb.md): bounded pitch regeneration, shared editor, DSP stability and CLAP/VST3 products.
+- [Plate and Ambient Reverb](effects/reverbs.md): shared layouts, portable processing, standalone delivery, tails, and validation limits.
+
 ## Modulation and audio
 
 - [Live MIDI input](audio/live-midi.md).
-- [MIDI recording](editing/midi-recording.md).
-- [Autosave and recovery](projects/autosave-recovery.md).
 
 - [AAC-LC export](audio/aac-export.md): portable streaming encoding, rate conversion and ADTS limits.
 - [Audio import](audio/import.md): WAV, MP3 and AAC-LC decoding, metadata and preparation limits.
@@ -120,12 +130,12 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Playback metronome](audio/metronome.md): transport toggle, sample-clock timing and live monitor output.
 - [Audio device preferences](audio/devices.md): machine-local device selection and output format/buffer negotiation.
 
+- [Audio sidechain modulation plan](modulation/audio-sidechain-plan.md): high-priority track/group/Return sources and configurable audio-to-control mapping.
 - [Shared modulation contract](modulation/contract.md).
 - [Oscillator modulation](modulation/oscillator-pitch.md).
 - [Timestretch, offline pitch, and independent implementation rule](audio/timestretch.md).
 - [Timestretch acceptance plan](acceptance/timestretch.md).
-- [Combined transient detector benchmark](validation/transient-detector-benchmark.md): initial energy/spectral comparison, measurements and limits.
-- [Revision-5 real-audio auditions](validation/transient-listening-r5.md): read-only private recording panel, automated checks and pending human ratings.
+
 - [Stem separation implementation](audio/stem-separation.md): local models, CoreML/CPU fallback, atomic import, disabled originals, and persistence.
 - [Stem separation backend evaluation](audio/stem-separation-evaluation.md): local quality, speed, memory, model-license evidence and original integration proposal.
 - [Charon CoreML benchmark](audio/stem-separation-coreml-evaluation.md): same-audio GPU/CPU quality, startup, memory, same-export control and reused-model measurements.
@@ -142,14 +152,10 @@ This tree contains implementation requirements, architecture, data formats, acce
 
 - [Performance remediation — 2026-10-18](validation/performance-remediation-2026-10-18.md): implemented changes, before/after evidence, and remaining checks.
 
-- [All effect plugin builds](architecture/all-effect-plugin-builds.md): remaining ten products, fixed EQ bank, timing, meters, packaging, and CI.
-- [Shimmer Reverb](effects/shimmer-reverb.md): bounded pitch regeneration, shared editor, DSP stability and CLAP/VST3 products.
-- [Plate and Ambient Reverb](effects/reverbs.md): shared layouts, portable processing, standalone delivery, tails, and validation limits.
+- [Parallel cache preparation validation — 2026-10-19](validation/parallel-cache-preparation-2026-10-19.md).
+- [Combined transient detector benchmark](validation/transient-detector-benchmark.md): initial energy/spectral comparison, measurements and limits.
+- [Revision-5 real-audio auditions](validation/transient-listening-r5.md): read-only private recording panel, automated checks and pending human ratings.
 
 - [Harmonic-rise regression and revision-6 auditions](validation/transient-harmonic-r6.md)
 
 - [Remaining guitar low-end regression and revision-7 auditions](validation/transient-lowend-r7.md).
-
-- [Timeline editor transient indicators](views/audio-transients.md): optional analysis, marker mapping, caching and display.
-
-- [Timeline display state](views/timeline-display.md): track heights, send rows and saved zoom/scroll.

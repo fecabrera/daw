@@ -125,6 +125,8 @@ saved state, parameter IDs, audio processing or latency.
 
 ## Live output spectrum and crossover markers
 
+### Spectrum analysis
+
 Reuse `daw-spectrum::SpectrumAnalyzer` and its coherent telemetry suffix with
 Multiband EQ. The portable unit samples the final Out signal, including Dry/Wet,
 Level and live Solo, without entering PCM. Reuse `UnitMeter<SpectrumMeter>` for
@@ -133,6 +135,8 @@ retargeting and detached clones. Count prepared heap storage. Analysis runs only
 with an enabled bound meter. Preparation and retirement remain off the callback;
 processing, reset and inheritance cannot allocate, lock, perform I/O or retire
 final owners. No new parameter, unit-state or project schema is introduced.
+
+### Graph and marker interaction
 
 The shared `unit-ui::spectrum_graph` paints the same 270-point section, 172-point
 chart, frequency grid, secondary-color filled contour and Response footer as EQ.
@@ -180,6 +184,8 @@ control bindings, drag helpers and presentation order. Marker order follows
 frequency order, independently of strip presentation. The shared standalone body
 adds 270 points to its viewport width (990 total), retaining its existing height.
 
+### Spectrum telemetry
+
 DAW discovery/binding includes compressor effects at every existing scope through
 the same prepared handle map as EQ. Reuse output transport masking and consumer
 caches. CLAP shares the prepared spectrum handle and clears it at processing stop.
@@ -192,6 +198,8 @@ messages clear bins/readiness/clocks while retaining held peaks. Preserve other
 products' v1 layouts and EQ's 668-value v2 layout.
 
 ## General and per-band curve views
+
+### View selection
 
 Place a narrow view selector to the left of the Response graph. A separate A
 button selects the general spectrum/crossover/threshold view. Numbered band
@@ -214,6 +222,8 @@ UUID. Presentation reordering retains it; removing that UUID selects A. Selectio
 is not project state, automation, Solo or an Undo entry. DAW and CLAP/VST3/AUv2
 editors call the same shared body and selection/group controls.
 
+### Curve interaction
+
 Use `unit-ui::compressor_curve` for the selected band's transfer curve, detector
 marker, four-second scrolling input/reduction history, interactive midpoint handle
 and vertical GR rail. Build its settings with the band's `compressor_settings`;
@@ -223,6 +233,8 @@ values. Reuse regular compressor modifier locks, fine adjustment, cancellation,
 release-only DAW commits and bounded live plugin gestures. Route both draft values
 in one existing background graph-preview offer; one final effect transaction makes
 both values undoable together. Frequency, other bands, Solo and routing stay intact.
+
+### Curve telemetry
 
 A prepared band-output `BandMeter` can own an optional companion curve meter with
 its own `LevelHistory` and independent `PeakMeter` for actual compression dB.

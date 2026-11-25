@@ -89,6 +89,8 @@ current-level release must not create held peaks.
 
 ## Response graph and live spectrum
 
+### Graph and band interaction
+
 The shared `unit-ui::eq_graph` body precedes the band strips in expanded mode. Its 270-point section contains a 172-point graph across the three standard control rows and a centered Response footer. Use only the standard eight-point item gap before the 18-point footer: the content totals 198 points and the padded section totals 218 points, matching the band/Add/Out strips. Do not add another explicit footer gap. Compact mode retains the 270-point section and uses the shared Envelope plot insets. Keep the response curves and spectrum. Axis labels, numbered handles, and the Response footer appear only in expanded mode. Horizontal collapse hides the body. Reuse theme colors, fonts, dividers and lane geometry in the DAW and standalone editors. Frequency spans 20 Hz–20 kHz logarithmically; response spans −24…+24 dB. Draw individual responses, the combined curve, a subdued −90…0 dBFS output spectrum, and numbered draggable points. Keep the existing band/Add/Out section indices; graph bounds are separate.
 
 The footer always reads `Response`. There is no bass collection state, collection
@@ -105,6 +107,8 @@ Normal point drags change logarithmic Frequency and, for gain-using modes, Gain.
 When both Frequency and Gain are available, share the [tempo-point axis lock](../audio/timing-maps.md). The first motion selects the dominant axis. After 12 logical points of perpendicular displacement, switch axes and apply only the excess. Restart the lock when returning from Q mode. Keep single-parameter drag modes unrestricted on their supported axes. Show the draft values in the active band's knobs while the shared graph preview worker prepares audio.
 
 The DAW keeps held drafts outside Session. Clone the render plan, validate the changed effect chain through its ordinary project edit, then send the transient plan through the existing coalesced audio-preparation worker. Preserve saved state and history until release, which commits one ordinary effect-chain transaction. Cancellation publishes the current committed plan. Standalone editors update bounded host parameter gestures live and restore starting values on cancellation, with balanced Begin/Value/End events and fixed slot automation IDs. Both hosts paint through the same body. The standalone viewport grows by 270 points to 488×218 at its default band count; overflow still scrolls.
+
+### Spectrum analysis and publication
 
 `SpectrumMeter` publishes coherent frames with 512 logarithmic measured cells
 from 20 Hz to 20 kHz, sample rate, readiness, reset generation and an exclusive
@@ -163,6 +167,8 @@ ring, pending jobs, release and readiness history, and retargets handles
 without final-owner retirement on the callback. Track, layer, beat, Main/Output
 and Master scopes retain existing effect discovery and bindings.
 
+### Display and contour
+
 EQ and Multiband Compressor reuse `unit-ui::spectrum_graph` for grid and contour
 painting, and `daw-spectrum::telemetry` for coherent snapshots/wire validation.
 The shared graph keeps ephemeral per-graph dB state, with 35 ms UI-time easing
@@ -180,6 +186,8 @@ width, retain the minimum and maximum per column in original order, using
 without claiming extra measured resolution. Peaks narrower than a display pixel
 can still coincide. Keep graph fills, bounds, controls and interaction unchanged.
 DAW, CLAP and VST3 call the same renderer.
+
+### Plugin telemetry
 
 CLAP shares prepared frames. VST3 uses distinct schema-2 request/reading IDs and
 an explicit 668-value count. Slots 0–141 retain scalar/band meters and rate;

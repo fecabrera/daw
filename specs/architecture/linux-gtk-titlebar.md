@@ -11,6 +11,8 @@ aliases for the former trial commands; neither is required for normal startup.
 The example includes both `app_icon` and `gtk_host` from the desktop sources, so
 GTK startup and embedded icon registration share the normal launcher implementation.
 
+### Titlebar modes
+
 `GtkWindowControls` supplies actual widgets at both ends of an overlay and
 follows GTK's decoration layout. Custom mode reserves their measured widths and
 height in the shared header. Empty control groups reserve no width, including
@@ -25,6 +27,8 @@ The internal GTK capability query compiles only on Windows/Linux, matching its
 shared toolbar callers. macOS excludes the helper so strict all-target Clippy
 does not report an unused function; warning checks remain enabled.
 
+### Rendering and window lifecycle
+
 GTK objects, GL contexts and painter lifetime stay on the main thread. The
 painter is destroyed with a current GLArea context before unloading its GL
 library. Worker repaint callbacks publish an atomic deadline; a main-thread
@@ -35,6 +39,8 @@ controller forwards key presses and releases before it manually filters them
 through the IM context. This preserves printable shortcuts such as Space while
 still receiving committed text; no state borrow spans synchronous IM callbacks.
 
+### Settings and native pickers
+
 Application Settings uses a decorated GTK transient window with its own
 GLArea, input buffer, painter, texture cache and repaint deadline. It renders
 the shared Settings session and forwards clipboard and input method events.
@@ -42,9 +48,14 @@ The main window retains file drops, project shortcuts and preference writes.
 Reattach the transient after the main-window titlebar recreates its surface.
 Release the Settings painter with its own context current. Use a parented
 GTK chooser for the Settings model and plugin-folder requests.
+
+### Keyboard and pointer input
+
 GTK BackSpace maps to egui Backspace. Surface scroll units remain points, scaled
 by UI zoom; discrete wheel units remain lines. GTK touchpad pinch scale changes
 produce egui zoom events; direct touches use egui multitouch zoom instead.
+
+### Touch and window gestures
 
 Direct touchscreen sequences run through a capture controller before GTK click
 emulation. Stable sequence IDs feed egui touch events; only the first contact
@@ -56,7 +67,11 @@ clear the held pointer without activating a button. Unused custom-header touches
 continue to GTK's native window-drag gesture. Title/unused
 header gestures use shared hit-testing for native dragging and double-click
 maximize. Root close requests enter the existing unsaved-project guard before
-GTK closes. Titlebar switching is deferred until after the current snapshot. The host hides
+GTK closes.
+
+### Titlebar surface recreation
+
+Titlebar switching is deferred until after the current snapshot. The host hides
 and unrealizes the window before changing its titlebar, then presents it again,
 retaining the session and maximized state. Only one titlebar switch may be queued.
 It runs at GLib high-idle priority before the next GTK redraw, so continuous

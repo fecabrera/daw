@@ -24,19 +24,9 @@ Model loading needs substantial memory. CoreML can take tens of seconds to compi
 2. Keep the status dialog open while the job runs. It shows progress, the stem count and names, output audio quality, errors, and warnings. Choose **Cancel** in the dialog or status bar to stop the job.
 3. Close the finished report.
 
+### Track progress and read the report
+
 The dialog and status bar show the same phase: **Preparing audio and loading model…**, **Separating audio…**, then **Preparing stem tracks…**. Cancellation changes both to **Cancelling…** while the job stops. Windows and Linux load the CPU model. On Apple Silicon macOS, a selected CoreML model can also need time to compile.
-
-Separation uses the clicked clip's trim, repeats, stretch, and transpose. It excludes track, group, and Master processing. Each stem keeps the clip gain and saved fades. Ordinary fades apply once during playback. Saved crossfades stay inactive on the new tracks until an eligible neighboring clip touches the edge; otherwise playback uses the normal boundary fade. The source file stays unchanged.
-
-A new group appears at the end of the track list with one audio track per stem. The selected model determines whether four or six tracks are created. All resulting clips start at the original clip's position and have its duration. The original clip stays in place, disabled with a neutral header and muted foreground colors. Its translucent body shows the grid underneath. Right-click it and choose **Enable clip** to hear it again. Disable or mute the stems first if you do not want both versions to play.
-
-You can separate clips before saving the project. Unsaved projects use temporary storage. The status dialog shows output details instead of a destination folder. The first save copies protected stems into group folders under `stems/` inside the project folder. Saved projects write new separations under `stems/<clip name>/`. An existing folder is retained; a number is added to the new folder name. Long folder names are shortened to fit the filesystem limit. Save the project to retain the new arrangement. Save As copies generated stems to the new project folder.
-
-Temporary stems remain available to the project and Undo/Redo until saved or discarded. Closing an unsaved project discards them. Temporary storage is not crash recovery; save the project to keep the stems.
-
-Undo restores the arrangement. It retains generated files so Redo can restore the stems. After Save As copies the stems, Undo/Redo uses those copies, including when you save with the separation undone and then redo it. Failure or cancellation leaves the arrangement unchanged and removes unpublished stem files. Cancellation waits for the current model operation to return; it is not immediate during model loading or inference.
-
-Save and Save As also copy stems retained only by Undo/Redo. Redo can restore them without access to the old project folder or temporary files. Edits made while Save runs remain marked as unsaved.
 
 Below the status and progress bar, the report shows three lines: the separator and stem count; the stem names; and the output format. For example:
 
@@ -48,6 +38,26 @@ WAV · IEEE float 32-bit · Stereo · 48 kHz
 
 The format line uses the project sample rate. It describes the output format, not a guarantee of separation quality. The finished report uses the stem count and names from the model that succeeded.
 
+Failure or cancellation leaves the arrangement unchanged and removes unpublished stem files. Cancellation waits for the current model operation to return; it is not immediate during model loading or inference.
+
+When a validated CPU model is also selected, a CoreML error triggers a fresh CPU attempt and appears as a warning in the finished report. The finished report lists the stems from the model that succeeded, including when CPU fallback uses a different stem count. If CPU processing also fails, the report shows the error.
+
+### Inspect and save the stems
+
+Separation uses the clicked clip's trim, repeats, stretch, and transpose. It excludes track, group, and Master processing. Each stem keeps the clip gain and saved fades. Ordinary fades apply once during playback. Saved crossfades stay inactive on the new tracks until an eligible neighboring clip touches the edge; otherwise playback uses the normal boundary fade. The source file stays unchanged.
+
+A new group appears at the end of the track list with one audio track per stem. The selected model determines whether four or six tracks are created. All resulting clips start at the original clip's position and have its duration. The original clip stays in place, disabled with a neutral header and muted foreground colors. Its translucent body shows the grid underneath. Right-click it and choose **Enable clip** to hear it again. Disable or mute the stems first if you do not want both versions to play.
+
+You can separate clips before saving the project. Unsaved projects use temporary storage. The status dialog shows output details instead of a destination folder. The first save copies protected stems into group folders under `stems/` inside the project folder. Saved projects write new separations under `stems/<clip name>/`. An existing folder is retained; a number is added to the new folder name. Long folder names are shortened to fit the filesystem limit. Save the project to retain the new arrangement. Save As copies generated stems to the new project folder.
+
+Temporary stems remain available to the project and Undo/Redo until saved or discarded. Closing an unsaved project discards them. Temporary storage is not crash recovery; save the project to keep the stems.
+
+Undo restores the arrangement. It retains generated files so Redo can restore the stems. After Save As copies the stems, Undo/Redo uses those copies, including when you save with the separation undone and then redo it.
+
+Save and Save As also copy stems retained only by Undo/Redo. Redo can restore them without access to the old project folder or temporary files. Edits made while Save runs remain marked as unsaved.
+
+### Sources and resource limits
+
 Large audio files use temporary disk storage and bounded playback buffers. The combined stems can exceed 2 GiB without loading every sample into memory. Keep enough free space on the system temporary disk and the project disk. Playback can pause briefly while a disk read catches up; it retains its position. A disk read failure stops playback and reports an error. Saving retains the stem WAV files; temporary playback data is rebuilt when the project opens.
 
-Separation can leave bleed or artifacts. It processes one clip at a time and still needs memory for model processing and the arranged input. Very long clips can exceed these remaining limits. Stretching and Sampler preparation also retain their memory limits. When a validated CPU model is also selected, a CoreML error triggers a fresh CPU attempt and appears as a warning in the finished report. The finished report lists the stems from the model that succeeded, including when CPU fallback uses a different stem count. If CPU processing also fails, the report shows the error.
+Separation can leave bleed or artifacts. It processes one clip at a time and still needs memory for model processing and the arranged input. Very long clips can exceed these remaining limits. Stretching and Sampler preparation also retain their memory limits.

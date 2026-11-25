@@ -15,6 +15,8 @@ plugin editors use the same formats.
 Knob tooltips stay visible during a drag and follow the value. Release ends the
 drag tooltip. Use the relevant control guide for gestures, limits and defaults.
 
+## Details reports
+
 Choose **Details** beside the processing-rate and buffer status to view memory
 estimates, budgets and accounting notes. When transient analysis fails, choose
 **Details** beside its status to read the complete error.

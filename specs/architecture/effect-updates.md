@@ -75,6 +75,8 @@ compatibility rules rather than claiming arbitrary old crossover history.
 
 ## Background preparation and revisions
 
+### Worker ownership
+
 Output owns separate latest-request workers for controls and effect topology.
 Neither waits for the exact transport preparation worker. Each has at most one
 pending request and one ready result; superseded results are discarded off audio.
@@ -91,6 +93,8 @@ update restores its saved power state.
 Controls for new units and incompatible internal topology wait for the complete
 transaction. A partial control publication advances a distinct effective token
 but does not acknowledge the uninstalled desired topology.
+
+### Revisions and publication
 
 Every candidate carries its requested revision and acknowledged base token.
 The callback checks both before mutation. Any intervening publication invalidates
@@ -109,12 +113,16 @@ The control thread discards worker results for a revision once it observes
 completion. Previously queued siblings can still retire after that acknowledgment.
 
 
+### Transport precedence
+
 Seek/Play/Stop preparation retains its separate transport intent and supersedes
 effect candidates through the existing request revision. Stop retains immediate
 silencing. A partial effect update cannot falsely complete a transport request.
 For unchanged source content, controls can update the audible renderer while an
 exact seek or fallback rebuild is pending. These publications are always partial;
 they neither move the playhead nor acknowledge the pending full result.
+
+### Live effect updates
 
 Appending one built-in Saturator at the end of a MIDI instrument Output chain
 keeps one preparation in progress. Further changes to that instance's Drive
@@ -167,6 +175,8 @@ An increase in total compensation fills from the current source cursor.
 A decrease moves the audible clock ahead by the removed delay. Native
 graphs finish the current output block before switching. Exact retains
 normal preparation. Incompatible input histories use the worker rebuild.
+
+### Fallback and replay
 
 Fallback, replay, retry and publication receipts use the submitted snapshot
 until its revision is acknowledged. Keep playback preparation pending until

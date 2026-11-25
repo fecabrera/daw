@@ -15,6 +15,8 @@ Oscillator, Sampler or Granulizer.
 | Width | 0% mono to 100% independent stereo | 0% |
 | Power | On/off | On |
 
+### Noise type and color
+
 The **Noise** strip contains Type, Color and a small spectral preview. White has
 an even frequency balance. Pink places more energy at lower frequencies. Brown
 has a stronger low-frequency emphasis. The types use a common reference RMS
@@ -26,10 +28,14 @@ relative balance from 20 Hz to 20 kHz. It responds to Type and base Color, remai
 visible while stopped, and excludes Level, modulation and downstream processing.
 It is not a live spectrum analyzer.
 
+### Output level and width
+
 The **Out** strip contains Level and Width. The [stereo output meter](../effects/output-meter.md) sits in the gap after the unit.
 Width starts with the same signal in both channels and introduces an independent
 right-channel stream as it increases. MIDI pitch does not tune the noise. Note
 velocity affects its volume.
+
+## Shape and modulate noise
 
 Use [Amplitude](amplitude.md) and an [Envelope](envelope.md) to shape noise bursts,
 percussion and sustained textures. Without an assigned amplitude envelope, Noise
@@ -41,6 +47,8 @@ LFO and Macro. Type remains discrete. Knobs use the standard fine adjustment and
 double-click reset. Power retains the settings. Double-click the unit header to
 collapse it, or right-click the header to remove it. The compact layer view hides
 controls and the preview.
+
+## Playback and export
 
 Each note has an independent noise stream. Replaying or exporting the same project
 reproduces those streams. Copying a layer or source creates a separate stream.

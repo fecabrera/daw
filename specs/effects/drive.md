@@ -2,6 +2,8 @@
 
 Implementation requirements and design records. For user instructions, see the [user guide](../../docs/effects/drive.md).
 
+## Catalog and controls
+
 The Effects catalog in Timeline and Instrument lists **Drive** alongside 3-band EQ. Single-click selects a catalog name; double-click appends a new independent instance to the selected audio/MIDI track or Master. Right-click an installed header to remove it. Both effect types share the catalog appearance, unit panel, header power, saved horizontal collapse, and compact lane control.
 
 Single-click an installed effect unit to select it. Shift-click toggles its selection. A primary click in the empty effects lane clears all unit selections. Selected units reuse the selected Tracks border. Selection is UI-only, independent of track/clip and catalog selection, and does not mark the project modified. It survives view changes and reordering; removed IDs are pruned and project replacement clears it. Drag an effect header to move the selected units within its selected chain. Dragging an already selected instance retains the selection; dragging an unselected instance selects it. Show an insertion line and scroll at the lane edges. Commit the order only on release inside the lane; Escape, focus loss, a blocked editing environment, or an outside drop cancels. Preserve stable IDs, settings, enable/collapse states, and compatible DSP history. Same-position drops leave the project clean. Power and knob gestures retain their behavior, and header double-click still collapses the unit. Move selected units as a group in their existing chain order, even when selection clicks occurred in another order or units were separated. Leave unselected units in their existing order.
@@ -18,6 +20,8 @@ Drive has two 90-point strips with bottom labels **Drive** and **Color**. Drive 
 | Color frequency | 250 Hz–2 kHz, logarithmic | 750 Hz | Mid center and linked bass-cut position. |
 
 Mid scoop and Mid hump use a broad bell (Q 0.65) with up to −12/+12 dB depth. Mid hump + bass cut combines the hump with a low shelf at half the Color frequency, with up to −18 dB of bass attenuation. Strength scales both depths together. Frequency moves the center and linked shelf boundary. Off and zero Strength share flat voicing. Flat voicing with moderate Gain targets transparent-style drive; Mid hump + bass cut targets a tighter, mid-focused drive. This is a configurable drive, not an exact model of any named pedal.
+
+## Processing and state
 
 Processing order is clip/instrument output → each serial effect → track gain/pan and audibility → Master. Within Drive: Color → symmetric normalized tanh soft clipping → Tone → Volume. Low-level input receives increasing gain as Gain rises, while the clipper approaches a smooth bounded output. Gain zero passes the colored signal directly to Tone. Tone and Volume remain active with Color Off.
 

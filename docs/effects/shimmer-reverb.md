@@ -7,6 +7,8 @@ as a separate [CLAP or VST3 plugin](plugins.md).
 Use **Shimmer Reverb** for spacious tails with rising or falling harmonics and
 vowel color.
 
+## Set up the reverb
+
 1. Add the unit to a track, instrument layer, Output bus, group or Master.
 2. Set Size and Pre-delay to shape the space.
 3. Set a Shimmer voice's Pitch, then raise its Amount. Try +12 st for an octave
@@ -16,6 +18,8 @@ vowel color.
    for movement in the tail. Zero Depth stops delay motion.
 5. Adjust Damping and Warm, then set Dry/Wet and Level. The curved mix can raise
    the combined level at intermediate settings. Watch the output meter.
+
+## Controls
 
 | Strip | Controls and defaults |
 | --- | --- |
@@ -54,6 +58,8 @@ continue, so re-enabling can reveal a remaining tail. Click a held peak to reset
 it. Parameter changes retain the tail. Stop and seek reconstruct processing
 history; Pause preserves it and loop boundaries let it continue.
 
+## Wet gain
+
 The completed wet signal has 15 dB of calibrated makeup gain before Dry/Wet.
 This fixed gain leaves Size, damping and pitch regeneration free to change the
 tail's energy; it does not raise a fading tail automatically. The regeneration
@@ -61,10 +67,14 @@ loops are unchanged. Existing projects use the louder wet output with their
 saved settings. Reduce Dry/Wet or Level as needed and check the output meter;
 makeup gain does not impose an output ceiling.
 
+## Modulation
+
 Continuous controls support the DAW's [shared modulation](../modulation/README.md).
 Pre-delay modulation applies in Time mode. Pitch choices, Sync, note division and
 Warm remain discrete. Standalone plugins expose host automation without DAW
 modulation connections. Settings are saved with the project or plugin preset.
+
+## Playback and export
 
 The unit has no dry-path alignment latency. DAW exports retain the existing
 ten-second tail limit and warn when a longer tail budget is truncated. External
