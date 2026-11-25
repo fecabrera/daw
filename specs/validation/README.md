@@ -2,6 +2,137 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Standard offline OBTAIN selection — 2026-11-25
+
+Targeted selection is the default for the portable offline tracker, media
+adapter and headless comparison. The production source tempo detector
+continues to use the Ellis-based estimator.
+
+The headless comparison replayed the same 237 Splice inputs. On all 224
+decoded files, default OBTAIN exactly matched the previous explicit targeted
+selection result, including beat frames. The `--experiment legacy` route
+matched the former OBTAIN default. The Ellis-based result records and 13
+shared preparation failures also reproduced. The standalone and profiled
+calls returned 150 BPM on the repaired loop. Legacy OBTAIN returned 100 BPM.
+
+Formatting and strict workspace Clippy passed. Debug and release suites
+each passed 3,831 tests, with 24 ignored and 22 native Audio Unit
+registration cases filtered. Both passed the Clip Settings tempo regression.
+
+## Targeted OBTAIN tempo selection — 2026-11-25
+
+Five severe errors with qualified reference-family candidates were
+replayed before implementation. The 150 BPM replay on one loop supplied
+19 supported beats and nine direct intervals. The 100 BPM path supplied
+nine supported beats and eight direct intervals. The other four cases
+had weak reference-family paths over the full active span.
+
+On the same 237 Splice files at 48 kHz, both baselines reproduced across
+224 decoded loops and 13 shared preparation failures. Targeted selection
+corrected the one loop from 100 to 150 BPM. Every other current OBTAIN
+result record matched, including beat frames.
+
+| Measure | Production | Current OBTAIN | Targeted selection |
+| --- | ---: | ---: | ---: |
+| Numeric coverage | 155/224 (69.2%) | 140/224 (62.5%) | 140/224 (62.5%) |
+| Coverage within 2 adjusted BPM | 152/224 (67.9%) | 122/224 (54.5%) | 123/224 (54.9%) |
+| Adjusted error P90 / P95 / P99 | 0.114 / 0.163 / 7.834 BPM | 3.146 / 36.278 / 46.531 BPM | 2.625 / 31.534 / 43.525 BPM |
+| Warm analysis P90 / P95 / P99 | 5.131 / 5.953 / 8.100 ms | 17.020 / 20.262 / 24.263 ms | 16.877 / 20.226 / 24.176 ms |
+| First pass P99 with preparation | 36.340 ms | 54.354 ms | 54.516 ms |
+
+The selector reproduced all beat frames and inference flags on the original
+21 generated fixtures and eight added stress fixtures. Both variants matched
+254/264 eligible beat references in the original suite within 70 ms, with
+zero extra beats and 9.54 ms P95 absolute timing error. The separate active
+gap fixture returned the same inferred frame.
+
+Formatting and strict workspace Clippy passed. Debug and release workspace
+suites each passed 3,831 tests, with 24 ignored and 22 native Audio Unit
+registration cases filtered. Both suites passed the selector regression and
+the read-only Clip Settings BPM regression.
+
+The selector was opt-in for this benchmark. It is now the offline OBTAIN
+default. A fresh scalar holdout and independently annotated human beat
+timing remain open. See the
+[targeted selection contract](../audio/offline-obtain.md#targeted-tempo-selection)
+and [comparison guide](../../docs/development/offline-obtain.md#compare-experimental-variants).
+
+## OBTAIN onset and competing-path experiment — 2026-11-25
+
+The same 237 Splice inputs yielded 224 shared decodes at 48 kHz. Both
+baseline results reproduced exactly. Coverage uses all 224 decoded loops.
+Adjusted error allows half and double tempo. Warm analysis times use each
+file's median of nine calls with rotating detector order.
+
+| Measure | Production detector | Current OBTAIN | Combined experiment |
+| --- | ---: | ---: | ---: |
+| Numeric coverage | 155/224 (69.2%) | 140/224 (62.5%) | 119/224 (53.1%) |
+| Coverage within 2 adjusted BPM | 152/224 (67.9%) | 122/224 (54.5%) | 104/224 (46.4%) |
+| Adjusted error P90 / P95 / P99 | 0.114 / 0.163 / 7.834 BPM | 3.146 / 36.278 / 46.531 BPM | 8.316 / 40.755 / 47.336 BPM |
+| Warm time P90 / P95 / P99 | 5.264 / 6.742 / 8.408 ms | 17.377 / 21.047 / 24.581 ms | 22.689 / 26.025 / 32.340 ms |
+
+Against current OBTAIN, the experiment lost 9.4 percentage points of
+numeric coverage and 8.0 points of accurate coverage. Against production,
+it lost 16.1 and 21.4 points respectively. It returned 11 errors above
+10 adjusted BPM, compared with 10 for current OBTAIN and one for production.
+Reuse alone matched all current OBTAIN results, with comparable timing.
+
+The original 21 generated fixtures produced the same beat frames under
+both OBTAIN variants. Both matched 254/264 eligible references within
+70 ms, with zero extra beats and 9.54 ms P95 absolute timing error. An
+additional vibrato control produced five false beats and a stable BPM
+under current OBTAIN. The experiment abstained. Tested at 192 kHz, the
+experiment held the same read and transform counts for complete, sampled
+and disk-backed sources. Native macOS headless smoke checks passed
+for single-file, batch, diagnostic and rejection cases.
+
+Formatting and strict workspace Clippy passed. Debug and release workspace
+suites each passed 3,830 tests, with 24 ignored and 22 native Audio Unit
+registration cases filtered. Both suites passed the read-only Clip Settings
+BPM regression and the experiment's cancellation and sampled-read checks.
+
+The experiment missed the accuracy and timing gates and remains opt-in.
+Independent scalar and human beat holdouts, isolated scratch high-water
+measurement, and native Windows and Linux checks remain open. See the
+[offline tracker specification](../audio/offline-obtain.md#experimental-path-verification)
+and [headless comparison guide](../../docs/development/offline-obtain.md#compare-experimental-variants).
+
+## Experimental offline OBTAIN comparison — 2026-11-25
+
+The headless comparison decoded 224 of the same 237 private Splice files.
+The current source tempo detector returned 155 numeric results (69.2% of
+decoded files). Offline OBTAIN returned 140 (62.5%), a change of −6.7
+percentage points. Coverage within 2 BPM after half/double adjustment was
+152/224 (67.9%) for the current detector and 122/224 (54.5%) for OBTAIN.
+Both detectors used the same prepared 48 kHz PCM.
+
+| Percentile | Adjusted absolute error, current → OBTAIN | Analysis time, current → OBTAIN | First pass with decode, current → OBTAIN |
+| --- | ---: | ---: | ---: |
+| P90 | 0.114 → 3.146 BPM | 5.266 → 16.735 ms | 27.243 → 37.765 ms |
+| P95 | 0.163 → 36.278 BPM | 6.036 → 19.622 ms | 30.922 → 43.736 ms |
+| P99 | 7.834 → 46.531 BPM | 8.216 → 23.699 ms | 37.603 → 55.624 ms |
+
+Analysis timing uses each file's median of nine interleaved calls in an
+optimized macOS arm64 build. Beat-frame validation used 16 generated pulse
+fixtures and five controls. At ±70 ms, 254 of 254 returned beats matched and
+254 of 264 annotated beats in analyzed ranges were recovered (F1 0.981).
+P95 absolute time error was 9.54 ms. The controls yielded zero beats and zero
+BPMs. One additional bracketed-gap fixture inferred the missing beat within
+6.92 ms. Generated audio informed development. Independent human beat labels
+and comparison against the paper's evaluation protocol remain open.
+
+Debug and release workspace suites each passed 3,828 tests, with 24 ignored
+and 22 native Audio Unit registration tests filtered out. Tests covered all
+six processing rates, anti-phase stereo, overlapping sampled reads, decode
+budgets and bounded preparation parity for MP3, AAC, MP4 and Ogg Opus.
+Formatting, strict workspace Clippy, the CLI smoke check and the local macOS
+app signature check passed. The example rejected oversized, over-duration
+and non-file inputs in headless checks. Windows and Linux runtime checks
+remain open.
+
+See the [tracker specification](../audio/offline-obtain.md) and
+[headless comparison guide](../../docs/development/offline-obtain.md).
+
 ## 100 BPM reference for half/double ambiguity — 2026-11-25
 
 Clip Settings now chooses the supported octave nearest to 100 BPM. Tests

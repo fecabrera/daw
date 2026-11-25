@@ -141,6 +141,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Charon CoreML benchmark](audio/stem-separation-coreml-evaluation.md): same-audio GPU/CPU quality, startup, memory, same-export control and reused-model measurements.
 
 - [Audio-source tempo detection](audio/source-tempo.md): bounded source-clock analysis and read-only Clip Settings status.
+- [Offline OBTAIN](audio/offline-obtain.md): experimental source-clock beat tracking and file comparison.
 
 ## Evidence
 

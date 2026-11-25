@@ -36,6 +36,10 @@ a 1 MiB reservation. All reads and analysis run on a worker.
 
 ## Detector
 
+The production source tempo detector uses the Ellis-based estimator for
+both file and compound sources. The headless beat-tracking comparison
+also runs [offline OBTAIN](offline-obtain.md).
+
 Analyze up to 12 seconds per window. Read the whole source in one to three
 adjacent windows up to 36 seconds. Above 36 seconds, take three 12-second
 windows from the start, middle and end, with up to 50 ms of unscored warmup
@@ -112,3 +116,5 @@ previous numeric result.
 
 See [Clip Settings](../editing/clip-settings.md) and
 [compound source evaluation](../editing/audio-merge.md#prepared-source-evaluation).
+
+See [offline OBTAIN](offline-obtain.md) for the separate experimental beat tracker.

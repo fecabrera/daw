@@ -1,7 +1,8 @@
 //! Ogg Opus import timing. Symphonia 0.5's generic gapless timing does not model
 //! Opus pre-skip and short final pages together; keep the RFC 7845 bounds here.
+use crate::decode_input::Input;
 use crate::{Error, Result};
-use std::{fs::File, io::Read, path::Path};
+use std::io::{Read, Seek, SeekFrom};
 
 pub(crate) struct OpusImport {
     skip: u64,
@@ -11,7 +12,7 @@ pub(crate) struct OpusImport {
 
 impl OpusImport {
     pub fn read(
-        path: &Path,
+        mut file: Input,
         head: &[u8],
         start_ts: u64,
         cancelled: &impl Fn() -> bool,
@@ -23,8 +24,9 @@ impl OpusImport {
         }
         let skip = u64::from(u16::from_le_bytes([head[10], head[11]]));
         let gain_db = f32::from(i16::from_le_bytes([head[16], head[17]])) / 256.0;
-        let mut file = File::open(path).map_err(|e| Error(e.to_string()))?;
-        let length = file.metadata().map_err(|e| Error(e.to_string()))?.len();
+        file.seek(SeekFrom::Start(0))
+            .map_err(|e| Error(e.to_string()))?;
+        let length = file.length();
         let mut serial = None;
         let mut sequence = 0_u32;
         let mut final_granule = None;

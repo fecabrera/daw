@@ -2,7 +2,7 @@
 use crate::stereo_fft::StereoFft;
 use crate::{AudioData, DiskAudioWriter, Error, Result};
 use daw_core::SourceMetadata;
-use std::{fs::File, io::BufReader};
+use std::io::Read;
 
 pub const STREAM_PCM_THRESHOLD_BYTES: u64 = 64 * 1024 * 1024;
 pub(crate) fn should_stream(frames: u64) -> bool {
@@ -105,8 +105,8 @@ impl RateWriter {
     }
 }
 
-pub(crate) fn decode_wav(
-    reader: hound::WavReader<BufReader<File>>,
+pub(crate) fn decode_wav<R: Read + 'static>(
+    reader: hound::WavReader<R>,
     output_rate: u32,
     cancelled: &impl Fn() -> bool,
 ) -> Result<AudioData> {

@@ -1,6 +1,7 @@
 //! Portable offline audio analysis over interleaved f32 PCM.
 //! Detection allocates; call it on a worker, never an audio callback.
 #![forbid(unsafe_code)]
+pub mod obtain;
 mod spectral_attacks;
 pub mod tempo;
 mod transients;

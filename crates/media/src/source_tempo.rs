@@ -61,6 +61,61 @@ pub fn source_tempo(
         .map_err(map_error)
 }
 
+/// Analyze an immutable prepared file using the offline OBTAIN detector.
+pub fn audio_beats(
+    audio: &AudioData,
+    cancelled: &impl Fn() -> bool,
+) -> Result<audio_analysis::obtain::Analysis> {
+    audio_beats_mode(audio, audio_analysis::obtain::Mode::default(), cancelled)
+}
+
+/// Compare an experimental beat tracker against the current prepared-source result.
+pub fn audio_beats_mode(
+    audio: &AudioData,
+    mode: audio_analysis::obtain::Mode,
+    cancelled: &impl Fn() -> bool,
+) -> Result<audio_analysis::obtain::Analysis> {
+    beat_measurement(audio, mode, cancelled, None)
+}
+
+pub fn audio_beats_profile(
+    audio: &AudioData,
+    mode: audio_analysis::obtain::Mode,
+    cancelled: &impl Fn() -> bool,
+    profile: &mut audio_analysis::obtain::Profile,
+) -> Result<audio_analysis::obtain::Analysis> {
+    beat_measurement(audio, mode, cancelled, Some(profile))
+}
+
+fn beat_measurement(
+    audio: &AudioData,
+    mode: audio_analysis::obtain::Mode,
+    cancelled: &impl Fn() -> bool,
+    profile: Option<&mut audio_analysis::obtain::Profile>,
+) -> Result<audio_analysis::obtain::Analysis> {
+    let _scratch = AudioReservation::optional(audio_analysis::obtain::SCRATCH_BYTES)?;
+    let mut raw = Vec::new();
+    let read = |start, out: &mut [[f32; 2]]| {
+        if audio.read_frames(start, out, &mut raw)? != out.len() {
+            return Err(Error("Incomplete source audio read".into()));
+        }
+        Ok(())
+    };
+    let rate = audio.sample_rate_hz;
+    let frames = audio.frame_count();
+    if let Some(profile) = profile {
+        audio_analysis::obtain::analyze_profile(rate, frames, mode, cancelled, read, profile)
+    } else {
+        audio_analysis::obtain::analyze_mode(rate, frames, mode, cancelled, read)
+    }
+}
+
+impl From<audio_analysis::Error> for Error {
+    fn from(error: audio_analysis::Error) -> Self {
+        Self(error.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

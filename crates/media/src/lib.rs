@@ -1,10 +1,15 @@
 mod source_tempo;
+pub use audio_analysis::obtain::{
+    Analysis as BeatAnalysis, Mode as BeatMode, Profile as BeatProfile, Summary as BeatSummary,
+};
 pub use audio_analysis::tempo::Tempo;
-pub use source_tempo::{audio_tempo, source_tempo};
+pub use source_tempo::{
+    audio_beats, audio_beats_mode, audio_beats_profile, audio_tempo, source_tempo,
+};
 mod transients;
 use daw_core::{SAMPLE_RATE, SourceMetadata};
 mod stereo_fft;
-use std::{fs::File, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 use stereo_fft::StereoFft;
 pub use transients::{TRANSIENT_ANALYSIS_MEMORY_BYTES, audio_transients};
 
@@ -22,8 +27,12 @@ pub use source_revision::{
     verify_prepared_source,
 };
 mod decode;
+mod decode_input;
 mod opus_import;
-pub use decode::{IMPORT_EXTENSIONS, decode_audio, decode_audio_at_rate, decode_audio_cancellable};
+pub use decode::{
+    IMPORT_EXTENSIONS, decode_audio, decode_audio_at_rate, decode_audio_bounded,
+    decode_audio_cancellable,
+};
 mod clip_audio;
 pub use clip_audio::{ClipAudioCache, ClipAudioKey, clip_audio, prepared_clip_audio};
 mod export;
@@ -111,7 +120,27 @@ pub fn decode_wav_cancellable(
         return Err(Error("Unsupported processing sample rate".into()));
     }
     let err = |e: &dyn std::fmt::Display| Error(format!("{}: {e}", path.display()));
-    let reader = hound::WavReader::open(path).map_err(|e| err(&e))?;
+    let input = decode_input::Input::open(path, false).map_err(|e| err(&e))?;
+    decode_wav_input(
+        path,
+        input,
+        sample_rate_hz,
+        cancelled,
+        &mut decode_input::Budget::default(),
+    )
+}
+
+fn decode_wav_input(
+    path: &Path,
+    mut input: decode_input::Input,
+    sample_rate_hz: u32,
+    cancelled: &impl Fn() -> bool,
+    budget: &mut decode_input::Budget,
+) -> Result<AudioData> {
+    use std::io::{BufReader, Seek, SeekFrom};
+    let err = |e: &dyn std::fmt::Display| Error(format!("{}: {e}", path.display()));
+    input.seek(SeekFrom::Start(0)).map_err(|e| err(&e))?;
+    let reader = hound::WavReader::new(BufReader::new(input.clone())).map_err(|e| err(&e))?;
     let spec = reader.spec();
     let declared_frames = reader.duration() as usize;
     if !(1..=2).contains(&spec.channels)
@@ -126,6 +155,7 @@ pub fn decode_wav_cancellable(
             path.display()
         )));
     }
+    budget.frames(declared_frames as u64, spec.sample_rate, sample_rate_hz)?;
     let target_frames = resampled_frames(declared_frames as u64, spec.sample_rate, sample_rate_hz)?;
     if stream_decode::should_stream(target_frames) {
         return stream_decode::decode_wav(reader, sample_rate_hz, cancelled);
@@ -150,8 +180,7 @@ pub fn decode_wav_cancellable(
         .into(),
         bits_per_sample: spec.bits_per_sample,
     };
-    let file = File::open(path).map_err(|e| err(&e))?;
-    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let mss = MediaSourceStream::new(Box::new(input), Default::default());
     let mut hint = Hint::new();
     hint.with_extension("wav");
     let mut format = symphonia::default::get_probe()
@@ -188,6 +217,7 @@ pub fn decode_wav_cancellable(
             }
             Err(e) => return Err(err(&e)),
         };
+        budget.packet()?;
         if packet.track_id() != track_id {
             continue;
         }

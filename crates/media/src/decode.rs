@@ -1,5 +1,8 @@
 //! Worker-side source decoding. Compressed stream lengths are never allocation hints.
-use crate::*;
+use crate::{
+    decode_input::{Budget, Input},
+    *,
+};
 use std::io::{Read, Seek, SeekFrom};
 use symphonia::core::codecs::{CODEC_TYPE_AAC, CODEC_TYPE_MP3, CODEC_TYPE_OPUS};
 
@@ -20,7 +23,28 @@ pub fn decode_audio_cancellable(
     rate: u32,
     cancelled: &impl Fn() -> bool,
 ) -> Result<AudioData> {
-    decode_with_streaming(path, rate, cancelled, crate::stream_decode::should_stream)
+    decode_with_streaming(
+        path,
+        rate,
+        cancelled,
+        crate::stream_decode::should_stream,
+        false,
+    )
+}
+
+/// Decode an experimental comparison file under cumulative resource limits.
+pub fn decode_audio_bounded(
+    path: &Path,
+    rate: u32,
+    cancelled: &impl Fn() -> bool,
+) -> Result<AudioData> {
+    decode_with_streaming(
+        path,
+        rate,
+        cancelled,
+        crate::stream_decode::should_stream,
+        true,
+    )
 }
 
 fn decode_with_streaming(
@@ -28,6 +52,7 @@ fn decode_with_streaming(
     rate: u32,
     cancelled: &impl Fn() -> bool,
     should_stream: impl Fn(u64) -> bool,
+    bounded: bool,
 ) -> Result<AudioData> {
     if cancelled() {
         return Err(Error("Audio preparation cancelled".into()));
@@ -36,11 +61,32 @@ fn decode_with_streaming(
         return Err(Error("Unsupported processing sample rate".into()));
     }
     let err = |e: &dyn std::fmt::Display| Error(format!("{}: {e}", path.display()));
-    let mut file = File::open(path).map_err(|e| err(&e))?;
+    let input = Input::open(path, bounded).map_err(|e| err(&e))?;
+    let result = decode_input(
+        path,
+        rate,
+        cancelled,
+        should_stream,
+        input.clone(),
+        &mut Budget::new(bounded),
+    );
+    input.verify()?;
+    result
+}
+
+fn decode_input(
+    path: &Path,
+    rate: u32,
+    cancelled: &impl Fn() -> bool,
+    should_stream: impl Fn(u64) -> bool,
+    mut file: Input,
+    budget: &mut Budget,
+) -> Result<AudioData> {
+    let err = |e: &dyn std::fmt::Display| Error(format!("{}: {e}", path.display()));
     let mut header = [0; 12];
     let count = file.read(&mut header).map_err(|e| err(&e))?;
     if count == header.len() && &header[..4] == b"RIFF" && &header[8..] == b"WAVE" {
-        return decode_wav_cancellable(path, rate, cancelled);
+        return decode_wav_input(path, file, rate, cancelled, budget);
     }
     file.seek(SeekFrom::Start(0)).map_err(|e| err(&e))?;
     let mut hint = Hint::new();
@@ -57,7 +103,7 @@ fn decode_with_streaming(
     let mut format = symphonia::default::get_probe()
         .format(
             &hint,
-            MediaSourceStream::new(Box::new(file), Default::default()),
+            MediaSourceStream::new(Box::new(file.clone()), Default::default()),
             &FormatOptions {
                 // Opus uses explicit RFC 7845 bounds below.
                 enable_gapless: &header[..4] != b"OggS",
@@ -89,7 +135,7 @@ fn decode_with_streaming(
             .as_deref()
             .ok_or_else(|| err(&"Missing Opus header"))?;
         Some(
-            crate::opus_import::OpusImport::read(path, head, params.start_ts, cancelled)
+            crate::opus_import::OpusImport::read(file, head, params.start_ts, cancelled)
                 .map_err(|e| err(&e))?,
         )
     } else {
@@ -136,6 +182,7 @@ fn decode_with_streaming(
             }
             Err(e) => return Err(err(&e)),
         };
+        budget.packet()?;
         if packet.track_id() != track_id {
             continue;
         }
@@ -180,6 +227,7 @@ fn decode_with_streaming(
             .checked_sub(trim_start)
             .and_then(|n| n.checked_sub(trim_end))
             .ok_or_else(|| err(&"Invalid encoder delay or padding"))?;
+        budget.frames(keep as u64, source_rate, rate)?;
         let required = samples
             .len()
             .checked_add(keep)
@@ -294,11 +342,23 @@ fn decode_with_streaming(
 mod compressed_storage_tests {
     use super::*;
     #[test]
+    fn comparison_prepares_the_same_pcm_for_supported_compressed_formats() {
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        for extension in ["mp3", "m4a", "aac", "opus"] {
+            let path = fixtures.join(format!("tone-1.{extension}"));
+            let normal = decode_audio_at_rate(&path, 48_000).unwrap();
+            let bounded = decode_audio_bounded(&path, 48_000, &|| false).unwrap();
+            assert_eq!(bounded.metadata, normal.metadata, "{extension}");
+            assert_eq!(bounded.samples, normal.samples, "{extension}");
+        }
+    }
+
+    #[test]
     fn bounded_mp4_demuxing_preserves_resident_and_disk_pcm() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tone-2.m4a");
         for rate in [44100, 48000, 192000] {
-            let resident = decode_with_streaming(&path, rate, &|| false, |_| false).unwrap();
-            let disk = decode_with_streaming(&path, rate, &|| false, |_| true).unwrap();
+            let resident = decode_with_streaming(&path, rate, &|| false, |_| false, false).unwrap();
+            let disk = decode_with_streaming(&path, rate, &|| false, |_| true, false).unwrap();
             assert!(disk.disk.is_some());
             let materialized = disk.materialized(&|| false).unwrap();
             assert_eq!(resident.metadata, materialized.metadata);

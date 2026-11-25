@@ -32,6 +32,8 @@ Keep the [media dependency notices](../../crates/media/assets/licenses), includi
 RealFFT, with separately distributed tools that use them. Retain the source and
 relinking materials required by the enabled backends.
 
+See [Compare offline beat tracking](offline-obtain.md) for the experimental headless comparison.
+
 ### Plugin catalog scanner
 
 The desktop and CLI include isolated scanning. Build the optional standalone

@@ -39,3 +39,20 @@ frames onto a smaller sample clock, measures fine-band level changes, and
 checks that the changes share a phase across the window. The pulse scoring
 reuses this module's original onset and interval checks. No external detector
 implementation or model was used.
+
+## Offline OBTAIN
+
+The offline tracker was written independently from the published
+[OBTAIN arXiv v2 manuscript](https://arxiv.org/pdf/1704.02216v2), sections II and
+III. It follows spectral onset strength, lag hypotheses, cumulative beat
+strength and competing beat paths. The 100 Hz timing grid, centered analysis,
+bounded search and deterministic path decisions are offline implementation
+choices. No third-party tracker code, model, port or authored output was
+imported. The tracker reuses the existing RustFFT dependency.
+
+The opt-in experiment adds original band normalization, guarded candidate
+selection and common onset scoring. It reuses the original packed stereo FFT,
+onset refinement and cumulative recurrence. No external implementation code,
+new dependency, or model data was used. The beat benchmark uses generated
+signals with exact source-frame references. Splice files and their names
+stay outside the repository's tracked fixtures and reports.
