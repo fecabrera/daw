@@ -2,6 +2,71 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Short-fill experiment removal — 2026-11-25
+
+Removed the short-fill and attack-interval comparisons after the
+benchmarks below. A headless check on a fixed-time Groove fill reproduced
+the saved standard Ellis and OBTAIN results, including OBTAIN beat
+frames. Debug and release builds rejected the retired options.
+
+Formatting and strict workspace Clippy passed. The debug and release
+workspace suites each passed 3,834 tests, with 24 ignored and 22 native
+Audio Unit registration cases filtered.
+
+## Attack-interval tempo candidates — 2026-11-25
+
+- The headless `--attack-intervals` comparison reused the prepared source.
+  The Splice run repeated 237 attempts at 48 kHz. All 224 decoded inputs
+  matched the saved standard results. The same 13 inputs failed preparation.
+- A fresh Groove holdout used 39 fixed-time cuts and nine untrimmed fills
+  from 48 previously unused performances. Adjusted finalist recall on
+  the fixed cuts rose from 9/39 to 14/39 for Ellis and 15/39 to 20/39 for
+  OBTAIN. Both gains persisted with the duration cue disabled.
+- The trial supplied no new correct numeric result on the holdout. Ellis
+  numeric coverage stayed at 18/39 on the fixed cuts. OBTAIN numeric
+  coverage fell from 23/39 to 22/39 when two verified rates left a source
+  ambiguous. Errors matched on estimates that both versions published.
+- OBTAIN retained every frame and inferred flag on Splice, Groove, and
+  77 generated timing and stress fixtures. Timing validation used exact
+  generated positions and the Groove MIDI click grid. Human beat
+  annotations were unavailable.
+- Formatting, strict workspace Clippy, and the release comparison build
+  passed. The debug workspace suite passed 3,840 tests and a separate
+  debug run passed the new direct-beat recovery test. The release
+  workspace suite passed 3,841 tests. Both workspace suites had 24
+  ignored tests and filtered 22 native Audio Unit registration cases.
+- The attack-interval comparison was withdrawn after this benchmark.
+
+## Short-fill tempo experiments — 2026-11-25
+
+The headless `--short-fill` comparison measured both candidates on the
+same 237 Splice attempts and 32 previously unused Groove MIDI fills.
+Splice reproduced 224 decodes and 13 preparation failures. The Groove
+cuts use a 113 ms offset and fixed lengths from 1.60 to 3.50 s.
+[Groove MIDI Dataset](https://magenta.withgoogle.com/datasets/groove)
+
+| Cohort | Ellis numeric | Ellis within 2 adjusted BPM | OBTAIN numeric | OBTAIN within 2 adjusted BPM |
+| --- | ---: | ---: | ---: | ---: |
+| Splice decoded | 159/224 | 156/224 | 150/224 | 132/224 |
+| Groove fixed-time fills | 17/32 | 11/32 | 18/32 | 8/32 |
+
+Coverage matched the standard detectors in both cohorts. The only changed
+estimate was a Groove OBTAIN result whose adjusted error fell from 3.184
+to 2.145 BPM. On Groove, warm P95 moved from 0.569 to 0.689 ms for Ellis
+and from 2.067 to 2.097 ms for OBTAIN. The other Splice and Groove numeric
+results matched their baselines.
+
+Both OBTAIN modes returned identical beat frames and inference flags on
+all 29 generated fixtures, the separate active-gap probe and the 32
+Groove cuts. Groove recall was 27/101 with a 70 ms tolerance, and P95
+absolute error was 66.24 ms on matched references. The short-fill
+comparison was withdrawn after this benchmark.
+
+Formatting and strict Clippy passed. Debug and release workspace suites
+each passed 3,836 tests, with 24 ignored and 22 native Audio Unit
+registration cases filtered. Both passed the short-fill unit tests and
+the Clip Settings tempo regression.
+
 ## Default percussion ambiguity recovery — 2026-11-25
 
 Both standard detectors use percussion ambiguity recovery. Clip Settings
