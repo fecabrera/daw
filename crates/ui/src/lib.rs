@@ -1017,6 +1017,7 @@ pub struct DawUi {
     loop_drag: Option<LoopDrag>,
     lane_bounds: HashMap<Id, Rect>,
     timeline_bounds: Rect,
+    playhead_follow: timeline_workspace::PlayheadFollow,
     timeline_clips_focused: bool,
     fit_all_requested: bool,
     timeline_track_size: f32,
@@ -1194,6 +1195,7 @@ impl Default for DawUi {
             loop_drag: None,
             lane_bounds: HashMap::new(),
             timeline_bounds: Rect::NOTHING,
+            playhead_follow: Default::default(),
             timeline_clips_focused: false,
             fit_all_requested: false,
             timeline_track_size: 2.0,
@@ -1525,6 +1527,7 @@ impl DawUi {
                 self.clip_clipboard = None;
                 self.notices.clear();
                 self.scroll = 0.0;
+                self.playhead_follow = Default::default();
                 self.drag = None;
                 self.content_clip_drag = false;
                 self.track_drag = None;
@@ -1960,6 +1963,7 @@ impl DawUi {
             self.time_drag = None;
             self.selection_drag = [None, None];
             self.scroll = 0.0;
+            self.playhead_follow = Default::default();
             self.midi_editor.cancel();
             self.instrument_ui = Default::default();
             self.beat_ui = Default::default();
@@ -3761,7 +3765,7 @@ impl DawUi {
                 if self.view_mode.has_track_overview() {
                     self.midi_editor.zoom = zoom;
                 } else {
-                    self.zoom = zoom;
+                    self.set_view_zoom(zoom);
                 }
             }
         });
@@ -3873,6 +3877,19 @@ impl DawUi {
         self.apply_fit_all(viewport.width());
         self.timeline_pinch(ui, viewport);
         self.timeline_swipe(ui, viewport);
+        let playing = self
+            .output
+            .as_ref()
+            .is_some_and(|output| output.status.playing.load(Ordering::Relaxed))
+            && self.is_playing();
+        let can_follow = ui.is_enabled()
+            && self.drag.is_none()
+            && self.track_drag.is_none()
+            && self.loop_drag.is_none()
+            && self.marquee.is_none()
+            && self.portion_drag.is_none()
+            && !ui.input(|input| input.pointer.any_down() || input.pointer.any_released());
+        self.follow_timeline_playhead(viewport.width(), playing, can_follow);
         let painter = ui.painter().clone();
         let control_panel = panels::ControlPanel::begin(ui, bounds);
         painter.rect_filled(
@@ -5248,6 +5265,9 @@ impl DawUi {
         } else if self.view_mode.has_track_overview() {
             self.midi_editor.zoom = zoom;
         } else {
+            if zoom != self.zoom {
+                self.playhead_follow.suspend();
+            }
             self.zoom = zoom;
         }
     }
@@ -5278,6 +5298,9 @@ impl DawUi {
         } else if self.view_mode.has_track_overview() {
             self.midi_editor.scroll = seconds;
         } else {
+            if seconds != self.scroll {
+                self.playhead_follow.suspend();
+            }
             self.scroll = seconds;
         }
     }

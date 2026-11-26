@@ -3,6 +3,16 @@
 Draw the playhead line from the bottom of the ruler across the arrangement
 lanes and track workspace. Draw it over lane content and below the scrollbar.
 
+During playback and recording, follow the displayed playhead in the main
+Timeline. Begin scrolling when it reaches the right margin. Use the
+smaller of 96 logical points and 20 percent of the viewport width. Scroll
+before laying out the ruler,
+lanes, clips, and recording previews. Keep the lower editor viewport
+independent. Honor existing scroll bounds. Bring a wrapping loop back into
+view when the playhead lands left of the viewport. Yield to pointer gestures
+and manual pan or zoom. Resume after the playhead reenters the visible
+area before the follow margin, or after a transport restart.
+
 Reserve a 16-point gap after the track header column. Align the ruler,
 arrangement lanes, track lanes, and horizontal scrollbar at the far edge of
 the gap. Keep the Master header at the width of the track header column.

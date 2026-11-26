@@ -241,6 +241,11 @@ Use **Fit all clips**, immediately left of the playback toolbar’s zoom control
 
 Horizontal scrolling moves the timeline while track controls stay fixed. Pinch zoom keeps the pointer's time in place where possible. Double-click a clip to open and fit it in the [Timeline editor](editor.md).
 
+During playback and recording, Timeline scrolls horizontally when the
+playhead nears the right edge. Manual scrolling or zooming takes priority.
+Follow resumes once the playhead is back in view with room to move, or
+when you restart playback.
+
 ## Clip menu
 
 Use [Normalize gain](../editing/normalize-gain.md) to set each selected audio clip’s peak or loudness level before effects.

@@ -151,6 +151,7 @@ impl DawUi {
         self.cancel_browser_interactions();
         self.cancel_beat_reorder(None);
         self.view_mode = mode;
+        self.playhead_follow = Default::default();
         if mode.has_track_overview() || self.timeline_editor_visible() {
             self.midi_editor.delete_clips = true;
         }

@@ -2,6 +2,23 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Timeline playhead follow — 2026-11-26
+
+Automated checks advanced the displayed playhead in playback and recording
+states. Timeline kept the moving playhead at the right margin and left the
+lower editor scroll and project dirty flag alone. The checks also covered
+stopped transport, pointer gestures, manual panning, and a loop wrap.
+
+Formatting and strict workspace Clippy passed. Both workspace suites
+passed 3,848 tests with 25 ignored and 22 native Audio Unit cases filtered.
+The local macOS debug bundle passed strict signature verification. Native
+playback and recording interactions were not exercised.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
 ## Playhead-driven recording previews — 2026-11-26
 
 The mixed Timeline fixture advanced the playhead without supplying a new
