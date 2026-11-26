@@ -12,6 +12,7 @@ daw-separation.workspace = true
 daw-core.workspace = true
 daw-media.workspace = true
 daw-engine.workspace = true
+hound.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 sha2.workspace = true
@@ -25,5 +26,4 @@ libc = "0.2"
 
 [dev-dependencies]
 daw-unit-core.workspace = true
-hound.workspace = true
 symphonia = { workspace = true, features = ["mp3"] }

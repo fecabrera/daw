@@ -135,6 +135,7 @@ impl SessionHistory {
             entry.session.project = project;
             entry.session.folder = Some(folder.to_owned());
             entry.session.retain_temporary_stems();
+            entry.session.retain_recorded_sources();
             entry.model_bytes = snapshot_model_bytes(&entry.session);
         }
         let mut saved = saved.clone();
@@ -357,6 +358,7 @@ fn snapshot(session: &Session) -> Result<Snapshot> {
         }
     }
     next.retain_temporary_stems();
+    next.retain_recorded_sources();
     next.plugin_states.retain(
         next.project
             .hosted_units()

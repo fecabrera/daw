@@ -2,6 +2,7 @@
 use super::*;
 use crate::dialogs::FooterAction;
 use crate::midi_service::{Command, Message, Service};
+use daw_output::recording::{InputChannels, InputRequest};
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -25,6 +26,12 @@ impl Default for Preferences {
 }
 pub(super) struct State {
     pub armed: HashSet<Id>,
+    audio_armed: HashSet<Id>,
+    audio_inputs: HashMap<Id, (Option<daw_output::DeviceId>, InputChannels)>,
+    failed_audio_fallback: Option<(Id, Option<daw_output::DeviceId>)>,
+    pub audio_take: bool,
+    pub file_after_audio_take: Option<FileAction>,
+    audio_peaks: HashMap<Id, std::sync::Arc<std::sync::atomic::AtomicU32>>,
     pub recording: bool,
     pub finalizing: bool,
     pub(super) storage_ready: bool,
@@ -49,6 +56,12 @@ impl Default for State {
     fn default() -> Self {
         Self {
             armed: HashSet::new(),
+            audio_armed: HashSet::new(),
+            audio_inputs: HashMap::new(),
+            failed_audio_fallback: None,
+            audio_take: false,
+            file_after_audio_take: None,
+            audio_peaks: HashMap::new(),
             recording: false,
             finalizing: false,
             storage_ready: false,
@@ -84,9 +97,27 @@ pub(super) struct Arm {
     pub armed: bool,
     pub fallback: bool,
     pub editable: bool,
+    pub input_peak: Option<f32>,
+    pub audio: bool,
 }
 impl DawUi {
     pub(super) fn midi_arm(&self, track: &daw_core::Track) -> Option<Arm> {
+        if track.kind == daw_core::TrackKind::Audio {
+            let armed = self.midi.audio_armed.contains(&track.id);
+            let peak = self.midi.audio_peaks.get(&track.id);
+            return Some(Arm {
+                armed,
+                fallback: if self.midi.busy() {
+                    !armed && peak.is_some()
+                } else {
+                    self.audio_fallback() == Some(track.id)
+                },
+                editable: !self.midi.busy(),
+                audio: true,
+                input_peak: peak
+                    .map(|peak| f32::from_bits(peak.load(std::sync::atomic::Ordering::Relaxed))),
+            });
+        }
         if track.kind != daw_core::TrackKind::Midi {
             return None;
         }
@@ -100,10 +131,20 @@ impl DawUi {
             armed: self.midi.armed.contains(&track.id),
             fallback: !any_armed && self.selected_track == Some(track.id),
             editable: !self.midi.busy(),
+            input_peak: None,
+            audio: false,
         })
     }
     pub(super) fn apply_midi_arm(&mut self, id: Id, arm: Option<Arm>) {
-        if let Some(arm) = arm {
+        if let Some(arm) = arm.filter(|arm| arm.editable) {
+            if arm.audio {
+                if arm.armed {
+                    self.midi.audio_armed.insert(id);
+                } else {
+                    self.midi.audio_armed.remove(&id);
+                }
+                return;
+            }
             if arm.armed {
                 self.midi.armed.insert(id);
             } else {
@@ -139,9 +180,11 @@ impl DawUi {
         if self.midi.recording {
             return !self.midi.finalizing;
         }
+        let has_audio = !self.midi.audio_armed.is_empty() || self.audio_fallback().is_some();
         self.midi.service.is_some()
             && self.midi.storage_ready
-            && self.midi.connected
+            && (self.midi.connected || has_audio && self.midi.armed.is_empty())
+            && (!has_audio || self.regular_save.is_none())
             && !self.midi.finalizing
             && !self.midi.take_retained
             && !self.session.project.transport.r#loop.enabled
@@ -160,12 +203,7 @@ impl DawUi {
             self.midi_boundary(daw_output::MidiAction::Seal);
             return;
         }
-        if self.midi.finalizing
-            || !self.midi.connected
-            || self.job.is_some()
-            || !(self.media_ready() || self.midi.output_revision == Some(self.change_revision))
-            || self.session.project.transport.r#loop.enabled
-        {
+        if !self.midi_record_enabled() {
             return;
         }
         let targets = daw_core::resolve_midi_targets(
@@ -173,8 +211,9 @@ impl DawUi {
             &self.midi.armed,
             self.selected_track,
         );
-        if targets.is_empty() {
-            self.fail("Select a MIDI track or enable R before recording");
+        let audio = self.audio_take_request();
+        if targets.is_empty() && audio.is_none() {
+            self.fail("Select or arm an Audio or MIDI track before recording");
             return;
         }
         self.ensure_history();
@@ -195,6 +234,7 @@ impl DawUi {
             / f64::from(signature.denominator)
             * bars as f64)
             .round() as u64;
+        let audio_take = audio.is_some();
         if self.midi_send(Command::Record(
             self.session.clone(),
             self.change_revision,
@@ -203,8 +243,14 @@ impl DawUi {
             } else {
                 frames
             },
+            audio,
         )) {
             self.midi.recording = true;
+            self.midi.audio_take = audio_take;
+            self.ensure_history();
+            if let Some(history) = &mut self.history {
+                history.begin_group();
+            }
         }
     }
     pub(super) fn poll_midi(&mut self, ctx: &egui::Context) {
@@ -216,7 +262,11 @@ impl DawUi {
             && !focused
             && let Some(service) = &self.midi.service
         {
-            service.panic();
+            if self.midi.audio_take {
+                service.focus_lost();
+            } else {
+                service.panic();
+            }
         }
         self.midi.focused = focused;
         let project = self.session.project.project_id;
@@ -228,6 +278,10 @@ impl DawUi {
                 service.panic();
             }
             self.midi.armed.clear();
+            self.midi.audio_armed.clear();
+            self.midi.audio_inputs.clear();
+            self.midi.failed_audio_fallback = None;
+            self.midi.audio_peaks.clear();
             self.midi.targets.clear();
             self.midi.monitoring.clear();
             self.midi.project = Some(project);
@@ -240,6 +294,15 @@ impl DawUi {
                 .iter()
                 .any(|t| t.id == *id && t.kind == daw_core::TrackKind::Midi)
         });
+        let valid_audio = |id: &Id| {
+            self.session
+                .project
+                .tracks
+                .iter()
+                .any(|t| t.id == *id && t.kind == daw_core::TrackKind::Audio)
+        };
+        self.midi.audio_armed.retain(valid_audio);
+        self.midi.audio_inputs.retain(|id, _| valid_audio(id));
         loop {
             let message = self
                 .midi
@@ -254,10 +317,12 @@ impl DawUi {
                 Message::TakeRetained(value) => self.midi.take_retained = value,
                 Message::Devices(devices) => self.midi.devices = devices,
                 Message::Connected(value) => self.midi.connected = value,
+                Message::AudioPeak(value) => self.midi.audio_peaks = value.into_iter().collect(),
                 Message::Recording(value) => {
                     self.midi.recording = value;
                     if !value {
                         self.midi.finalizing = false;
+                        self.midi.audio_take = false;
                     }
                 }
                 Message::Error(error) => {
@@ -297,11 +362,12 @@ impl DawUi {
                         != Some(&base)
                     {
                         self.midi.take_retained = true;
-                        self.fail("The project changed during capture. The complete MIDI take is retained for recovery.");
+                        self.fail("The project changed during capture. The take is retained for recovery.");
                         continue;
                     }
                     if self.session.project != session.project {
                         let mut candidate = self.session.clone();
+                        candidate.adopt_recorded_sources(&session);
                         candidate.project = session.project;
                         let mut history = self.history.clone();
                         if let Some(h) = &mut history
@@ -312,7 +378,7 @@ impl DawUi {
                             continue;
                         }
                         self.history = history;
-                        self.session.project = candidate.project;
+                        self.session = candidate;
                         self.changed();
                         if self.session.audio_preparation_needed(&self.session.project) {
                             self.queue_background_media();
@@ -346,11 +412,35 @@ impl DawUi {
         if self.midi.ack_pending && self.midi_send(Command::Acknowledge) {
             self.midi.ack_pending = false;
         }
-        if self.settings.midi.device.is_some()
+        if !self.midi.busy()
+            && !self.midi.take_retained
+            && self.error.is_none()
+            && let Some(action) = self.midi.file_after_audio_take.take()
+        {
+            self.perform_file_action(action);
+        }
+        let audio_fallback = self.audio_fallback();
+        // Selection persists after an error. Avoid retrying the same failed
+        // automatic output open on every frame.
+        if self
+            .midi
+            .failed_audio_fallback
+            .as_ref()
+            .is_some_and(|(track, device)| {
+                audio_fallback != Some(*track) || self.settings.audio.output_device != *device
+            })
+            || self.output.is_some()
+        {
+            self.midi.failed_audio_fallback = None;
+        }
+        if (self.settings.midi.device.is_some()
+            || !self.midi.audio_armed.is_empty()
+            || audio_fallback.is_some() && self.midi.failed_audio_fallback.is_none())
             && self.media_ready()
             && self.output.is_none()
             && focused
             && self.job.is_none()
+            && self.error.is_none()
         {
             match AudioOutput::with_settings(
                 self.session.plan(),
@@ -361,6 +451,10 @@ impl DawUi {
                 Err(error) => {
                     self.fail(error);
                     self.settings.midi.device = None;
+                    self.midi.audio_armed.clear();
+                    self.midi.failed_audio_fallback = self
+                        .audio_fallback()
+                        .map(|track| (track, self.settings.audio.output_device.clone()));
                 }
             }
         }
@@ -439,6 +533,127 @@ impl DawUi {
         }
         ctx.request_repaint_after(Duration::from_millis(16));
     }
+
+    fn audio_fallback(&self) -> Option<Id> {
+        if !self.midi.armed.is_empty() || !self.midi.audio_armed.is_empty() {
+            return None;
+        }
+        self.selected_track.filter(|id| {
+            self.session
+                .project
+                .tracks
+                .iter()
+                .any(|track| track.id == *id && track.kind == daw_core::TrackKind::Audio)
+        })
+    }
+
+    fn audio_take_request(&self) -> Option<super::midi_service::AudioTake> {
+        let mut routes = Vec::new();
+        let mut tracks = Vec::new();
+        let device = &self.settings.audio.input_device;
+        let fallback = self.audio_fallback();
+        for track in &self.session.project.tracks {
+            if track.kind != daw_core::TrackKind::Audio
+                || (!self.midi.audio_armed.contains(&track.id) && fallback != Some(track.id))
+            {
+                continue;
+            }
+            let route = self
+                .midi
+                .audio_inputs
+                .get(&track.id)
+                .filter(|(input, _)| input == device)
+                .map_or(InputChannels::default(), |(_, route)| *route);
+            let index = routes.iter().position(|r| *r == route).unwrap_or_else(|| {
+                let index = routes.len();
+                routes.push(route);
+                index
+            });
+            tracks.push((track.id, index));
+        }
+        (!tracks.is_empty()).then(|| super::midi_service::AudioTake {
+            input: InputRequest {
+                device: device.clone(),
+                routes,
+            },
+            tracks,
+            midi_targets: self
+                .session
+                .project
+                .tracks
+                .iter()
+                .filter(|t| t.kind == daw_core::TrackKind::Midi && self.midi.armed.contains(&t.id))
+                .map(|t| t.id)
+                .collect(),
+        })
+    }
+
+    pub(super) fn audio_recording_input(&mut self, ui: &mut egui::Ui, track: Id) {
+        if self.audio_devices.catalog.is_none()
+            && !self.audio_devices.busy()
+            && self.audio_devices.error.is_none()
+        {
+            self.refresh_audio_devices();
+        }
+        let device = &self.settings.audio.input_device;
+        let channels = self
+            .audio_devices
+            .catalog
+            .as_ref()
+            .and_then(|catalog| {
+                let id = device.as_ref().or(catalog.default_input.as_ref())?;
+                catalog.inputs.iter().find(|input| &input.id == id)
+            })
+            .and_then(|input| {
+                input
+                    .configurations
+                    .iter()
+                    .map(|config| config.channels)
+                    .max()
+            })
+            .unwrap_or(1);
+        let selected = self
+            .midi
+            .audio_inputs
+            .get(&track)
+            .filter(|(input, _)| input == device)
+            .map_or(InputChannels::default(), |(_, route)| *route);
+        let label = |route: InputChannels| {
+            if route.stereo {
+                format!(
+                    "Stereo {}–{}",
+                    u32::from(route.first) + 1,
+                    u32::from(route.first) + 2
+                )
+            } else {
+                format!("Mono {}", u32::from(route.first) + 1)
+            }
+        };
+        let mut next = selected;
+        ui.add_enabled_ui(!self.midi.busy(), |ui| {
+            crate::menus::Dropdown::from_id_salt(("audio-recording-input", track))
+                .selected_text(label(selected))
+                .show_ui(ui, |ui| {
+                    for first in 0..channels {
+                        let route = InputChannels {
+                            first,
+                            stereo: false,
+                        };
+                        ui.selectable_value(&mut next, route, label(route));
+                        if first + 1 < channels {
+                            let route = InputChannels {
+                                first,
+                                stereo: true,
+                            };
+                            ui.selectable_value(&mut next, route, label(route));
+                        }
+                    }
+                });
+        });
+        if next != selected {
+            self.midi.audio_inputs.insert(track, (device.clone(), next));
+        }
+    }
     pub(super) fn midi_dialogs(&mut self, ctx: &egui::Context, surface: Option<&mut egui::Ui>) {
         if self.project_prompt_kind() != Some(crate::project_prompt::ProjectPromptKind::Recovery) {
             return;
@@ -471,5 +686,97 @@ impl DawUi {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod recording_tests {
+    use super::*;
+
+    #[test]
+    fn selected_audio_follows_selection_until_a_track_is_explicitly_armed() {
+        let mut app = DawUi::default();
+        let a = app.session.project.add_track().unwrap();
+        let b = app.session.project.add_track().unwrap();
+        let midi = app.session.project.add_midi_track().unwrap();
+        let before = app.session.project.clone();
+        let arm_for = |app: &DawUi, id| {
+            let track = app
+                .session
+                .project
+                .tracks
+                .iter()
+                .find(|t| t.id == id)
+                .unwrap();
+            app.midi_arm(track).unwrap()
+        };
+
+        app.select_track(a, false);
+        let mut arm = arm_for(&app, a);
+        assert!(arm.fallback && !arm.armed);
+        assert_eq!(app.audio_take_request().unwrap().tracks, [(a, 0)]);
+        arm.armed = true;
+        app.apply_midi_arm(a, Some(arm));
+
+        app.select_track(b, false);
+        assert!(!arm_for(&app, b).fallback);
+        assert_eq!(app.audio_take_request().unwrap().tracks, [(a, 0)]);
+        let mut arm = arm_for(&app, a);
+        assert!(arm.armed && !arm.fallback);
+        arm.armed = false;
+        app.apply_midi_arm(a, Some(arm));
+
+        assert!(arm_for(&app, b).fallback);
+        assert_eq!(app.audio_take_request().unwrap().tracks, [(b, 0)]);
+        app.midi.recording = true;
+        app.midi.audio_peaks.insert(b, std::sync::Arc::default());
+        app.select_track(a, false);
+        assert!(!arm_for(&app, a).fallback);
+        assert!(arm_for(&app, b).fallback);
+        assert_eq!(arm_for(&app, b).input_peak, Some(0.0));
+        app.midi.recording = false;
+        app.select_track(b, false);
+
+        app.midi.armed.insert(midi);
+        assert!(!arm_for(&app, b).fallback);
+        assert!(app.audio_take_request().is_none());
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
+    }
+
+    #[test]
+    fn audio_arms_share_routes_and_mixed_take_requires_explicit_midi_arm() {
+        let mut app = DawUi::default();
+        let a = app.session.project.add_track().unwrap();
+        let b = app.session.project.add_track().unwrap();
+        let c = app.session.project.add_midi_track().unwrap();
+        app.select_track(c, false);
+        let before = app.session.project.clone();
+        assert!(app.audio_take_request().is_none());
+        for id in [a, b] {
+            let track = app
+                .session
+                .project
+                .tracks
+                .iter()
+                .find(|t| t.id == id)
+                .unwrap();
+            let mut arm = app.midi_arm(track).unwrap();
+            assert!(arm.audio && !arm.fallback && !arm.armed);
+            arm.armed = true;
+            app.apply_midi_arm(id, Some(arm));
+        }
+        let take = app.audio_take_request().unwrap();
+        assert_eq!(take.input.routes, [InputChannels::default()]);
+        assert_eq!(take.tracks, [(a, 0), (b, 0)]);
+        assert!(take.midi_targets.is_empty());
+        assert_eq!(
+            daw_core::resolve_midi_targets(&app.session.project, &app.midi.armed, Some(c)),
+            [c]
+        );
+        app.midi.armed.insert(c);
+        assert_eq!(app.audio_take_request().unwrap().midi_targets, [c]);
+        assert_eq!(app.session.project, before);
+        assert!(!app.dirty);
     }
 }

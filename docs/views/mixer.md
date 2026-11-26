@@ -4,7 +4,7 @@ Mixer controls track levels and the final project output. It uses the same track
 
 ## Track controls
 
-MIDI tracks have an **R** button in its own group after M/S on the same row. Enable several tracks to receive live MIDI together. With none enabled, input follows the selected MIDI track; its R text shows the active color on the regular background. See [live MIDI](../instruments/live-midi.md) and [recording](../editing/midi-recording.md).
+Audio and MIDI tracks have an **R** button in its own group after M/S on the same row. A selected Audio track is ready to [record](../editing/audio-recording.md) when no track is armed. Enable R to keep an Audio track armed after you select another track. Enable several tracks to receive live MIDI together. With none enabled, input follows the selected MIDI track; its R text shows the active color on the regular background. See [live MIDI](../instruments/live-midi.md) and [recording](../editing/midi-recording.md).
 
 Selected tracks use a highlighted strip background without a selection outline.
 

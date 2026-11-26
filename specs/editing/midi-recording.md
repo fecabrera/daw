@@ -24,6 +24,10 @@ acknowledges the actual start and authoritative stop/pause/seal/panic boundaries
 No route at the start boundary seals the empty take. Capture may extend beyond
 the existing arrangement. Loop recording is rejected.
 
+The callback publishes complete clock readings to the input broker without
+waiting. The broker can use the last complete reading during publication.
+It treats a full event queue as a fault and retains the accepted take prefix.
+
 Route removals close notes on that target; additions accept only later attacks.
 Repeated pitches use physical tokens and FIFO releases. Sustain resolves to note
 durations. All tracks use one origin. Convert integer project frames to 960-PPQ

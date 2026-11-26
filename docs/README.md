@@ -104,6 +104,7 @@ need a selection retain their usual empty-selection prompts.
 ### Record and recover
 
 - [Live MIDI input](instruments/live-midi.md).
+- [Audio recording](editing/audio-recording.md).
 - [MIDI recording](editing/midi-recording.md).
 - [Autosave and recovery](projects/recovery.md).
 

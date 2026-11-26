@@ -88,7 +88,7 @@ versions can ignore these events and play the project with a constant tempo.
 
 ## Track controls and display
 
-MIDI tracks have an **R** button in its own group after M/S on the same row. Enable several tracks to receive live MIDI together. With none enabled, input follows the selected MIDI track; its R text shows the active color on the regular background. See [live MIDI](../instruments/live-midi.md) and [recording](../editing/midi-recording.md).
+Audio and MIDI tracks have an **R** button in its own group after M/S on the same row. A selected Audio track is ready to [record](../editing/audio-recording.md) when no track is armed. Enable R to keep an Audio track armed after you select another track. Enable several tracks to receive live MIDI together. With none enabled, input follows the selected MIDI track; its R text shows the active color on the regular background. See [live MIDI](../instruments/live-midi.md) and [recording](../editing/midi-recording.md).
 
 Timeline arranges audio and MIDI clips on tracks. Use the editor pane for MIDI notes, Instrument for MIDI sounds, and Mixer for track levels. Its horizontal scrollbar floats over the content, like the effects lane’s scrollbar; hover near the bottom of the timeline to reveal and expand it.
 

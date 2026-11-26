@@ -1547,6 +1547,14 @@ impl DawUi {
         }
     }
     fn save(&mut self, save_as: bool) {
+        if self.midi.audio_take && self.midi.busy() {
+            self.midi.file_after_audio_take = Some(if save_as {
+                FileAction::SaveAs
+            } else {
+                FileAction::Save
+            });
+            return;
+        }
         if save_as || self.session.folder.is_none() || self.session.recovered_working_copy() {
             self.project_prompt_window.begin();
             self.project_name_dialog = Some(project_name_dialog::ProjectNameDialog::new(
@@ -3135,6 +3143,19 @@ impl DawUi {
     }
 
     pub fn file_action_enabled(&self, action: FileAction) -> bool {
+        if self.midi.audio_take
+            && self.midi.busy()
+            && matches!(
+                action,
+                FileAction::Save
+                    | FileAction::SaveAs
+                    | FileAction::New
+                    | FileAction::Open
+                    | FileAction::CloseProject
+            )
+        {
+            return true;
+        }
         self.regular_save.is_none()
             && (self.media_ready()
                 || !matches!(
@@ -3215,6 +3236,19 @@ impl DawUi {
 
     pub fn perform_file_action(&mut self, action: FileAction) {
         if !self.file_action_enabled(action) {
+            return;
+        }
+        if self.midi.audio_take
+            && self.midi.busy()
+            && matches!(
+                action,
+                FileAction::New | FileAction::Open | FileAction::CloseProject
+            )
+        {
+            self.midi.file_after_audio_take = Some(action);
+            if !self.midi.finalizing {
+                self.midi_boundary(daw_output::MidiAction::Seal);
+            }
             return;
         }
         match action {

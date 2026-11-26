@@ -571,10 +571,24 @@ impl DawUi {
     }
 
     pub(super) fn track_context_menu(
-        &self,
+        &mut self,
         ui: &mut egui::Ui,
         track: Option<Id>,
     ) -> Option<TrackAction> {
+        if let Some(id) = track
+            && self
+                .session
+                .project
+                .tracks
+                .iter()
+                .any(|t| t.id == id && t.kind == daw_core::TrackKind::Audio)
+        {
+            ui.horizontal(|ui| {
+                ui.label("Input");
+                self.audio_recording_input(ui, id);
+            });
+            menus::separator(ui);
+        }
         if track.is_some_and(|id| {
             self.session
                 .project

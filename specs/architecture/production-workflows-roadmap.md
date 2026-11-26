@@ -1,10 +1,9 @@
 # Basic production workflows: implementation roadmap
 
-Status: implementation and acceptance roadmap, updated 2026-11-16. Initial
-recovery, fades/crossfades, live MIDI/recording, audio sidechain modulation and
-clip/track Bounce are implemented. Audio capture, automation and the remaining
-feature extensions are pending. Native acceptance remains a separate release
-gate; implementation status does not close it.
+Updated 2026-11-25. Initial recovery, fades/crossfades, live MIDI and MIDI
+recording, audio recording, audio sidechain modulation and clip/track Bounce
+are implemented. Software input monitoring, automation and the remaining
+feature extensions are pending. Native acceptance remains a release gate.
 
 Existing topic contracts remain authoritative. Proposed work still needs its
 listed design gates resolved before implementation. Assign calendar estimates
@@ -27,8 +26,8 @@ vertical slice at each gate over adding all controls before their engine paths.
 | 2B | Adjacent audio clip crossfades | Initial scope implemented; broader transitions remain pending | Stage 2A and transition-model decision |
 | 3A | Live MIDI input | Implemented | Stage 0 event-clock contract |
 | 3B | MIDI recording | Implemented; performance extensions remain pending | Stages 1 and 3A |
-| 4A | Audio capture and monitoring prototype | Pending feature work | Stage 0 capture clock/device contract |
-| 4B | Recoverable audio recording | Pending feature work | Stages 1 and 4A |
+| 4A | Audio capture and monitoring | Capture implemented. Software monitoring and native clock qualification are open. | Stage 0 capture clock/device contract |
+| 4B | Recoverable audio recording | Implemented. Native acceptance is open. | Stages 1 and 4A |
 | 5A | Automation model and read playback | Pending feature work | Stage 0 parameter/timing contract |
 | 5B | Automation lanes and write recording | Pending feature work | Stage 5A; reuse Stage 3B gesture capture |
 | 6A | Audio detector and shared sidechain provider | Implemented | Shared modulation and audio/control dependency contract |
@@ -201,31 +200,26 @@ synthetic events do not establish physical-device results.
 
 ## Stage 4: audio recording and monitoring
 
-**Feature status: pending.** The saved input-device preference is a foundation;
-it does not implement audio capture, input meters or monitoring.
+**Feature status:** Audio capture and take publication are implemented. Physical
+loopback, device compatibility, and platform permission acceptance remain open.
+See the [audio recording contract](../editing/audio-recording.md).
 
-### 4A: capture feasibility and monitoring
+### 4A: input and capture timing
 
-Extend the selected input-device path to explicit mono/stereo channel pairs and
-input meters. Start monitoring Off; make it an explicit action to avoid feedback.
-Reuse the engine's track/bus processing for monitored audio. Define whether the
-user hears effects while the stored take remains dry, and test that routing.
-Use a preallocated capture ring and a worker writer. Keep input resampling and
-clock-drift handling explicit for the supported device configurations.
+Audio track R selects the destination. The capture stream accepts the saved
+input device and explicit mono or stereo routes. The worker aligns dry PCM to
+the playback clock and capture shows input peaks. Software monitoring defaults
+to Off and explicit monitor routing remains pending. Validate every supported
+project rate, negotiated device formats, physical placement, and long-run drift.
 
 ### 4B: recording lifecycle
 
-Record to uniquely owned temporary files. Track valid written frames and capture
-gaps. Finalize WAV headers, decode/prepare peaks and register project-owned media
-on workers before atomic take publication. Reuse source ownership for Save As,
-collection and history. Support unnamed projects and keep Undo-retained takes.
-Recover valid interrupted material without advertising unwritten frames.
-
-Exit gate: all project rates, mono/stereo mapping, alignment against an existing
-click, long capture/drift, buffer pressure, disk full, permissions, device loss,
-cancel/stop, crash recovery, Save As and Undo/Redo pass. Define a measured timing
-error budget in Stage 0. Report actual latency and verified device combinations.
-Defer comping, punch recording and loop takes.
+Shared transport boundaries apply to audio-only and explicitly mixed takes.
+The capture journal retains a checksummed prefix. The result uses ordinary
+project-owned WAV sources, one placement transaction and one Undo step. Test
+permission denial, disk pressure, device loss, interruption, Save As, and
+recovery on packaged macOS, Windows and Linux builds. Comping, punch recording,
+and loop takes remain deferred.
 
 ## Stage 5: timeline automation
 

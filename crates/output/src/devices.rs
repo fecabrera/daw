@@ -33,7 +33,7 @@ pub(super) fn sample_format_from_cpal(format: cpal::SampleFormat) -> Option<Samp
 #[serde(default)]
 pub struct AudioSettings {
     pub output_device: Option<DeviceId>,
-    /// Reserved selection; no input stream is opened until capture is implemented.
+    /// Selected capture device. It is opened when an audio take prepares.
     pub input_device: Option<DeviceId>,
 }
 
@@ -145,6 +145,26 @@ pub(super) fn output_device(selection: Option<&DeviceId>) -> Result<cpal::Device
         .ok_or_else(|| {
             format!(
                 "Output device '{}' is unavailable. Choose another output device in Settings.",
+                selection.name
+            )
+        })
+}
+
+pub(super) fn input_device(selection: Option<&DeviceId>) -> Result<cpal::Device, String> {
+    #[cfg(target_os = "windows")]
+    super::wasapi::prepare()?;
+    let host = cpal::default_host();
+    let Some(selection) = selection else {
+        return host
+            .default_input_device()
+            .ok_or("No default audio input device".into());
+    };
+    device_ids(host.input_devices().map_err(|error| error.to_string())?)?
+        .into_iter()
+        .find_map(|(id, device)| (id == *selection).then_some(device))
+        .ok_or_else(|| {
+            format!(
+                "Input device '{}' is unavailable. Choose an input in Settings.",
                 selection.name
             )
         })

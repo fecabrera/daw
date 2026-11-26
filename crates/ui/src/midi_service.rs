@@ -1,6 +1,7 @@
 //! Device/broker/capture worker. No input or recording loop runs in egui painting.
 use crate::midi_writer::{Request as WriteRequest, Status as WriteStatus, Writer};
 use daw_core::Id;
+use daw_output::recording::InputRequest;
 use daw_output::{MidiAction, MidiSender};
 use daw_project::{SaveSnapshot, Session, recovery::RecoveryEntry};
 use rtrb::{Producer, RingBuffer};
@@ -71,8 +72,9 @@ pub(super) enum Command {
     Connect(Option<String>, Option<u8>, i16),
     Output(MidiSender),
     Routes(Vec<Id>, Vec<Id>),
-    Record(Session, u64, u64),
+    Record(Session, u64, u64, Option<AudioTake>),
     Boundary(MidiAction),
+    FocusLost,
     Snapshot(SaveSnapshot, u64, Option<PathBuf>),
     Acknowledge,
     Retry,
@@ -81,6 +83,11 @@ pub(super) enum Command {
     Discard(RecoveryEntry),
     LeaveProject(Id),
     Shutdown,
+}
+pub(super) struct AudioTake {
+    pub input: InputRequest,
+    pub tracks: Vec<(Id, usize)>,
+    pub midi_targets: Vec<Id>,
 }
 pub(super) enum Message {
     StorageReady,
@@ -93,6 +100,7 @@ pub(super) enum Message {
     Pitch(u8, Vec<Id>),
     Recoveries(Vec<RecoveryEntry>),
     Recovered(Session),
+    AudioPeak(Vec<(Id, Arc<std::sync::atomic::AtomicU32>)>),
 }
 #[derive(Clone, Default)]
 pub(super) struct Inbox(Arc<Mutex<VecDeque<Message>>>);
@@ -106,6 +114,7 @@ impl Inbox {
                 (Message::Devices(_), Message::Devices(_))
                     | (Message::Connected(_), Message::Connected(_))
                     | (Message::Recording(_), Message::Recording(_))
+                    | (Message::AudioPeak(_), Message::AudioPeak(_))
             )
         });
         if queue.len() >= 256 {
@@ -198,6 +207,9 @@ impl Service {
     pub fn panic(&self) {
         self.emergency.store(true, Ordering::Release);
     }
+    pub fn focus_lost(&self) {
+        let _ = self.send(Command::FocusLost);
+    }
 }
 impl Drop for Service {
     fn drop(&mut self) {
@@ -225,6 +237,7 @@ fn run(
     let mut take_busy = false;
     let mut record_sent = false;
     let mut capture_started = false;
+    let mut audio_take = false;
     let mut cancelled = false;
     let overflow = Arc::new(AtomicBool::new(false));
     let (mut ingress, mut raw) = RingBuffer::new(8192);
@@ -254,10 +267,11 @@ fn run(
                     take_busy = false;
                     record_sent = false;
                     capture_started = false;
+                    audio_take = false;
                     cancelled = false;
                 }
                 WriteStatus::BeginReady(count_in_frames) => {
-                    if !cancelled && !routes.is_empty() {
+                    if !cancelled && (audio_take || !routes.is_empty()) {
                         if let Some(o) = &mut output {
                             match o.send(MidiAction::Record { count_in_frames }) {
                                 Ok(()) => record_sent = true,
@@ -290,7 +304,7 @@ fn run(
                 if fault || !record_sent {
                     writer.interrupt(
                         output
-                            .as_ref()
+                            .as_mut()
                             .map_or(last_frame, |o| o.last_frame().max(last_frame)),
                     );
                 }
@@ -471,21 +485,43 @@ fn run(
                         routes = next;
                         monitoring = next_monitoring;
                     }
-                    Command::Record(session, rev, count_in_frames) => {
+                    Command::Record(session, rev, count_in_frames, audio) => {
                         if take_busy {
                             if let Some(o) = &mut output {
                                 o.send(MidiAction::Seal)?;
                             }
                             return Ok(());
                         }
-                        if routes.is_empty() || output.is_none() || !storage_ready {
-                            return Err("Select a MIDI track and wait for recovery storage before recording".into());
+                        let Some(sender) = output.as_ref().filter(|_| storage_ready) else {
+                            return Err(
+                                "Wait for playback and recovery storage before recording".into()
+                            );
+                        };
+                        if audio.is_none() && routes.is_empty() {
+                            return Err(
+                                "Select a MIDI track or arm a track before recording".into()
+                            );
                         }
+                        if audio
+                            .as_ref()
+                            .is_some_and(|take| !take.midi_targets.is_empty())
+                            && selected_device.is_none()
+                        {
+                            return Err(
+                                "Connect the selected MIDI input before starting a mixed take"
+                                    .into(),
+                            );
+                        }
+                        let targets = audio
+                            .as_ref()
+                            .map_or_else(|| routes.clone(), |take| take.midi_targets.clone());
+                        audio_take = audio.is_some();
                         writer.request(WriteRequest::Begin {
                             session,
-                            targets: routes.clone(),
+                            targets,
                             revision: rev,
                             count_in: count_in_frames,
+                            audio: audio.map(|take| (take, sender.recording_clock())),
                         })?;
                         take_busy = true;
                         record_sent = false;
@@ -500,6 +536,12 @@ fn run(
                         }
                         if let Some(o) = &mut output {
                             o.send(action)?;
+                        }
+                    }
+                    Command::FocusLost => {
+                        performance.silence();
+                        if let Some(o) = &mut output {
+                            o.send_at(MidiAction::Silence, control_at)?;
                         }
                     }
                     Command::Snapshot(snapshot, rev, folder) => {
@@ -575,6 +617,7 @@ fn run(
                     _ => {}
                 }
                 if take_busy
+                    && (record_sent || capture_started)
                     && (capture_started
                         || matches!(
                             receipt.action,

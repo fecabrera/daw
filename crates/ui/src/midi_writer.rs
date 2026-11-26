@@ -1,6 +1,7 @@
 //! Storage has its own worker so slow snapshots and disks cannot stall live note release.
-use super::midi_service::{Inbox, Message};
+use super::midi_service::{AudioTake, Inbox, Message};
 use daw_core::Id;
+use daw_output::recording::{Capture, ClockPort};
 use daw_output::{MidiAction, MidiReceipt};
 use daw_project::{
     SaveSnapshot, Session,
@@ -24,6 +25,7 @@ pub(super) enum Request {
         targets: Vec<Id>,
         revision: u64,
         count_in: u64,
+        audio: Option<(AudioTake, Arc<ClockPort>)>,
     },
     Snapshot(SaveSnapshot, u64, Option<PathBuf>),
     Acknowledge,
@@ -72,6 +74,10 @@ impl Writer {
             let _ = messages.send(Message::StorageReady);
             let _ = status.send(Status::StorageReady);
             let mut take: Option<TakeJournal> = None;
+            let mut audio_capture: Option<Capture> = None;
+            let mut audio_end: Option<(u64, Instant)> = None;
+            let mut last_midi_frame = 0;
+            let mut audio_watermark = 0;
             let mut base = String::new();
             let mut revision = 0;
             let mut retry_base: Option<Session> = None;
@@ -108,6 +114,7 @@ impl Writer {
                                 targets,
                                 revision: rev,
                                 count_in,
+                                audio,
                             } => {
                                 if take.is_some() {
                                     return Err("A MIDI take is already open".into());
@@ -116,11 +123,54 @@ impl Writer {
                                     .map_err(|e| e.to_string())?;
                                 revision = rev;
                                 interrupted = false;
+                                last_midi_frame = 0;
+                                audio_watermark = 0;
                                 retry_base = Some(session.clone());
-                                take = Some(
+                                audio_end = None;
+                                take = Some(if let Some((audio, clock)) = audio {
+                                    let stereo: Vec<_> = audio
+                                        .input
+                                        .routes
+                                        .iter()
+                                        .map(|route| route.stereo)
+                                        .collect();
+                                    let project_rate = session.project.sample_rate_hz;
+                                    let journal = TakeJournal::begin_audio(
+                                        store.clone(),
+                                        session,
+                                        &targets,
+                                        rev,
+                                        &stereo,
+                                        &audio.tracks,
+                                    )
+                                    .map_err(|e| e.to_string())?;
+                                    let capture = Capture::open(&clock, project_rate, audio.input)
+                                        .and_then(|mut capture| {
+                                            capture.prepare()?;
+                                            Ok(capture)
+                                        });
+                                    let capture = match capture {
+                                        Ok(capture) => capture,
+                                        Err(error) => {
+                                            journal.cancel_preflight().map_err(|cleanup| {
+                                                format!("{error}. Take cleanup: {cleanup}")
+                                            })?;
+                                            return Err(error);
+                                        }
+                                    };
+                                    let _ = messages.send(Message::AudioPeak(
+                                        audio
+                                            .tracks
+                                            .iter()
+                                            .map(|&(id, route)| (id, capture.peaks[route].clone()))
+                                            .collect(),
+                                    ));
+                                    audio_capture = Some(capture);
+                                    journal
+                                } else {
                                     TakeJournal::begin(store.clone(), session, &targets, rev)
-                                        .map_err(|e| e.to_string())?,
-                                );
+                                        .map_err(|e| e.to_string())?
+                                });
                                 let _ = status.send(Status::BeginReady(count_in));
                             }
                             Request::Snapshot(snapshot, rev, folder) => {
@@ -203,7 +253,7 @@ impl Writer {
                                     .as_ref()
                                     .ok_or("Reopen the retained recovery after restarting DAW")?;
                                 let mut candidate = original.clone();
-                                candidate.project = document.project;
+                                candidate.project = document.project.clone();
                                 for asset in &mut candidate.project.assets {
                                     if let Some(before) =
                                         original.project.assets.iter().find(|a| a.id == asset.id)
@@ -211,6 +261,9 @@ impl Writer {
                                         asset.source = before.source.clone();
                                     }
                                 }
+                                candidate
+                                    .load_recovered_recordings(&document, original)
+                                    .map_err(|e| e.to_string())?;
                                 candidate.project.validate().map_err(|e| e.to_string())?;
                                 let _ = messages.send(Message::Take {
                                     base: base.clone(),
@@ -241,6 +294,9 @@ impl Writer {
                     let Some(journal) = &mut take else {
                         continue;
                     };
+                    if audio_end.is_some() {
+                        continue;
+                    }
                     let result = match receipt.action {
                         MidiAction::Record { .. } => journal.start(receipt.frame),
                         MidiAction::Route { track, enabled } => journal.event(CaptureEvent {
@@ -277,15 +333,31 @@ impl Writer {
                             frame: receipt.frame,
                             action: CaptureAction::Release { token },
                         }),
+                        MidiAction::Silence => {
+                            let frame = receipt.frame.max(last_midi_frame);
+                            journal.event(CaptureEvent {
+                                frame,
+                                action: CaptureAction::ReleaseAll,
+                            })
+                        }
+                        MidiAction::CaptureWatermark => {
+                            audio_watermark = audio_watermark.max(receipt.frame);
+                            continue;
+                        }
                         _ => {
-                            finish(
-                                &mut take,
-                                receipt.frame,
-                                revision,
-                                &base,
-                                &messages,
-                                &status,
-                            );
+                            if audio_capture.is_some() {
+                                audio_end = Some((receipt.frame, Instant::now()));
+                                audio_watermark = receipt.frame;
+                            } else {
+                                finish(
+                                    &mut take,
+                                    receipt.frame,
+                                    revision,
+                                    &base,
+                                    &messages,
+                                    &status,
+                                );
+                            }
                             continue;
                         }
                     };
@@ -296,10 +368,54 @@ impl Writer {
                             .send(Message::Error(format!("MIDI take interrupted: {error}")));
                         terminal_worker.store(receipt.frame, Ordering::Release);
                     }
+                    last_midi_frame = last_midi_frame.max(receipt.frame);
                 }
                 if receipts.is_empty() {
                     let cutoff = terminal_worker.swap(u64::MAX, Ordering::AcqRel);
                     if cutoff != u64::MAX {
+                        if audio_capture.is_some() {
+                            audio_end.get_or_insert((cutoff, Instant::now()));
+                        } else {
+                            finish(&mut take, cutoff, revision, &base, &messages, &status);
+                        }
+                    }
+                }
+                if let (Some(capture), Some(journal)) = (&mut audio_capture, &mut take) {
+                    let poll = if interrupted {
+                        Ok(())
+                    } else {
+                        capture.poll_through(audio_watermark, |frame| {
+                            journal.audio_frame(frame).map_err(|e| e.to_string())
+                        })
+                    };
+                    if !interrupted && (capture.faulted() || poll.is_err()) {
+                        interrupted = true;
+                        let _ = status.send(Status::Fault);
+                        let reason = poll.err().unwrap_or_else(|| {
+                            "lost or discontinuous capture clock, input, or queue data".into()
+                        });
+                        let _ = messages
+                            .send(Message::Error(format!("Audio take interrupted: {reason}")));
+                        audio_end.get_or_insert((
+                            capture
+                                .origin()
+                                .unwrap_or(0)
+                                .saturating_add(capture.delivered()),
+                            Instant::now(),
+                        ));
+                    }
+                    if let Some((cutoff, since)) = audio_end
+                        && (capture.ended()
+                            || capture.origin().is_none()
+                            || interrupted
+                            || since.elapsed() >= Duration::from_secs(2))
+                    {
+                        if !capture.ended() && capture.origin().is_some() && !interrupted {
+                            let _ = messages.send(Message::Error("Audio input ended before the playback tail was verified. The valid recording prefix was kept.".into()));
+                        }
+                        audio_capture = None;
+                        audio_end = None;
+                        let _ = messages.send(Message::AudioPeak(Vec::new()));
                         finish(&mut take, cutoff, revision, &base, &messages, &status);
                     }
                 }
@@ -369,7 +485,7 @@ fn finish(
         Err(error) => {
             let _ = messages.send(Message::TakeRetained(true));
             let _ = messages.send(Message::Error(format!(
-                "The complete MIDI take is retained for recovery: {error}"
+                "The take is retained for recovery: {error}"
             )));
         }
     }
@@ -424,6 +540,7 @@ mod tests {
                 targets: vec![a, b],
                 revision: 0,
                 count_in: 0,
+                audio: None,
             })
             .unwrap();
         wait_status(&writer, |s| matches!(s, Status::BeginReady(0)));

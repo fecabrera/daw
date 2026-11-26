@@ -2,6 +2,82 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Recording clock publication — 2026-11-25
+
+A regression held an unpublished clock reading while it sent Record
+through the shared event queue. The callback accepted Record with the last
+complete reading and the queue stayed healthy. The regression passed 100
+consecutive debug runs. A separate test filled the event queue and
+confirmed that the real overflow still reported a fault.
+
+Formatting and strict workspace Clippy passed. Debug and release suites
+each passed 3,844 tests with 25 ignored and 22 native Audio Unit cases
+filtered. The local macOS debug bundle passed strict signature
+verification. The reported intermittent sequence was not reproduced on
+the user's device.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+## Audio track selection and record arm — 2026-11-25
+
+The routing regression checked that selection supplies the Audio target with
+no tracks armed, an explicit arm survives reselection, and removing the last
+arm restores selection. An explicit MIDI arm suppresses the Audio fallback.
+The final UI tests also checked that a running take keeps the fallback cue
+and input peak on its original Audio destination after selection changes.
+
+Formatting and strict workspace Clippy passed. The workspace suites each
+passed 3,842 tests with 25 ignored and 22 native Audio Unit registration
+cases filtered. The final UI suite passed 1,109 tests in both debug and
+release, with three ignored. The local macOS debug bundle passed strict
+signature verification. Native interaction and physical alignment were
+outside these checks.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked -p daw-ui --lib
+cargo test --offline --locked --release -p daw-ui --lib
+```
+
+## Audio recording — 2026-11-25
+
+The simulated loopback passed at 44.1, 48, 88.2, 96, 176.4 and 192 kHz.
+It used 48 kHz output and an independent 44.1 kHz input clock, including
+fractional input phase and both slower and faster clocks. Every take had
+the exact frame count. Both impulses landed within four project frames of
+their reference. A separate simulation at the 30-minute mark passed with
+both directions of drift.
+
+Mixed-take tests covered shared audio routes, grouped Undo/Redo, first
+Save, Save As, and recovery of the verified prefix after PCM corruption.
+The armed-target test covered explicit MIDI destinations during audio
+capture. The stream-retry regression checked that both capture receivers
+can be rebuilt when the requested fixed buffer fails.
+
+Formatting and strict workspace Clippy passed. The debug workspace suite
+passed 3,840 tests. Separate debug runs passed the final cleanup and
+stream-retry checks. The release workspace suite passed 3,841 tests.
+Both workspace suites had 25 ignored tests and filtered 22 native Audio
+Unit registration cases.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+The CLI smoke checks and six macOS packaging tests passed. The local
+macOS debug bundle passed strict signature verification and contained a
+microphone purpose string. The offline package linked the cached pinned
+ONNX Runtime archive.
+
+This Mac had no dedicated loopback endpoint. Physical alignment and
+long-run drift, native recording permission prompts, and platform device
+coverage remain open. See [audio loopback tests](../../docs/development/audio-loopback.md).
+
 ## Short-fill experiment removal — 2026-11-25
 
 Removed the short-fill and attack-interval comparisons after the

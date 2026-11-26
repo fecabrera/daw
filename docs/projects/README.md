@@ -125,7 +125,7 @@ On Linux, **Appearance > Titlebar > Custom** combines the menu, project title an
 
 The main **Settings** window exposes **Output device** and **Input device** under **Playback**. Select an output device and, if needed, save an input-device choice. **ALSA default** on Linux uses the ALSA default device when the next stream opens. It can differ from the desktop audio output. Select **pipewire** or **pulse** when available to use the desktop audio service. On macOS and Windows, **System default** uses the operating system's default device. **Refresh devices** updates the list. An unavailable saved device is marked in the list. Output selection tests the replacement before saving it. Failure keeps the previous device and shows an error in Settings; success stops playback and keeps the playhead. Input selection saves immediately without interrupting playback.
 
-Input selection is saved for future recording. The app does not yet record or monitor input.
+Audio tracks record from the selected input when armed. See [audio recording](../editing/audio-recording.md). Software input monitoring is off.
 
 The output device must support the project's output bit depth. If playback reports an unsupported format, choose another output bit depth in Project Settings or another device in Settings. Device output uses sample-rate conversion when needed and can adapt the hardware buffer size. These adaptations do not rewrite project quality. The driver may mix or convert the stream to a different physical hardware format. Internal processing remains floating point, and export encoding remains separate.
 

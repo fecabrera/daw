@@ -74,6 +74,7 @@ This tree contains implementation requirements, architecture, data formats, acce
 - [Audio fades and crossfades](editing/fades.md): edge handles, midpoint shaping, fixed-boundary transitions and shared rendering.
 - [Clip gain normalization](editing/normalize-gain.md).
 - [Chord catalog](editing/chords.md).
+- [Audio recording](editing/audio-recording.md).
 - [MIDI recording](editing/midi-recording.md).
 
 ### Views

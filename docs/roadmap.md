@@ -8,6 +8,7 @@ DAW provides audio, MIDI and beat arrangement, layered instruments, effects, mix
 - Build [beat patterns](views/beat-editor.md) with independently configured subtrack instruments. Mix the parent and expandable subtracks in [Mixer](views/mixer.md#beat-tracks).
 - Create MIDI patterns and edit notes in the Timeline editor’s piano roll.
 - Play and [record MIDI](editing/midi-recording.md) with multiple R-enabled tracks, selected-track fallback, count-in and sustain capture.
+- [Record audio](editing/audio-recording.md) from mono or stereo inputs, including takes with armed Audio and MIDI tracks.
 - Build MIDI instruments from Oscillator, Sampler, Granulizer, Noise, Envelope, LFO, Amplitude and Macro components.
 - Use [audio sidechain modulation](modulation/audio-sidechain.md) from tracks, groups and Returns, with detector and 0–1 mapping controls beside each connection.
 - Process instruments, tracks and Master with the [built-in effects](README.md#effects), including EQ, filters, dynamics, distortion, stereo imaging and reverbs.
@@ -34,13 +35,13 @@ release dates.
 | 1 | Autosave and recovery | Implemented: private recovery snapshots, startup recovery and durable MIDI takes. Manual Save remains explicit. |
 | 2 | Editable fades and crossfades | Initial scope implemented: fade handles, midpoint curves, adjacent crossfades and group editing. Curve presets and broader transitions remain pending. |
 | 3 | Live MIDI and MIDI recording | Implemented: multiple R-enabled tracks, selected-track fallback, count-in, sustain-to-duration capture and recoverable whole takes. Performance extensions remain pending. |
-| 4 | Audio recording and monitoring | Pending feature work. Saving an input-device preference does not provide capture or monitoring. |
+| 4 | Audio recording and monitoring | Audio recording uses track R, the shared transport and recoverable takes. Native device and alignment acceptance is open. Software input monitoring is pending. |
 | 5 | Timeline automation | Pending feature work. Instrument modulation is already available and remains separate. |
 | 6 | Audio sidechain modulation | Implemented: track/group/Return sources, detector and mapping controls, and shared playback/export behavior. |
 
 ## Planned work
 
-The next unimplemented core workflows are audio recording/monitoring and timeline
+The next unimplemented core workflows are software input monitoring and timeline
 automation. Acceptance checks for implemented features remain open in parallel.
 Each dependent milestone must still pass its required checks before it ships.
 
@@ -100,8 +101,7 @@ not establish behavior on every supported platform or device.
 | Markers and timing maps | Lane gestures, short/narrow layouts, audible tempo transitions, count-in/capture with hardware, and cross-platform playback/export checks. |
 
 Cross-platform native acceptance remains open, including Windows/Linux device
-and UI behavior. Capture and automation will need their own native acceptance
-checks after their feature work is implemented. Recent Settings, modulation-menu
+and UI behavior. Audio recording needs native loopback and device acceptance. Automation needs its own native checks after implementation. Recent Settings, modulation-menu
 and Mixer changes also retain native UI coverage limits; these do not make those
 features pending implementations.
 

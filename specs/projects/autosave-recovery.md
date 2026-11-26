@@ -34,6 +34,13 @@ an applied-take receipt and base generation. Repeated scans/retries use that
 receipt and do not duplicate clips. Acknowledgment removes the active pin only
 after editor publication. Failed publication leaves a retryable result.
 
+Audio and mixed takes use a versioned header and an aligned PCM spool.
+Sync complete audio blocks before recording their checksums in the journal.
+The audio writer waits for the transport's MIDI receipt watermark before
+committing the shared prefix. Recover only verified complete frames and
+clip MIDI events to that same boundary. Keep the version 1 MIDI take reader.
+See [audio recording](../editing/audio-recording.md#publication-and-storage).
+
 ## Recovery and disposal
 
 Recover to a separate marked working copy. Restore a before/after history pair

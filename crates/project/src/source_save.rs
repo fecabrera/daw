@@ -87,6 +87,7 @@ impl Session {
         self.project = next;
         self.folder = written.folder.clone();
         self.retain_temporary_stems();
+        self.retain_recorded_sources();
         Ok(())
     }
 }
@@ -183,6 +184,7 @@ impl SavedSession {
             history.publish_source_relocation(prepared.unwrap(), &saved, folder);
         }
         live.retain_temporary_stems();
+        live.retain_recorded_sources();
         Ok(())
     }
 }
@@ -451,6 +453,7 @@ impl SaveSnapshot {
         let mut next = self.session.clone();
         next.project = relocated_project(&self.session, &relocations, folder)?;
         next.folder = Some(folder.to_owned());
+        next.retain_recorded_sources();
         // Keep included paths portable; preserve normal external Save behavior.
         for asset in &mut next.project.assets {
             if !asset.is_file_audio() || asset.source.is_included_recording() {

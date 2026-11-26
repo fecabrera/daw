@@ -57,6 +57,28 @@ fn mute_solo_arm_with_size(
                         if arm.fallback && !arm.armed {
                             text = text.color(ui.visuals().selection.stroke.color);
                         }
+                        let label = if arm.audio {
+                            if arm.armed {
+                                "Disarm audio recording"
+                            } else if arm.input_peak.is_some() {
+                                "Selected audio recording target"
+                            } else if arm.fallback {
+                                "Selected audio track is ready to record. Click R to keep it armed."
+                            } else {
+                                "Arm audio recording"
+                            }
+                        } else if arm.armed {
+                            "Disable MIDI reception"
+                        } else {
+                            "Enable MIDI reception"
+                        };
+                        let tooltip = match arm.input_peak {
+                            Some(peak) if peak > 0.0 => {
+                                format!("{label}\nInput peak {:.1} dBFS", 20.0 * peak.log10())
+                            }
+                            Some(_) => format!("{label}\nInput peak −∞ dBFS"),
+                            None => label.into(),
+                        };
                         let response = ui
                             .add_sized(
                                 egui::Vec2::splat(size),
@@ -65,20 +87,20 @@ fn mute_solo_arm_with_size(
                                     .stroke(egui::Stroke::NONE)
                                     .corner_radius(5),
                             )
-                            .on_hover_text(if arm.armed {
-                                "Disable MIDI reception"
-                            } else {
-                                "Enable MIDI reception"
-                            });
+                            .on_hover_text(tooltip);
                         response.widget_info(|| {
                             egui::WidgetInfo::selected(
                                 egui::WidgetType::Button,
                                 ui.is_enabled(),
                                 arm.armed,
-                                "Receive MIDI and recording",
+                                if arm.audio {
+                                    "Arm audio recording"
+                                } else {
+                                    "Receive MIDI and recording"
+                                },
                             )
                         });
-                        if response.clicked() {
+                        if response.clicked() && arm.editable {
                             arm.armed = !arm.armed;
                         }
                     });
@@ -310,6 +332,8 @@ mod tests {
                 armed: false,
                 fallback,
                 editable: true,
+                input_peak: None,
+                audio: false,
             };
             let mut buttons = [Rect::NOTHING; 2];
             let mut output = ctx.run_ui(Default::default(), |ui| {

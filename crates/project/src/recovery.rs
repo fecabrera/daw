@@ -259,9 +259,13 @@ impl RecoveryStore {
             )
             && folder.join(format!("discard-{project}")).exists()
         {
-            let journal = folder.join(format!("take-{id}.journal"));
-            if ordinary(&journal, false).is_ok() {
-                fs::remove_file(journal).map_err(error)?;
+            for file in [
+                folder.join(format!("take-{id}.journal")),
+                crate::audio_recording::spool_path(folder, id),
+            ] {
+                if ordinary(&file, false).is_ok() {
+                    fs::remove_file(file).map_err(error)?;
+                }
             }
             fs::remove_file(&active).map_err(error)?;
         }
@@ -273,7 +277,10 @@ impl RecoveryStore {
                 && ordinary(&path, false).is_ok()
                 && name
                     .strip_prefix("take-")
-                    .and_then(|s| s.strip_suffix(".journal"))
+                    .and_then(|s| {
+                        s.strip_suffix(".journal")
+                            .or_else(|| s.strip_suffix(".pcm"))
+                    })
                     .and_then(|s| Id::parse_str(s).ok())
                     .is_some()
             {
@@ -719,9 +726,15 @@ mod tests {
         let unknown = store.folder.join(Id::new_v4().to_string());
         fs::create_dir(&unknown).unwrap();
         fs::write(unknown.join("unrelated"), b"preserve").unwrap();
+        let orphan = crate::audio_recording::spool_path(&store.folder, Id::new_v4());
+        fs::write(&orphan, b"discard").unwrap();
+        let unrelated_pcm = store.folder.join("take-unrelated.pcm");
+        fs::write(&unrelated_pcm, b"preserve").unwrap();
         store.clean_exit().unwrap();
         assert!(!first.generation.exists());
         assert!(!next.generation.exists());
+        assert!(!orphan.exists());
+        assert_eq!(fs::read(unrelated_pcm).unwrap(), b"preserve");
         assert_eq!(fs::read(unknown.join("unrelated")).unwrap(), b"preserve");
         drop(store);
         fs::remove_dir_all(root).unwrap();

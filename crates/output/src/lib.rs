@@ -3,6 +3,7 @@ pub use midi_input::{MidiAction, MidiReceipt, MidiSender};
 mod audition;
 mod audition_stream;
 mod effect_spectrum;
+pub mod recording;
 pub use audition_stream::{AuditionStream, AuditionStreamWriter, audition_stream};
 mod cache_schedule;
 mod devices;
@@ -80,6 +81,7 @@ pub use performance::{Performance, PerformanceSnapshot};
 #[derive(Default)]
 pub struct Status {
     midi: midi_input::Port,
+    recording_clock: Arc<recording::ClockPort>,
     pub performance: Performance,
     metronome_enabled: AtomicBool,
     transport_sequence: AtomicU64,
@@ -819,6 +821,8 @@ impl AudioOutput {
                 if stream_config.buffer_size == cpal::BufferSize::Default {
                     return Err(first);
                 }
+                status.midi.reset_before_stream_retry();
+                status.recording_clock.reset_before_stream_retry();
                 stream_config.buffer_size = cpal::BufferSize::Default;
                 build(&stream_config)?
             }
@@ -1776,6 +1780,9 @@ impl AudioOutput {
 }
 struct Callback {
     midi: midi_input::Receiver,
+    recording_timing: Producer<recording::Timing>,
+    project_ordinal: u64,
+    output_ordinal: u64,
     project_rate_hz: u32,
     metronome: metronome::Metronome,
     audition: audition::Player,
@@ -1859,9 +1866,15 @@ impl Callback {
         let (sender, audition) = audition::channel(project_rate_hz);
         let (effect_retired, effect_receiver) = RingBuffer::new(64);
         let midi = midi_input::Receiver::new(&status);
+        let recording_timing = status
+            .recording_clock
+            .writer(rate, converter.as_ref().map_or(0, Resampler::output_delay));
         Ok(Self {
             project_rate_hz,
             midi,
+            recording_timing,
+            project_ordinal: 0,
+            output_ordinal: 0,
             metronome: metronome::Metronome::new(project_rate_hz),
             audition,
             audition_sender: Some(sender),
@@ -2146,9 +2159,26 @@ impl Callback {
     }
     fn next_project_sample(&mut self) -> [f32; 2] {
         self.activate_scheduled();
+        let was_recording = self.renderer.recording;
         let count_in = self
             .midi
             .sample(&mut self.renderer, self.rendered_frames, &self.status);
+        if was_recording != self.renderer.recording {
+            let timing = if self.renderer.recording {
+                recording::Timing::Start {
+                    ordinal: self.project_ordinal,
+                    frame: self.renderer.playhead,
+                }
+            } else {
+                recording::Timing::End {
+                    ordinal: self.project_ordinal,
+                }
+            };
+            self.status
+                .recording_clock
+                .send(&mut self.recording_timing, timing);
+        }
+        self.project_ordinal += 1;
         let sample = self.renderer.next_sample();
         self.status
             .buffering
@@ -2156,6 +2186,9 @@ impl Callback {
         if self.renderer.buffering() && self.renderer.source_failed() {
             self.renderer.playing = false;
             self.status.source_failed.store(true, Ordering::Relaxed);
+        }
+        if self.renderer.recording && self.renderer.buffering() {
+            self.status.recording_clock.fault();
         }
         let frame = (self.renderer.playing && !self.renderer.buffering())
             .then(|| self.renderer.playhead.saturating_sub(1));
@@ -2186,9 +2219,11 @@ impl Callback {
     fn discard_buffered_output(&mut self) {
         // Discard cached samples from before the command. Keep filter history so
         // the renderer's transport fade remains continuous through resampling.
+        self.output_ordinal += self.output_count.saturating_sub(self.index) as u64;
         self.index = self.output_count;
     }
     fn next(&mut self) -> [f32; 2] {
+        self.output_ordinal += 1;
         if self.converter.is_some() {
             while self.index >= self.output_count {
                 let count = self.converter.as_ref().unwrap().input_frames_next();
@@ -2239,15 +2274,17 @@ where
 {
     let channels = usize::from(config.channels);
     let device_rate = config.sample_rate.0;
+    let mut bridge = recording::TimestampBridge::default();
     device
         .build_output_stream(
             config,
-            move |data: &mut [T], _| {
+            move |data: &mut [T], info| {
                 let started = std::time::Instant::now();
                 // Cover both device demand and the converter's full input batch.
                 let frames = callback.audition_chunk_frames(data.len() / channels, device_rate);
                 callback.audition.set_stream_chunk_frames(frames);
                 callback.update();
+                let output_start = callback.output_ordinal;
                 callback.renderer.reset_track_peaks();
                 let mut peaks = [0.0_f32; 2];
                 for frame in data.chunks_mut(channels) {
@@ -2266,6 +2303,35 @@ where
                         *value = T::from_sample(s.clamp(-1.0, 1.0));
                     }
                 }
+                let clock = &callback.status.recording_clock;
+                let stamp = info.timestamp();
+                if !data.is_empty() {
+                    if let Some(time_ns) = bridge.timestamp(
+                        clock.origin,
+                        started,
+                        stamp.callback,
+                        stamp.playback,
+                        !clock.armed(),
+                    ) {
+                        clock.send(
+                            &mut callback.recording_timing,
+                            recording::Timing::Output {
+                                frame: output_start,
+                                count: data.len() / channels,
+                                time_ns,
+                            },
+                        );
+                    } else {
+                        clock.fault();
+                    }
+                }
+                if clock.armed() && callback.renderer.recording {
+                    callback.midi.capture_watermark(
+                        callback.renderer.playhead,
+                        callback.rendered_frames,
+                        &callback.status,
+                    );
+                }
                 let release = meters::release_for_frames(data.len() / channels, device_rate);
                 // Cached converter output still advances display time. No new
                 // input peaks means release, rather than a jump to silence.
@@ -2283,6 +2349,7 @@ where
                 );
             },
             move |_| {
+                status.recording_clock.fault();
                 status.performance.device_failure();
                 status.failed.store(true, Ordering::Relaxed);
                 status.playing.store(false, Ordering::Relaxed);
@@ -2296,6 +2363,22 @@ where
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn output_stream_retry_rebuilds_both_capture_receivers() {
+        let plan = transport_plan();
+        let status = Arc::new(Status::default());
+        let build_callback = || {
+            let (_commands, consumer) = RingBuffer::new(32);
+            let (retire, _retired) = RingBuffer::new(64);
+            Callback::initial(&plan, consumer, retire, status.clone(), 48_000).unwrap()
+        };
+        drop(build_callback());
+        status.midi.reset_before_stream_retry();
+        status.recording_clock.reset_before_stream_retry();
+        let _callback = build_callback();
+    }
+
     pub(super) fn transport_plan() -> RenderPlan {
         use daw_core::{Asset, Clip, Project, Source, SourceMetadata};
         let mut project = Project::default();

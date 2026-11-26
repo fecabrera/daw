@@ -4,7 +4,7 @@ use daw_core::Id;
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, AtomicU64},
+    atomic::{AtomicBool, AtomicU64, AtomicUsize},
 };
 use std::time::Instant;
 
@@ -34,6 +34,8 @@ pub enum MidiAction {
     Seal,
     Stop,
     Pause,
+    Silence,
+    CaptureWatermark,
     Panic,
 }
 #[derive(Clone, Copy, Debug)]
@@ -57,37 +59,94 @@ struct Channels {
     receipts_tx: Option<Producer<MidiReceipt>>,
     receipts_rx: Option<Consumer<MidiReceipt>>,
 }
+impl Default for Channels {
+    fn default() -> Self {
+        let (tx, rx) = RingBuffer::new(8192);
+        let (receipts_tx, receipts_rx) = RingBuffer::new(32768);
+        Self {
+            tx: Some(tx),
+            rx: Some(rx),
+            receipts_tx: Some(receipts_tx),
+            receipts_rx: Some(receipts_rx),
+        }
+    }
+}
+
+#[derive(Default)]
+struct ClockSlot {
+    clock: AtomicU64,
+    stamp: AtomicU64,
+    frame: AtomicU64,
+    playing: AtomicBool,
+}
+
+// The callback and input broker each own one slot. The third slot holds
+// the latest complete reading until the broker takes it. An interrupted
+// publisher leaves the last complete reading available.
+struct ClockExchange {
+    slots: [ClockSlot; 3],
+    available: AtomicUsize,
+}
+
+const CLOCK_READER_SLOT: usize = 0;
+const CLOCK_WRITER_SLOT: usize = 2;
+const CLOCK_AVAILABLE_SLOT: usize = 1;
+const CLOCK_UPDATED: usize = 4;
+
+impl Default for ClockExchange {
+    fn default() -> Self {
+        Self {
+            slots: Default::default(),
+            available: AtomicUsize::new(CLOCK_AVAILABLE_SLOT),
+        }
+    }
+}
+
+impl ClockExchange {
+    fn publish(&self, writer: &mut usize, clock: u64, stamp: u64, frame: u64, playing: bool) {
+        let slot = &self.slots[*writer];
+        slot.clock.store(clock, Ordering::Relaxed);
+        slot.stamp.store(stamp, Ordering::Relaxed);
+        slot.frame.store(frame, Ordering::Relaxed);
+        slot.playing.store(playing, Ordering::Relaxed);
+        *writer = self
+            .available
+            .swap(*writer | CLOCK_UPDATED, Ordering::AcqRel)
+            & !CLOCK_UPDATED;
+    }
+
+    fn read(&self, reader: &mut usize) -> &ClockSlot {
+        if self.available.load(Ordering::Acquire) & CLOCK_UPDATED != 0 {
+            *reader = self.available.swap(*reader, Ordering::AcqRel) & !CLOCK_UPDATED;
+        }
+        &self.slots[*reader]
+    }
+}
+
 pub(super) struct Port {
     channels: Mutex<Channels>,
     origin: Instant,
-    stamp: AtomicU64,
-    clock: AtomicU64,
-    frame: AtomicU64,
-    playing: AtomicBool,
-    sequence: AtomicU64,
+    clock: ClockExchange,
     epoch: Arc<AtomicU64>,
     pub fault: AtomicBool,
 }
 impl Default for Port {
     fn default() -> Self {
-        let (tx, rx) = RingBuffer::new(8192);
-        let (receipts_tx, receipts_rx) = RingBuffer::new(32768);
         Self {
-            channels: Mutex::new(Channels {
-                tx: Some(tx),
-                rx: Some(rx),
-                receipts_tx: Some(receipts_tx),
-                receipts_rx: Some(receipts_rx),
-            }),
+            channels: Mutex::default(),
             origin: Instant::now(),
-            stamp: AtomicU64::new(0),
-            clock: AtomicU64::new(0),
-            frame: AtomicU64::new(0),
-            playing: AtomicBool::new(false),
-            sequence: AtomicU64::new(0),
+            clock: ClockExchange::default(),
             epoch: Arc::new(AtomicU64::new(0)),
             fault: AtomicBool::new(false),
         }
+    }
+}
+impl Port {
+    pub(super) fn reset_before_stream_retry(&self) {
+        *self.channels.lock().unwrap() = Channels::default();
+        self.clock
+            .available
+            .store(CLOCK_AVAILABLE_SLOT, Ordering::Relaxed);
     }
 }
 pub struct MidiSender {
@@ -95,12 +154,16 @@ pub struct MidiSender {
     receipts: Consumer<MidiReceipt>,
     status: Arc<Status>,
     rate: u32,
+    clock_slot: usize,
     last_at: u64,
     sequence: u64,
     last_capture_frame: Option<u64>,
     recording_offset_frames: i64,
 }
 impl MidiSender {
+    pub fn recording_clock(&self) -> Arc<super::recording::ClockPort> {
+        self.status.recording_clock.clone()
+    }
     /// Shift captured timestamps only; monitoring remains immediate. Positive values delay notes.
     pub fn set_recording_offset_ms(&mut self, milliseconds: i16) {
         self.recording_offset_frames =
@@ -112,26 +175,13 @@ impl MidiSender {
     pub fn send_at(&mut self, action: MidiAction, arrival: Instant) -> Result<(), String> {
         let port = &self.status.midi;
         if port.fault.load(Ordering::Acquire) {
-            return Err("MIDI input stopped after queue pressure; reconnect the input.".into());
+            return Err("The recording event queue stopped. Reconnect the MIDI input or reopen the audio device.".into());
         }
-        let mut anchor = None;
-        for _ in 0..8 {
-            let before = port.sequence.load(Ordering::Acquire);
-            let pair = (
-                port.clock.load(Ordering::Relaxed),
-                port.stamp.load(Ordering::Relaxed),
-                port.frame.load(Ordering::Relaxed),
-                port.playing.load(Ordering::Relaxed),
-            );
-            if before.is_multiple_of(2) && before == port.sequence.load(Ordering::Acquire) {
-                anchor = Some(pair);
-                break;
-            }
-        }
-        let Some((clock, stamp, frame, playing)) = anchor else {
-            self.fail();
-            return Err("MIDI output clock is unavailable; take interrupted".into());
-        };
+        let anchor = port.clock.read(&mut self.clock_slot);
+        let clock = anchor.clock.load(Ordering::Relaxed);
+        let stamp = anchor.stamp.load(Ordering::Relaxed);
+        let frame = anchor.frame.load(Ordering::Relaxed);
+        let playing = anchor.playing.load(Ordering::Relaxed);
         let elapsed = arrival
             .saturating_duration_since(port.origin)
             .as_micros()
@@ -183,14 +233,22 @@ impl MidiSender {
     pub fn reset_input(&mut self) {
         self.status.midi.fault.store(false, Ordering::Release);
         self.panic();
-        self.last_at = self.status.midi.clock.load(Ordering::Acquire);
+        self.last_at = self
+            .status
+            .midi
+            .clock
+            .read(&mut self.clock_slot)
+            .clock
+            .load(Ordering::Relaxed);
         self.last_capture_frame = None;
     }
-    pub fn last_frame(&self) -> u64 {
+    pub fn last_frame(&mut self) -> u64 {
         self.status
             .midi
+            .clock
+            .read(&mut self.clock_slot)
             .frame
-            .load(Ordering::Acquire)
+            .load(Ordering::Relaxed)
             .max(self.status.playhead.load(Ordering::Acquire))
     }
     pub fn emergency_handle(&self) -> Arc<AtomicU64> {
@@ -217,8 +275,24 @@ pub(super) struct Receiver {
     epoch: u64,
     count_in: Option<(u64, u64, Packet)>,
     capture_origin: u64,
+    clock_slot: usize,
 }
 impl Receiver {
+    pub(super) fn capture_watermark(&mut self, frame: u64, clock: u64, status: &Status) {
+        if self
+            .receipts
+            .push(MidiReceipt {
+                action: MidiAction::CaptureWatermark,
+                frame,
+                clock,
+                sequence: 0,
+            })
+            .is_err()
+        {
+            status.recording_clock.fault();
+        }
+    }
+
     pub fn new(status: &Status) -> Self {
         let mut channels = status.midi.channels.lock().unwrap();
         Self {
@@ -228,6 +302,7 @@ impl Receiver {
             epoch: 0,
             count_in: None,
             capture_origin: 0,
+            clock_slot: CLOCK_WRITER_SLOT,
         }
     }
     fn receipt(
@@ -286,7 +361,7 @@ impl Receiver {
         {
             self.count_in = None;
             renderer.panic_live_midi();
-            if renderer.has_live_midi_routes() {
+            if renderer.has_live_midi_routes() || status.recording_clock.armed() {
                 renderer.recording = true;
                 renderer.play();
                 self.receipt(packet, renderer, clock, status);
@@ -339,13 +414,17 @@ impl Receiver {
                 MidiAction::Release { token } => {
                     renderer.live_midi_note(token, None);
                 }
+                MidiAction::Silence => renderer.panic_live_midi(),
+                MidiAction::CaptureWatermark => continue,
                 MidiAction::Record { count_in_frames }
                     if count_in_frames > 0 && !renderer.playing =>
                 {
                     self.count_in = Some((clock, clock.saturating_add(count_in_frames), packet));
                     continue;
                 }
-                MidiAction::Record { .. } if !renderer.has_live_midi_routes() => {
+                MidiAction::Record { .. }
+                    if !renderer.has_live_midi_routes() && !status.recording_clock.armed() =>
+                {
                     self.receipt(
                         Packet {
                             action: MidiAction::Seal,
@@ -375,26 +454,18 @@ impl Receiver {
                 _ => {}
             }
         }
-        status.midi.sequence.fetch_add(1, Ordering::AcqRel);
-        status.midi.clock.store(clock, Ordering::Relaxed);
-        status
-            .midi
-            .frame
-            .store(renderer.playhead, Ordering::Relaxed);
-        status
-            .midi
-            .playing
-            .store(renderer.playing, Ordering::Relaxed);
-        status.midi.stamp.store(
+        status.midi.clock.publish(
+            &mut self.clock_slot,
+            clock,
             status
                 .midi
                 .origin
                 .elapsed()
                 .as_micros()
                 .min(u128::from(u64::MAX)) as u64,
-            Ordering::Relaxed,
+            renderer.playhead,
+            renderer.playing,
         );
-        status.midi.sequence.fetch_add(1, Ordering::Release);
         self.count_in
             .map(|(start, _, _)| clock.saturating_sub(start))
     }
@@ -413,6 +484,7 @@ impl super::AudioOutput {
             receipts: channels.receipts_rx.take()?,
             status: self.status.clone(),
             rate: self.project_rate_hz,
+            clock_slot: CLOCK_READER_SLOT,
             last_at: 0,
             sequence: 0,
             last_capture_frame: None,
@@ -461,6 +533,7 @@ mod tests {
             receipts,
             status,
             rate: 48000,
+            clock_slot: CLOCK_READER_SLOT,
             last_at: 0,
             sequence: 0,
             last_capture_frame: None,
@@ -529,6 +602,50 @@ mod tests {
             }
         });
         peak
+    }
+
+    #[test]
+    fn record_uses_the_last_complete_clock_while_the_callback_updates_its_slot() {
+        let (mut callback, mut sender, tracks) = fixture();
+        sender
+            .send_at(
+                MidiAction::Route {
+                    track: tracks[0],
+                    enabled: true,
+                },
+                callback.status.midi.origin,
+            )
+            .unwrap();
+        pump(&mut callback, 32);
+        let exchange = &callback.status.midi.clock;
+        let unpublished = &exchange.slots[callback.midi.clock_slot];
+        unpublished.clock.store(u64::MAX, Ordering::Relaxed);
+        let stamp = exchange.slots[exchange.available.load(Ordering::Relaxed) & !CLOCK_UPDATED]
+            .stamp
+            .load(Ordering::Relaxed);
+        let arrival = callback.status.midi.origin + std::time::Duration::from_micros(stamp);
+
+        sender
+            .send_at(MidiAction::Record { count_in_frames: 0 }, arrival)
+            .unwrap();
+        assert!(!sender.failed());
+        pump(&mut callback, 32);
+        assert!(callback.renderer.recording);
+        assert!(
+            std::iter::from_fn(|| sender.receipt())
+                .any(|receipt| matches!(receipt.action, MidiAction::Record { .. }))
+        );
+    }
+
+    #[test]
+    fn a_full_event_queue_still_reports_a_fault() {
+        let (_callback, mut sender, _) = fixture();
+        for _ in 0..sender.tx.buffer().capacity() {
+            sender.send(MidiAction::Pause).unwrap();
+        }
+        let error = sender.send(MidiAction::Pause).unwrap_err();
+        assert!(error.contains("queue overflow"));
+        assert!(sender.failed());
     }
     #[test]
     fn stopped_multitrack_monitoring_and_removed_route_preserve_the_other_voice_without_heap_work()

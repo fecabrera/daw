@@ -229,7 +229,7 @@ impl DawUi {
         } else {
             None
         };
-        let extra = if row.kind == TrackKind::Midi && row.beat.is_none() {
+        let extra = if arm.is_some() {
             mix_controls::BROWSER_BUTTON_SIZE + mix_controls::GROUP_GAP
         } else {
             0.0

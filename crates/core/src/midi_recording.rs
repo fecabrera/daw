@@ -40,8 +40,18 @@ impl Project {
         start_frame: u64,
         tracks: &[RecordedMidiTrack],
     ) -> Result<Self> {
+        self.recorded_take(start_frame, tracks, Vec::new(), Vec::new())
+    }
+
+    pub fn recorded_take(
+        &self,
+        start_frame: u64,
+        tracks: &[RecordedMidiTrack],
+        audio_assets: Vec<crate::Asset>,
+        mut placements: Vec<ClipPlacement>,
+    ) -> Result<Self> {
         let mut next = self.clone();
-        let mut placements = Vec::new();
+        next.assets.extend(audio_assets);
         let mut seen = HashSet::new();
         for track in tracks {
             if !seen.insert(track.track_id)

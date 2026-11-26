@@ -1,5 +1,7 @@
 # Autosave and recovery
 
+An interrupted [audio or mixed take](../editing/audio-recording.md#save-and-recover) can appear in the recovery dialog. The recovered clip ends at the last verified audio frame.
+
 ## Automatic snapshots
 
 The desktop app creates private recovery snapshots of modified projects about

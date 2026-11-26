@@ -395,7 +395,7 @@ impl DawUi {
                 };
             let (rect, _) = content
                 .allocate_exact_size(Vec2::new(width, toolbars::CONTROL_HEIGHT), Sense::hover());
-            // R remains interactive while model editing is locked during a take.
+            // Retain the R group while the take owns transport.
             let mut controls = ui.new_child(
                 egui::UiBuilder::new()
                     .id_salt("track-msr")
@@ -410,6 +410,11 @@ impl DawUi {
         }
         if let Some(track) = track {
             self.apply_midi_arm(track.id, arm);
+            if track.kind == daw_core::TrackKind::Audio
+                && content.available_height() >= toolbars::CONTROL_HEIGHT
+            {
+                self.audio_recording_input(&mut content, track.id);
+            }
             if self.midi.busy() {
                 gain = previous.gain;
                 pan = previous.pan;

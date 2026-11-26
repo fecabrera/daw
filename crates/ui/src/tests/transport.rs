@@ -973,6 +973,8 @@ fn multiple_midi_arms_and_implicit_selection_are_transient() {
         app.apply_midi_arm(
             id,
             Some(crate::midi::Arm {
+                audio: false,
+                input_peak: None,
                 armed: true,
                 fallback: false,
                 editable: true,

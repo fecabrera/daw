@@ -8,6 +8,7 @@ Run commands from the repository root with the toolchain pinned in [rust-toolcha
 - [macOS](macos.md): builds, app bundles, and disk images.
 - [Linux](linux.md): prerequisites, builds, and portable ZIP packaging.
 - [Effect plugins](plugins.md): CLAP/VST3/AUv2 builds and packaging.
+- [Audio recording loopback](audio-loopback.md) for recording alignment tests.
 - [GitHub Actions builds](ci.md): platform artifacts, downloads, and logs.
 
 For CLI commands, see the [CLI guide](../cli/README.md). For contribution rules and validation commands, see [build and validation workflow](repository-instructions/build-and-validation-workflow.md). Architecture and implementation contracts remain in [specifications](../../specs/README.md).

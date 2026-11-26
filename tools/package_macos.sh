@@ -66,6 +66,7 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>NSHighResolutionCapable</key><true/>
+<key>NSMicrophoneUsageDescription</key><string>DAW uses the selected audio input when recording armed audio tracks.</string>
 </dict></plist>
 PLIST
 if [ "$local_build" = 1 ]; then

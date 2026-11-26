@@ -1,5 +1,6 @@
 mod source_tempo;
 pub use source_tempo::{TempoCatalog, TempoSource};
+mod audio_recording;
 mod bounce;
 mod bounce_tail;
 mod generated_media;
@@ -128,6 +129,7 @@ pub struct Session {
     missing_audio: HashSet<Id>,
     // Clones and history share ownership until generated sources are saved or released.
     temporary_stems: Vec<std::sync::Arc<separation::TemporaryStems>>,
+    recorded_sources: HashMap<Id, audio_recording::StagedSource>,
     recovery_owner: Option<std::sync::Arc<recovery::RecoveryStore>>,
     /// Only an interrupted, not-yet-published recovered take restores one history step.
     pub recovered_take_before: Option<Box<Session>>,
@@ -286,6 +288,7 @@ impl Session {
             tempo_catalog: None,
             folder: Some(folder),
             temporary_stems: Vec::new(),
+            recorded_sources: HashMap::new(),
             recovery_owner: None,
             recovered_take_before: None,
             missing_audio: HashSet::new(),
@@ -411,6 +414,10 @@ impl Session {
     pub fn source_path(&self, asset: &Asset) -> Result<PathBuf> {
         asset.source.validate_storage().map_err(error)?;
         if asset.source.is_included_recording() {
+            if let Some(path) = self.staged_recording_path(asset) {
+                recovery::ordinary(&path, false)?;
+                return Ok(path);
+            }
             return source_storage::included_path(
                 self.folder
                     .as_deref()
@@ -425,6 +432,9 @@ impl Session {
         asset.source.validate_storage().map_err(error)?;
         if !asset.is_file_audio() {
             return Err(error("Embedded sources have no file path"));
+        }
+        if let Some(path) = self.staged_recording_path(asset) {
+            return Ok(path);
         }
         let p = PathBuf::from(&asset.source.path);
         if asset.source.path_kind == "absolute" {
