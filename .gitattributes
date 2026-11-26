@@ -1,6 +1,12 @@
 # Preserve upstream notice bytes, including original LF or CRLF line endings.
 # Runtime inventory hashes must remain valid with core.autocrlf enabled.
+/LICENSE text eol=lf
+/crates/audio-analysis/LICENSE text eol=lf
+/NOTICE text eol=lf
+/tools/source-notices/zlib-rs-0.6.8-paper-100k-ATTRIBUTION.txt text eol=lf
 crates/ui/assets/licenses/* -text
 crates/separation/assets/licenses/JSON-MIT.txt -text -whitespace
 crates/separation/assets/licenses/CoreMLTools-BSD.txt -text -whitespace
 crates/media/assets/licenses/RealFFT-MIT.txt -text
+crates/plugin-clap/assets/licenses/CLAP-1.2.2-MIT.txt -text
+crates/plugin-vst3/assets/licenses/Steinberg-pluginterfaces-MIT.txt -text

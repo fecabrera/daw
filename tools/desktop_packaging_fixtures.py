@@ -13,6 +13,10 @@ NOTICE_DIRS = (
 
 
 def stage_notice_sources(source, destination, *, app_icons=False):
+    shutil.copy2(source / 'NOTICE', destination / 'NOTICE')
+    helper_license = 'crates/audio-analysis/LICENSE'
+    (destination / helper_license).parent.mkdir(parents=True)
+    shutil.copy2(source / helper_license, destination / helper_license)
     for directory in NOTICE_DIRS:
         shutil.copytree(source / directory, destination / directory)
     if app_icons:

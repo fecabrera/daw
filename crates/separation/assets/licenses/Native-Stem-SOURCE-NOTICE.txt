@@ -42,18 +42,25 @@ The app imports the OS DirectML.dll (DMLCreateDevice1), Direct3D 12 and the sepa
 DirectML runtime DLL redistribution is governed by the Microsoft license in that exact NuGet package, not its MIT source-code license.
 Do not copy the DLL or treat it as MIT-licensed without checking those runtime distribution terms.
 
-The original DAW source remains BSD-2-Clause. The combined applications also statically link GPL-2.0-or-later Rubber Band.
-Distributors combining Apache-2.0 code with it must use the GPLv3-compatible option and provide the corresponding source,
-build scripts, dependency source/patches and license materials required for the exact distributed binaries.
+DAW's original application code and combined executables use GPL-3.0-or-later.
+The executables statically link GPL-2.0-or-later Rubber Band. Original code in
+the standalone audio-analysis, timestretch and timestretch-cli packages uses
+BSD-2-Clause. For license scope, see DAW-NOTICE.txt in the desktop package's
+licenses directory or DAW/NOTICE in DAW-source.zip.
+Provide matching corresponding source, including build scripts, dependency
+source, patches and license materials, for the exact distributed binaries.
 Retain all existing media, UI, font, icon, oscillator, equalizer and timestretch notices. This notice does not replace them.
 
 No model weights are bundled or licensed by these notices.
 
 Desktop package source access:
-The standard desktop packagers include DAW-source.zip, SOURCE-ACCESS.txt and
-source-manifest.json with the executable (under DAW.app/Contents/Resources on
-macOS). They identify the exact combined application commit and binary/source
-hashes. The archive includes application source, local patches, locked Cargo
+On Windows and Linux, the standard desktop packages include DAW-source.zip,
+SOURCE-ACCESS.txt and source-manifest.json beside the executable. On macOS,
+DAW-source.zip and SOURCE-ACCESS.txt are in DAW.app/Contents/Resources. The final
+signed executable's receipt is in DAW-source-metadata/source-manifest.json
+beside DAW.app in the DMG. The manifest records the exact application commit
+and the binary and source hashes.
+The archive includes application source, local patches, locked Cargo
 sources, build/relink directions and this immutable native source inventory.
 Retain these source materials and the public native-source routes above when
 redistributing the binary; a source notice alone does not replace source access.

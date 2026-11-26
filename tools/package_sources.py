@@ -1,4 +1,4 @@
-"""Bundle the exact application source and locked dependencies beside desktop binaries."""
+"""Package the exact DAW source and its locked dependencies."""
 import argparse
 import hashlib
 import io
@@ -13,19 +13,19 @@ import zipfile
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def git(*args):
-    return subprocess.check_output(['git', '-C', str(ROOT), *args])
+def git(*args, root=None):
+    return subprocess.check_output(['git', '-C', str(root if root is not None else ROOT), *args])
 
 
-def revision():
+def revision(root=None):
     # Untracked recordings and scratch files are never source-package inputs.
-    if git('status', '--porcelain', '--untracked-files=no').strip():
+    if git('status', '--porcelain', '--untracked-files=no', root=root).strip():
         raise RuntimeError('Commit tracked changes before packaging corresponding source.')
-    return git('rev-parse', 'HEAD').decode().strip()
+    return git('rev-parse', 'HEAD', root=root).decode().strip()
 
 
 def source_notices(vendor):
-    """Bind supplemental grants to the exact shipped package, not just its name."""
+    """Bind supplemental notices to the exact package and any named file."""
     inventory = json.loads((ROOT/'tools/runtime_notices.json').read_text())
     result = []
     for entry in inventory['notices']:
@@ -41,6 +41,10 @@ def source_notices(vendor):
                 or vcs['path_in_vcs'] != package['path_in_vcs']
                 or checksum['package'] != package['registry_checksum']):
             raise RuntimeError('Supplemental license does not match shipped source: '+entry['component'])
+        if 'file' in package:
+            asset = directory/package['file']
+            if not asset.is_file() or digest(asset) != package['file_sha256']:
+                raise RuntimeError('Supplemental attribution does not match shipped file: '+entry['component'])
         notice = (ROOT/entry['notice']).resolve()
         if not notice.is_relative_to(ROOT.resolve()):
             raise RuntimeError('Supplemental license is outside the source tree.')
@@ -94,9 +98,9 @@ def refresh_receipt(destination, binary, archive, expected_revision, profile):
     write_receipt(destination, binary, archive, expected_revision, profile)
 
 
-def bundle(destination, binary, expected_revision, profile, *, receipt_destination=None):
+def source_archive(destination, expected_revision, profile):
     if revision() != expected_revision:
-        raise RuntimeError('Source revision changed during the desktop build.')
+        raise RuntimeError('Source revision changed before creating the source archive.')
     destination.mkdir(parents=True, exist_ok=True)
     archive = destination / 'DAW-source.zip'
     with tempfile.TemporaryDirectory(prefix='daw-source-') as temporary:
@@ -140,19 +144,30 @@ and the exact registry/Git Rust dependency sources, including bundled LAME and
 Rubber Band sources. The generated .cargo/config.toml selects cargo-vendor, separate from local vendor patches.
 Run cargo build --locked -p daw-desktop{' --release' if profile == 'release' else ''} to rebuild/relink.
 Modify the application or LGPL libraries and rebuild with the same command to relink.
+For plugins, use the product package, target and profile from the binary ZIP's
+build.json. Run cargo build --locked --lib --target <target> -p <package> and add
+--release for the release profile. See docs/development/plugins.md for packaging
+and platform prerequisites.
 Native ONNX Runtime is downloaded by its checksum-pinned build adapter; exact
 native component source locations, revisions, archive hashes and license terms are
 in crates/separation/assets/licenses/Native-Stem-SOURCE-NOTICE.txt and
 specs/audio/stem-native-dependencies.md. These immutable public source locations
 are the equivalent source-access route for unchanged native inputs. Model weights
 and operating-system libraries are not included. No model is needed to build.
-Supplemental upstream source grants and their exact package/version/revision/hash
-mapping are in SOURCE-LICENSES/index.json. Retain them with the vendored sources.
-See crates/media/assets/licenses for GPL/LGPL and other combined-work terms;
-the root BSD license applies to original DAW code, not every combined component.
+Supplemental upstream grants and attributions are in SOURCE-LICENSES.
+Use index.json to find the corresponding package or file. Retain these
+notices with the vendored sources.
+See NOTICE and LICENSE for the DAW's GPL-3.0-or-later grant and the standalone
+BSD-2-Clause packages. See crates/media/assets/licenses for the separate
+GPL/LGPL dependency grants and notices.
 ''')
         if revision() != expected_revision:
             raise RuntimeError('Tracked source changed while preparing the source package.')
+    return archive
+
+
+def bundle(destination, binary, expected_revision, profile, *, receipt_destination=None):
+    archive = source_archive(destination, expected_revision, profile)
     receipts = receipt_destination if receipt_destination is not None else destination
     write_receipt(receipts, binary, archive, expected_revision, profile)
     if receipts.resolve() != destination.resolve():
@@ -172,6 +187,7 @@ with the app; keep the companion receipts when redistributing the disk image.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision-only', action='store_true')
+    parser.add_argument('--archive-only', action='store_true')
     parser.add_argument('--revision')
     parser.add_argument('--destination', type=Path)
     parser.add_argument('--receipt-destination', type=Path)
@@ -181,6 +197,10 @@ def main():
     args = parser.parse_args()
     if args.revision_only:
         print(revision())
+    elif args.archive_only:
+        if args.destination is None or args.revision is None:
+            parser.error('--archive-only requires --destination and --revision')
+        print(source_archive(args.destination, args.revision, args.profile))
     elif args.destination and args.binary and args.revision:
         if args.refresh_receipt:
             if args.receipt_destination is None:

@@ -1,3 +1,5 @@
+NOTICE|DAW-NOTICE.txt
+crates/audio-analysis/LICENSE|DAW-BSD-2-Clause.txt
 crates/unit-ui/assets/fonts/OFL.txt|Outfit-OFL.txt
 crates/unit-ui/assets/fonts/Hack-LICENSE.txt|Hack-LICENSE.txt
 crates/ui/assets/icons/LUCIDE-LICENSE.txt|LUCIDE-LICENSE.txt

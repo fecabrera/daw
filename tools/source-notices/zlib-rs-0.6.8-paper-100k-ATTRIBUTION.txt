@@ -1,0 +1,17 @@
+Attribution for zlib-rs 0.6.8
+Fixture: src/deflate/test-data/paper-100k.pdf
+
+Federico Comoglio and Renato Paro (2014)
+Combinatorial Modeling of Chromatin Features Quantitatively Predicts
+DNA Replication Timing in Drosophila
+PLOS Computational Biology 10(1), e1003419
+Copyright (c) 2014 Comoglio and Paro.
+Original article: https://doi.org/10.1371/journal.pcbi.1003419
+
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+The fixture reproduces the 102,400-byte excerpt from Snappy's test corpus
+(original PDF bytes 92160 through 194559, zero-based). The source archive
+preserves the fixture bytes as included in zlib-rs.
+https://github.com/google/snappy/blob/main/COPYING

@@ -3,7 +3,7 @@ name = "daw-plugin-host-fixtures"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license = "BSD-2-Clause"
+license.workspace = true
 publish = false
 
 [lib]

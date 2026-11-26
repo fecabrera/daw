@@ -131,6 +131,10 @@ if ('--sign' in sys.argv and os.environ.get('FAIL_APP_SIGN')) or ('--verify' in 
                                     self.assertEqual(hashlib.sha256(payload).hexdigest(), entry['sha256'])
                         else:
                             with zipfile.ZipFile(default / 'DAW-linux-x64.zip') as archive:
+                                self.assertEqual(archive.read('DAW/LICENSE.txt'), (root/'LICENSE').read_bytes())
+                                self.assertEqual(archive.read('DAW/licenses/DAW-NOTICE.txt'), (root/'NOTICE').read_bytes())
+                                self.assertEqual(archive.read('DAW/licenses/DAW-BSD-2-Clause.txt'),
+                                                 (root/'crates/audio-analysis/LICENSE').read_bytes())
                                 self.assertIn('Icon=org.daw.DAW', archive.read('DAW/share/applications/org.daw.DAW.desktop').decode())
                                 self.assertEqual(
                                     archive.read('DAW/share/icons/hicolor/scalable/apps/org.daw.DAW.svg'),

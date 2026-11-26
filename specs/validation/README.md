@@ -2,6 +2,43 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Upstream CLAP and Steinberg binding notices — 2026-11-26
+
+The desktop notice staging script copied both exact upstream MIT texts.
+Packaging tests checked the matching notice in CLAP and VST3 archives
+across desktop targets. A local working-tree source ZIP built with the
+locked Cargo dependencies included both notices and their pinned
+package records in `SOURCE-LICENSES`. The staged and archived bytes
+matched the upstream downloads.
+
+The packaging suite passed 35 checks. The Windows desktop PowerShell
+check was skipped because PowerShell was unavailable.
+
+## Source fixture attribution and desktop notices — 2026-11-26
+
+A local working-tree source ZIP used the locked Cargo dependencies and
+contained the exact zlib-rs 0.6.8 paper excerpt and its CC BY 4.0
+attribution in the source notice index. Checks verified both hashes and
+the updated desktop license wording. The desktop notice staging script
+copied both updated notices. Seven packaging checks passed, including
+rejection of a missing or changed fixture and CRLF checkout coverage.
+
+## DAW license split and source packaging — 2026-11-26
+
+Locked Cargo metadata resolved 159 workspace packages as GPL-3.0-or-later
+and the three standalone audio packages as BSD-2-Clause. The resolved
+standalone package graphs contain no DAW workspace code. The three BSD
+license files are identical. Packagers copy the notice from the
+`audio-analysis` crate.
+
+Offline vendoring resolved 636 locked packages and verified five
+supplemental source notices. Packaging fixtures checked the bundled
+license texts, source archive contents and plugin source receipts.
+macOS app signature verification passed. The native DMG fixture and a
+minimal disk-image probe both reached the same `hdiutil` error,
+`Device not configured`. The Windows PowerShell fixture and the
+GitHub-hosted publication workflow require their respective environments.
+
 ## Portable waveform, EQ, stretch and live loudness analysis — 2026-11-26
 
 Generated PCM and coefficient fixtures matched the pre-extraction baseline.

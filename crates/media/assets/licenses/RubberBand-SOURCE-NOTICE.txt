@@ -7,8 +7,12 @@ Bundled and statically built through rubberband-sys 0.1.4 (GPL-2.0-or-later).
 Unmodified source: https://crates.io/crates/rubberband-sys/0.1.4
 The crate includes the Rubber Band source and single-file build.
 See RubberBand-GPL.txt, RubberBand-KissFFT.txt, and RubberBand-Speex.txt.
-The GPL applies to this bundled library and the combined executable;
-the repository's BSD license applies to its original code.
+DAW's original application code uses GPL-3.0-or-later. The combined DAW
+executable uses GPL-3.0-or-later and includes GPL-2.0-or-later Rubber Band.
+Original code in the standalone audio-analysis, timestretch and
+timestretch-cli packages uses BSD-2-Clause. For license scope, see
+DAW-NOTICE.txt in the desktop package's licenses directory or DAW/NOTICE in
+DAW-source.zip.
 
 Rust wrapper: rubberband 0.1.5, GPL-2.0-or-later
 https://github.com/jefflongo/rubberband-rs

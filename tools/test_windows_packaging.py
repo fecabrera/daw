@@ -94,6 +94,9 @@ switch ($env:DAW_TEST_SCENARIO) {
                         self.assertEqual(archive.read('DAW/daw-desktop.exe'), f'current-{profile}-{scenario}'.encode())
                         self.assertIn(b'Local development build', archive.read('DAW/LOCAL-BUILD.txt'))
                         self.assertEqual(archive.read('DAW/LICENSE.txt'), (root / 'LICENSE').read_bytes())
+                        self.assertEqual(archive.read('DAW/licenses/DAW-NOTICE.txt'), (root / 'NOTICE').read_bytes())
+                        self.assertEqual(archive.read('DAW/licenses/DAW-BSD-2-Clause.txt'),
+                                         (root / 'crates/audio-analysis/LICENSE').read_bytes())
                         for name in ('DAW-source.zip', 'source-manifest.json', 'SOURCE-ACCESS.txt'):
                             self.assertNotIn('DAW/' + name, archive.namelist())
                         for entry in notices:

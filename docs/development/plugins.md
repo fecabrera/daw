@@ -48,7 +48,20 @@ files for the other API or both APIs.
 
 ## CI builds
 
-The [plugin CI workflow](../../.github/workflows/plugins.yml) builds and tests each product on all three platforms. Download `<product>-CLAP-<target>`, `<product>-VST3-<target>`, `<product>-AUv2-<target>` on macOS, and `<product>-checksums-<target>` artifacts. Extract the inner ZIP before installation. Artifacts and logs are retained for 14 days.
+The [plugin CI workflow](../../.github/workflows/plugins.yml) builds and tests each product on all three platforms. Download `<product>-CLAP-<target>`, `<product>-VST3-<target>`, `<product>-AUv2-<target>` on macOS, and `<product>-checksums-<target>` artifacts. Extract the inner ZIP before installation. Binary artifacts and logs are retained for 14 days.
+
+Plugin previews use GPL-3.0-or-later. The workflow publishes one
+`DAW-corresponding-source-<attempt>` artifact with its committed source
+and locked dependencies. The source artifact is retained for 15 days.
+Each binary ZIP includes `SOURCE-ACCESS.txt`
+with the exact download URL and checksum. Download that source before
+redistributing a preview. For a local build, supply matching source when
+redistributing the binary. The archive command below uses a committed
+checkout and includes the scripts and dependencies needed to rebuild.
+
+```sh
+python3 tools/package_sources.py --archive-only --revision "$(git rev-parse HEAD)" --destination target/plugin-source
+```
 
 These are development previews. macOS bundles are ad-hoc signed, without notarization; Windows/Linux binaries are unsigned. External-host and release acceptance checks remain open. See [developer checks](../../specs/architecture/plugin-development-tools.md) and [validation records](../../specs/validation/README.md).
 

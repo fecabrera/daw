@@ -5,12 +5,15 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from plugin_bundle_layout import bundle_info, preview_binary
 import plistlib
 import shutil
 import subprocess
 import tempfile
+from urllib.parse import urlsplit
 import zipfile
+
+from package_sources import revision
+from plugin_bundle_layout import bundle_info, preview_binary
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = {
@@ -23,6 +26,8 @@ TARGETS = {
 def copy_preview_notices(root, notices, format_name, *, merge=False):
     notices.mkdir(parents=True, exist_ok=merge)
     shutil.copy2(root / "LICENSE", notices / "DAW-LICENSE.txt")
+    shutil.copy2(root / "NOTICE", notices / "DAW-NOTICE.txt")
+    shutil.copy2(root / "crates/audio-analysis/LICENSE", notices / "DAW-BSD-2-Clause.txt")
     for crate, name in ((f"plugin-{format_name}", format_name), ("equalizer", "dsp"),
                         ("oscillator", "oscillator-dsp"), ("plugin-window", "window"),
                         ("unit-ui", "fallback-fonts"), ("ui", "ui")):
@@ -106,7 +111,7 @@ def build_plugins(target, target_dir, selected, apis, root, *, release):
     subprocess.run(command, cwd=root, check=True)
 
 
-def stage_unit(target, target_dir, staging, unit, root, *, profile, apis):
+def stage_unit(target, target_dir, staging, unit, root, *, profile, apis, corresponding_source):
     """Assemble one product without replacing any published archives."""
     # The checkers import finalization on Python 3.10; only packaging needs 3.11.
     import tomllib
@@ -127,8 +132,9 @@ def stage_unit(target, target_dir, staging, unit, root, *, profile, apis):
         native_system = {"macos": "Darwin", "windows": "Windows", "linux": "Linux"}[system]
         binary = preview_binary(bundle, file_product, format_name, native_system)
         binary.parent.mkdir(parents=True, exist_ok=True)
-        metadata = target_metadata(root, unit, format_name)
-        library_name = metadata.get("lib", {}).get("name", metadata["package"]["name"].replace("-", "_"))
+        cargo = target_metadata(root, unit, format_name)
+        package_name = cargo["package"]["name"]
+        library_name = cargo.get("lib", {}).get("name", package_name.replace("-", "_"))
         source = target_dir / target / profile / library_pattern.format(library_name)
         shutil.copy2(source, binary)
         # Preserve executable permissions in ZIPs, including when staged on Windows.
@@ -153,8 +159,18 @@ def stage_unit(target, target_dir, staging, unit, root, *, profile, apis):
             finalize_macos_bundle(bundle, binary)
         metadata = {"product": manifest["product"], "vendor": manifest["vendor"],
                     "version": version, "target": target, "format": format_name, "profile": profile,
+                    "package": package_name, "license": "GPL-3.0-or-later",
                     "development_preview": True,
                     "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest()}
+        if corresponding_source:
+            metadata["corresponding_source"] = corresponding_source
+            (content / "SOURCE-ACCESS.txt").write_text(
+                f"Corresponding source for {product}\n"
+                f"Build commit: {corresponding_source['revision']}\n"
+                f"Source download: {corresponding_source['url']}\n"
+                f"DAW-source.zip SHA-256: {corresponding_source['sha256']}\n\n"
+                "Read DAW/SOURCE-BUILD.txt in the source archive. Keep the source\n"
+                "available with the binary when redistributing this package.\n", encoding="utf-8")
         if format_name == "auv2":
             approved = json.loads((root / "crates/plugin-auv2/approved.json").read_text())
             metadata["binding_generation"] = {key: value for key, value in approved.items() if key != "headers"}
@@ -168,7 +184,9 @@ def stage_unit(target, target_dir, staging, unit, root, *, profile, apis):
             + ("AUv2: use ~/Library/Audio/Plug-Ins/Components/ or /Library/Audio/Plug-Ins/Components/.\n"
                if format_name == "auv2" else "Logic Pro requires the separate AUv2 export.\n")
             + "Debug and release share identities; install one profile at a time.\n"
-            "Native accessibility, external-host/platform checks and a complete release\n"
+            + ("See SOURCE-ACCESS.txt for the corresponding source.\n" if corresponding_source else
+               "Local build. Supply matching corresponding source when redistributing it.\n")
+            + "Native accessibility, external-host/platform checks and a complete release\n"
             "dependency/notice audit remain open. This is not a release package.\n",
             encoding="utf-8")
         archive = staging / f"{archive_name}-{version}-{system}-{architecture}-{format_name}{suffix}.zip"
@@ -192,7 +210,8 @@ def stage_unit(target, target_dir, staging, unit, root, *, profile, apis):
     return [*archives, checksums]
 
 
-def package(target, target_dir, output_dir, root=ROOT, *, units, release=False, api="all"):
+def package(target, target_dir, output_dir, root=ROOT, *, units, release=False, api="all",
+            source_url=None, source_sha256=None):
     """Build first, then stage every selected unit before publishing artifacts."""
     if target not in TARGETS:
         raise ValueError(f"unsupported plugin target: {target}")
@@ -201,6 +220,14 @@ def package(target, target_dir, output_dir, root=ROOT, *, units, release=False, 
     output_dir = Path(output_dir).resolve()
     selected = select_units(units, root)
     apis = select_apis(api, target)
+    corresponding_source = None
+    if source_url is not None or source_sha256 is not None:
+        url = urlsplit(source_url or "")
+        if (url.scheme != "https" or not url.netloc or not source_sha256
+                or any(c.isspace() for c in source_url)
+                or len(source_sha256) != 64 or any(c not in "0123456789abcdef" for c in source_sha256)):
+            raise ValueError("corresponding source requires an HTTPS URL and a SHA-256 digest")
+        corresponding_source = {"revision": revision(root), "url": source_url, "sha256": source_sha256}
     build_plugins(target, target_dir, selected, apis, root, release=release)
     profile = "release" if release else "debug"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -210,10 +237,13 @@ def package(target, target_dir, output_dir, root=ROOT, *, units, release=False, 
         for unit in selected:
             unit_staging = staging / unit
             unit_staging.mkdir()
-            artifacts.extend(stage_unit(target, target_dir, unit_staging, unit, root, profile=profile, apis=apis))
+            artifacts.extend(stage_unit(target, target_dir, unit_staging, unit, root, profile=profile,
+                                        apis=apis, corresponding_source=corresponding_source))
         names = [path.name for path in artifacts]
         if len(names) != len(set(names)):
             raise ValueError("selected units produce conflicting archive names")
+        if corresponding_source and revision(root) != corresponding_source["revision"]:
+            raise RuntimeError("tracked sources changed during plugin packaging")
         # Stage a rollback copy of every overwritten file before publication.
         backup = staging / "previous"
         backup.mkdir()
@@ -245,10 +275,13 @@ def main():
     parser.add_argument("--target", required=True, choices=TARGETS)
     parser.add_argument("--target-dir", type=Path, default=ROOT / "target")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "target/plugin-artifacts")
+    parser.add_argument("--source-url", help="HTTPS download URL for the matching corresponding source")
+    parser.add_argument("--source-sha256", help="SHA-256 of the matching DAW-source.zip")
     args = parser.parse_args()
     try:
-        package(args.target, args.target_dir, args.output_dir, units=args.units, release=args.release, api=args.api)
-    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+        package(args.target, args.target_dir, args.output_dir, units=args.units, release=args.release,
+                api=args.api, source_url=args.source_url, source_sha256=args.source_sha256)
+    except (ValueError, RuntimeError, OSError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"Packaging failed: {error}\n")
 
 

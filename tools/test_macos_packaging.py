@@ -183,6 +183,11 @@ class MacosSigning(unittest.TestCase):
             app=root/'target/debug/DAW.app'
             receipts=root/'target/debug/DAW-source-metadata'
             subprocess.run(['codesign','--verify','--deep','--strict',str(app)], check=True, capture_output=True)
+            resources = app/'Contents/Resources'
+            self.assertEqual((resources/'LICENSE.txt').read_bytes(), (root/'LICENSE').read_bytes())
+            self.assertEqual((resources/'licenses/DAW-NOTICE.txt').read_bytes(), (root/'NOTICE').read_bytes())
+            self.assertEqual((resources/'licenses/DAW-BSD-2-Clause.txt').read_bytes(),
+                             (root/'crates/audio-analysis/LICENSE').read_bytes())
             manifest=json.loads((receipts/'source-manifest.json').read_text())
             self.assertEqual(hashlib.sha256((receipts/manifest['binary_path']).read_bytes()).hexdigest(), manifest['binary_sha256'])
             self.assertEqual(hashlib.sha256((receipts/manifest['source_archive']).read_bytes()).hexdigest(), manifest['source_sha256'])

@@ -3,7 +3,7 @@ name = "daw-saturator-editor"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license = "BSD-2-Clause"
+license.workspace = true
 
 [dependencies]
 daw-unit-core.workspace = true

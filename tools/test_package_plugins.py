@@ -46,6 +46,35 @@ def fake_cargo(base):
 
 
 class PackagingTests(unittest.TestCase):
+    def test_distributed_plugin_includes_license_and_corresponding_source(self):
+        target = "x86_64-unknown-linux-gnu"
+        url = "https://example.test/exact-source"
+        commit, sha256 = "1" * 40, "2" * 64
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            release = base / "target" / target / "release"
+            release.mkdir(parents=True)
+            (release / "libdaw_drive_clap.so").write_bytes(b"clap")
+            output = base / "artifacts"
+            with patch("package_plugins.revision", return_value=commit):
+                with self.assertRaisesRegex(ValueError, "HTTPS URL and a SHA-256 digest"):
+                    package(target, base / "target", output, units="drive", api="clap", source_url=url)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    package(target, base / "target", output, units="drive", api="clap",
+                            source_url=url, source_sha256=sha256)
+            with zipfile.ZipFile(next(output.glob("*.zip"))) as archive:
+                build = json.loads(archive.read("build.json"))
+                self.assertEqual(build["license"], "GPL-3.0-or-later")
+                self.assertEqual(build["package"], "daw-drive-clap")
+                self.assertEqual(build["corresponding_source"],
+                                 {"revision": commit, "url": url, "sha256": sha256})
+                for field in (url, commit, sha256):
+                    self.assertIn(field.encode(), archive.read("SOURCE-ACCESS.txt"))
+                for name, notice in (("LICENSE", "DAW-LICENSE.txt"),
+                                     ("NOTICE", "DAW-NOTICE.txt"),
+                                     ("crates/audio-analysis/LICENSE", "DAW-BSD-2-Clause.txt")):
+                    self.assertEqual(archive.read(f"licenses/{notice}"), (ROOT / name).read_bytes())
+
     def test_checker_imports_do_not_require_python311_tomllib(self):
         subprocess.run([sys.executable, "-c",
                         "import sys; sys.modules['tomllib'] = None; "
@@ -137,7 +166,12 @@ class PackagingTests(unittest.TestCase):
                                 continue
                             expected = source.read_bytes()
                             self.assertEqual(hashlib.sha256(expected).hexdigest(), entry["sha256"], entry["notice"])
-                            self.assertEqual(zipped.read(license_prefix + "ui/" + source.name), expected)
+                            plugin_format = entry.get("plugin_format")
+                            packaged_notice = license_prefix + (plugin_format or "ui") + "/" + source.name
+                            if plugin_format and plugin_format != format_name:
+                                self.assertNotIn(packaged_notice, zipped.namelist())
+                                continue
+                            self.assertEqual(zipped.read(packaged_notice), expected)
                         self.assertIn("README.txt", zipped.namelist())
                         if system == "macos":
                             self.assertIn(f"Drive.{format_name}/Contents/_CodeSignature/CodeResources", zipped.namelist())
@@ -296,7 +330,10 @@ class PackagingTests(unittest.TestCase):
                 manifest.parent.mkdir()
                 manifest.write_text(f'[package]\nname = "other-{fmt}"\n[lib]\nname = "custom_{fmt}"\n')
                 (release / f"libcustom_{fmt}.so").write_bytes(fmt.encode())
-            shutil.copy2(ROOT / "LICENSE", root / "LICENSE")
+            for name in ("LICENSE", "NOTICE"):
+                shutil.copy2(ROOT / name, root / name)
+            (root / "crates/audio-analysis").mkdir(parents=True)
+            shutil.copy2(ROOT / "crates/audio-analysis/LICENSE", root / "crates/audio-analysis/LICENSE")
             for crate in ("plugin-clap", "plugin-vst3", "equalizer", "oscillator", "plugin-window", "unit-ui", "ui"):
                 shutil.copytree(ROOT / f"crates/{crate}/assets/licenses", root / f"crates/{crate}/assets/licenses")
             shutil.copytree(ROOT / "crates/unit-ui/assets/fonts", root / "crates/unit-ui/assets/fonts")

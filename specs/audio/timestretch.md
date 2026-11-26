@@ -21,7 +21,7 @@ Any prohibited material blocks acceptance. Remove it and replace the affected wo
 
 ## Purpose and scope
 
-Develop an independent, reusable Rust time stretch library. Name the package and library `timestretch`, at `crates/timestretch`. License its original code under BSD-2-Clause, consistent with the repository [LICENSE](../../LICENSE). The current use cases bound the initial requirements; using the library must not require a DAW, project model, or this application's runtime. Keep it suitable for extraction into its own repository once stable.
+Develop an independent, reusable Rust time stretch library. Name the package and library `timestretch`, at `crates/timestretch`. License its original code under [BSD-2-Clause](../../crates/timestretch/LICENSE). The current use cases bound the initial requirements; using the library must not require a DAW, project model, or this application's runtime. Keep it suitable for extraction into its own repository once stable.
 
 The processor changes duration while preserving pitch by default. An optional constant pitch offset changes pitch independently of duration. It processes a complete in-memory source at one constant ratio and pitch offset. The caller owns threading and result publication. Provide an independent command-line tool at `crates/timestretch-cli`, package `timestretch-cli`, binary `timestretch`, for file processing and three-engine comparisons. The DAW is one optional consumer, described separately below.
 

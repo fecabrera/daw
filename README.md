@@ -106,6 +106,12 @@ Development of this project has been assisted by AI. While most of the code has 
 
 ## Licenses
 
-Original code uses the [BSD 2-Clause License](LICENSE). Bundled dependencies have separate terms. Their notices are included with the [media libraries](crates/media/assets/licenses), [fonts](crates/unit-ui/assets/fonts), [icons](crates/ui/assets/icons), [UI dependencies](crates/ui/assets/licenses), and [oscillator dependencies](crates/oscillator/assets/licenses), and [EQ dependencies](crates/equalizer/assets/licenses), and [stem-separation dependencies](crates/separation/assets/licenses).
+DAW, its headless CLI and its plugin products use the GNU General Public
+License, version 3 or later. [License text](LICENSE) · [Copyright and scope](NOTICE)
 
-The [native dependency audit](specs/audio/stem-native-dependencies.md) records platform runtime requirements and license obligations for the combined applications. The original-code BSD license does not replace bundled-library terms or corresponding-source requirements.
+The standalone [audio-analysis](crates/audio-analysis/LICENSE),
+[timestretch](crates/timestretch/LICENSE) and
+[timestretch-cli](crates/timestretch-cli/LICENSE) packages use BSD-2-Clause
+for their original code. Bundled dependencies and assets carry their own
+terms. The development guides describe where to find the notices and
+matching source for binary distributions. [Development guides](docs/development/README.md)

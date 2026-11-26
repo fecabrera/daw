@@ -115,7 +115,7 @@ def notices(work: Path, env: dict[str, str]) -> tuple[list[dict], Path]:
     (work / "dependency-inventory.json").write_text(json.dumps(inventory, indent=2) + "\n")
     destination = work / "notices"
     destination.mkdir(exist_ok=True)
-    shutil.copy2(ROOT / "LICENSE", destination / "DAW-LICENSE")
+    shutil.copy2(ROOT / "crates/audio-analysis/LICENSE", destination / "DAW-BSD-2-Clause.txt")
     # Copy published license/notice texts including nested font notices. No source
     # code is copied into the repository or included in the prototype bundles.
     extra = json.loads((TOOL / "licenses" / "sources.json").read_text())

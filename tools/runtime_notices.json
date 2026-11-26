@@ -932,6 +932,70 @@
         "license_url": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
         "license_expression": "Zlib OR Apache-2.0 OR MIT"
       }
+    },
+    {
+      "component": "zlib-rs-0.6.8-paper-100k",
+      "notice": "tools/source-notices/zlib-rs-0.6.8-paper-100k-ATTRIBUTION.txt",
+      "sha256": "388512171628f647e8b0e5d20df2454fa5f0a3b741a2c38a4109c2331a1cd019",
+      "deliverables": [
+        "source"
+      ],
+      "reason": "The vendored paper excerpt is a test fixture with its own CC BY 4.0 attribution.",
+      "source_package": {
+        "name": "zlib-rs",
+        "version": "0.6.8",
+        "registry_checksum": "b268e58e7c693d7c271f93ffc4ba3b380412554231c85bf61ca7af91042a4112",
+        "git_revision": "0254e07204884bfc902d6ebb68c8b703d0ea49cf",
+        "path_in_vcs": "zlib-rs",
+        "file": "src/deflate/test-data/paper-100k.pdf",
+        "file_sha256": "60f73a051b7ca35bfec44734b2eed7736cb5c0b7f728beb7b97ade6c5e44849b",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "license_expression": "CC-BY-4.0"
+      }
+    },
+    {
+      "component": "vst3-0.3.0-steinberg-pluginterfaces",
+      "notice": "crates/plugin-vst3/assets/licenses/Steinberg-pluginterfaces-MIT.txt",
+      "sha256": "d6115b263faa1cdf8c7372d70889c833dde1cec95252e7ee93e4f7d599ec96ca",
+      "deliverables": [
+        "desktop",
+        "plugins",
+        "source"
+      ],
+      "plugin_format": "vst3",
+      "reason": "Steinberg MIT notice for the exact pluginterfaces revision used to generate the production Rust VST3 bindings.",
+      "source_package": {
+        "name": "vst3",
+        "version": "0.3.0",
+        "registry_checksum": "e31e3fe7a6f028ded8c5a9984cf283319e6dc63572c9b71da1d4ee9d71d3b6bf",
+        "git_revision": "2d86c810be3e22367f92438800cd96a3e9cd3a37",
+        "path_in_vcs": "",
+        "upstream_ref": "31d6eeba6daaa3e2a8bfbe3e7a90ca0b7fbfbc1c",
+        "license_url": "https://raw.githubusercontent.com/coupler-rs/vst3_pluginterfaces/31d6eeba6daaa3e2a8bfbe3e7a90ca0b7fbfbc1c/LICENSE.txt",
+        "license_expression": "MIT"
+      }
+    },
+    {
+      "component": "clap-sys-0.5.0-clap-interface",
+      "notice": "crates/plugin-clap/assets/licenses/CLAP-1.2.2-MIT.txt",
+      "sha256": "ced49f9ef950277afdb56199369ea6e8165ebfdbfbb37ebfe1827e0de892088d",
+      "deliverables": [
+        "desktop",
+        "plugins",
+        "source"
+      ],
+      "plugin_format": "clap",
+      "reason": "Alexandre Bique's MIT notice for the CLAP 1.2.2 interface targeted by the production Rust CLAP bindings.",
+      "source_package": {
+        "name": "clap-sys",
+        "version": "0.5.0",
+        "registry_checksum": "a76abbdb2907f6fd97fb6bc0b7be96b77d328f2dd9669d1075cc03369ed22154",
+        "git_revision": "25d7f53fdb6363ad63fbd80049cb7a42a97ac156",
+        "path_in_vcs": "",
+        "upstream_ref": "1.2.2",
+        "license_url": "https://raw.githubusercontent.com/free-audio/clap/1.2.2/LICENSE",
+        "license_expression": "MIT"
+      }
     }
   ]
 }

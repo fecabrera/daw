@@ -13,6 +13,10 @@ import zipfile
 
 import package_sources as sources
 
+LICENSE_PATHS = ('LICENSE', 'NOTICE', 'crates/audio-analysis/LICENSE',
+                 'crates/timestretch/LICENSE', 'crates/timestretch-cli/LICENSE')
+PAPER_FIXTURE = b'paper excerpt fixture for packaging tests'
+
 
 @contextmanager
 def fixture(line_ending=b'\n'):
@@ -24,14 +28,23 @@ def fixture(line_ending=b'\n'):
         # Explicit bytes below must reach the commit unchanged on every host.
         subprocess.run(['git', '-C', str(root), 'config', 'core.autocrlf', 'false'], check=True)
         entries=[e for e in json.loads((sources.ROOT/'tools/runtime_notices.json').read_text())['notices']
-                 if e['component'] in ('valuable-0.1.1', 'realfft-3.5.0', 'accesskit-0.24.1-chromium')]
+                 if e['component'] in ('valuable-0.1.1', 'realfft-3.5.0', 'accesskit-0.24.1-chromium',
+                                       'zlib-rs-0.6.8-paper-100k', 'vst3-0.3.0-steinberg-pluginterfaces',
+                                       'clap-sys-0.5.0-clap-interface')]
         entries.sort(key=lambda e: e['component'] != 'valuable-0.1.1')
+        for entry in entries:
+            if 'file' in entry['source_package']:
+                entry['source_package']['file_sha256'] = hashlib.sha256(PAPER_FIXTURE).hexdigest()
         (root/'tools').mkdir()
         (root/'tools/runtime_notices.json').write_text(json.dumps({'notices':entries}))
         for entry in entries:
             notice=root/entry['notice']; notice.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(sources.ROOT/entry['notice'],notice)
         (root/'Cargo.lock').write_bytes(b'exact locked sources' + line_ending)
+        for name in LICENSE_PATHS:
+            target = root/name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(sources.ROOT/name, target)
         (root/'.cargo').mkdir()
         (root/'.cargo/config.toml').write_text('[build]\njobs = 2\n')
         (root/'vendor/charon-audio').mkdir(parents=True)
@@ -54,7 +67,10 @@ class SourcePackages(unittest.TestCase):
     def test_external_receipt_refresh_preserves_sealed_resources_and_tracks_signed_bytes(self):
         self._assert_source_archive(b'\n', external_receipt=True)
 
-    def _assert_source_archive(self, line_ending, external_receipt=False):
+    def test_shared_plugin_source_archive_omits_desktop_receipts(self):
+        self._assert_source_archive(b'\n', archive_only=True)
+
+    def _assert_source_archive(self, line_ending, external_receipt=False, archive_only=False):
         with fixture(line_ending) as (root, binary, revision):
             check_output = subprocess.check_output
             def command(args, **kwargs):
@@ -66,6 +82,10 @@ class SourcePackages(unittest.TestCase):
                         package=entry['source_package']; source=vendor/(package['name']+'-'+package['version']); source.mkdir()
                         (source/'.cargo_vcs_info.json').write_text(json.dumps({'git':{'sha1':package['git_revision']},'path_in_vcs':package['path_in_vcs']}))
                         (source/'.cargo-checksum.json').write_text(json.dumps({'files':{},'package':package['registry_checksum']}))
+                        if 'file' in package:
+                            payload = source/package['file']
+                            payload.parent.mkdir(parents=True)
+                            payload.write_bytes(PAPER_FIXTURE)
 
                     os.utime(vendor/'dependency-1.0/LICENSE',(0,0))
                     return f'[source.crates-io]\nreplace-with = "vendored-sources"\n[source.vendored-sources]\ndirectory = "{vendor}"\n'.encode()
@@ -73,9 +93,17 @@ class SourcePackages(unittest.TestCase):
             destination = root/'package'
             receipts = root/'DAW-source-metadata' if external_receipt else destination
             with patch.object(sources.subprocess, 'check_output', side_effect=command):
-                sources.bundle(destination, binary, revision, 'release',
-                               receipt_destination=receipts if external_receipt else None)
+                if archive_only:
+                    self.assertEqual(sources.source_archive(destination, revision, 'release'),
+                                     destination/'DAW-source.zip')
+                else:
+                    sources.bundle(destination, binary, revision, 'release',
+                                   receipt_destination=receipts if external_receipt else None)
             with zipfile.ZipFile(destination/'DAW-source.zip') as archive:
+                for name in LICENSE_PATHS:
+                    self.assertEqual(archive.read('DAW/'+name), (root/name).read_bytes())
+                self.assertIn(b'cargo build --locked --lib --target <target> -p <package>',
+                              archive.read('DAW/SOURCE-BUILD.txt'))
                 self.assertEqual(archive.read('DAW/Cargo.lock'), b'exact locked sources' + line_ending)
                 self.assertEqual(archive.read('DAW/vendor/charon-audio/DAW-PATCH.md'), b'local patch' + line_ending)
                 self.assertEqual(archive.read('DAW/cargo-vendor/dependency-1.0/LICENSE'), b'upstream grant')
@@ -87,7 +115,7 @@ class SourcePackages(unittest.TestCase):
                 self.assertFalse(any('private-recording' in name or '.git/' in name for name in archive.namelist()))
                 self.assertEqual(len(archive.namelist()),len(set(archive.namelist())))
                 notices=json.loads(archive.read('DAW/SOURCE-LICENSES/index.json'))
-                self.assertEqual(len(notices),3)
+                self.assertEqual(len(notices),6)
                 notice=archive.read('DAW/SOURCE-LICENSES/'+notices[0]['notice'])
                 self.assertIn(b'Copyright (c) 2021 Valuable Contributors',notice)
                 self.assertEqual(hashlib.sha256(notice).hexdigest(),notices[0]['sha256'])
@@ -109,7 +137,29 @@ class SourcePackages(unittest.TestCase):
                 self.assertEqual(accesskit['version'],'0.24.1')
                 self.assertEqual(accesskit['path_in_vcs'],'common')
                 self.assertEqual(accesskit['git_revision'],'a55d3e1a18bb9ef0e4bccc9083fb13c3e0ad8969')
+                paper = next(entry for entry in notices if entry['name'] == 'zlib-rs')
+                self.assertEqual(paper['license_expression'], 'CC-BY-4.0')
+                self.assertEqual(archive.read('DAW/cargo-vendor/zlib-rs-0.6.8/'+paper['file']), PAPER_FIXTURE)
+                self.assertEqual(paper['file_sha256'], hashlib.sha256(PAPER_FIXTURE).hexdigest())
+                attribution = archive.read('DAW/SOURCE-LICENSES/'+paper['notice'])
+                self.assertIn(b'Federico Comoglio and Renato Paro', attribution)
+                self.assertIn(b'https://doi.org/10.1371/journal.pcbi.1003419', attribution)
+                self.assertIn(b'https://creativecommons.org/licenses/by/4.0/', attribution)
+                self.assertEqual(hashlib.sha256(attribution).hexdigest(), paper['sha256'])
+                for name, upstream_ref, copyright_holder in (
+                    ('vst3', '31d6eeba6daaa3e2a8bfbe3e7a90ca0b7fbfbc1c', b'Steinberg Media Technologies GmbH'),
+                    ('clap-sys', '1.2.2', b'Alexandre BIQUE'),
+                ):
+                    entry = next(item for item in notices if item['name'] == name)
+                    self.assertEqual(entry['license_expression'], 'MIT')
+                    self.assertEqual(entry['upstream_ref'], upstream_ref)
+                    notice = archive.read('DAW/SOURCE-LICENSES/'+entry['notice'])
+                    self.assertIn(copyright_holder, notice)
+                    self.assertEqual(hashlib.sha256(notice).hexdigest(), entry['sha256'])
 
+            if archive_only:
+                self.assertEqual({entry.name for entry in destination.iterdir()}, {'DAW-source.zip'})
+                return
             manifest=json.loads((receipts/'source-manifest.json').read_text())
             self.assertEqual(manifest['revision'],revision)
             self.assertEqual(manifest['binary_sha256'],hashlib.sha256(binary.read_bytes()).hexdigest())
@@ -164,4 +214,22 @@ class SourcePackages(unittest.TestCase):
             checksum.write_text(json.dumps({'package':package['registry_checksum']}))
             (root/entry['notice']).write_text('incomplete grant')
             with self.assertRaisesRegex(RuntimeError,'hash mismatch'):
+                sources.source_notices(vendor)
+
+    def test_attribution_rejects_a_missing_or_changed_source_file(self):
+        with fixture() as (root, _, _):
+            entries = json.loads((root/'tools/runtime_notices.json').read_text())['notices']
+            package = next(e['source_package'] for e in entries if e['source_package']['name'] == 'zlib-rs')
+            vendor = root/'cargo-vendor'
+            source = vendor/'zlib-rs-0.6.8'
+            source.mkdir(parents=True)
+            (source/'.cargo_vcs_info.json').write_text(json.dumps({
+                'git': {'sha1': package['git_revision']}, 'path_in_vcs': package['path_in_vcs']}))
+            (source/'.cargo-checksum.json').write_text(json.dumps({'package': package['registry_checksum']}))
+            with self.assertRaisesRegex(RuntimeError, 'attribution does not match shipped file'):
+                sources.source_notices(vendor)
+            file = source/package['file']
+            file.parent.mkdir(parents=True)
+            file.write_bytes(b'changed paper excerpt')
+            with self.assertRaisesRegex(RuntimeError, 'attribution does not match shipped file'):
                 sources.source_notices(vendor)

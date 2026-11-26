@@ -23,7 +23,7 @@ The knob/readout stays at the saved base value while the live dot shows the proc
 
 ## Shared processing and scope
 
-The portable BSD-2-Clause `daw-macro` crate depends only on `daw-unit-core`. Each strip implements `ModulationSource` and `ModulationDestination`; `MacroInstance` supplies source metadata and `MacroModuleSettings` supplies targeted destination settings. Source behavior is `Continuous`, scope is `Shared`, and both modulation ports are declared. It has no audio input/output, DAW, UI, or device dependency.
+The GPL-3.0-or-later `daw-macro` workspace crate depends only on `daw-unit-core`. Each strip implements `ModulationSource` and `ModulationDestination`; `MacroInstance` supplies source metadata and `MacroModuleSettings` supplies targeted destination settings. Source behavior is `Continuous`, scope is `Shared`, and both modulation ports are declared. It has no audio input/output, UI, or device dependency.
 
 The engine prepares strip instances and target-filtered routes outside the callback. LFO and Macro share the host's continuous-provider preparation, dependency ordering, sampling, publication, reset, telemetry, and compatible state-retention path. Every provider advances once per sample; consumers reuse its cached value through `process_modulation`. Macro uses the common 1 ms additive offset smoother and shared 5 ms ramps for manual changes, source power, and connection amount/power. The final value bounds belong to the portable Macro processor. No callback allocation, locks, logging, or I/O are added.
 

@@ -3,7 +3,7 @@ name = "daw-plugin-auv2"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license = "BSD-2-Clause"
+license.workspace = true
 publish = false
 
 [target.'cfg(target_os = "macos")'.build-dependencies]

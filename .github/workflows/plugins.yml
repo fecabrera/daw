@@ -17,8 +17,33 @@ env:
   RUST_BACKTRACE: '1'
 
 jobs:
+  corresponding-source:
+    runs-on: ubuntu-24.04
+    outputs:
+      url: ${{ steps.upload.outputs.artifact-url }}
+      sha256: ${{ steps.archive.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Archive corresponding source
+        id: archive
+        run: |
+          python3 tools/package_sources.py --archive-only --profile release --revision "$GITHUB_SHA" --destination work/plugin-source
+          sha256sum work/plugin-source/DAW-source.zip | awk '{print "sha256=" $1}' >> "$GITHUB_OUTPUT"
+      - name: Upload corresponding source
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: DAW-corresponding-source-${{ github.run_attempt }}
+          path: work/plugin-source/DAW-source.zip
+          if-no-files-found: error
+          retention-days: 15
+          compression-level: 0
+
   plugins:
     name: ${{ matrix.unit.name }} / ${{ matrix.platform }}
+    needs: corresponding-source
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -115,7 +140,10 @@ jobs:
 
       - name: Package plugin previews
         id: plugin_package
-        run: bash tools/capture_ci_log.sh work/ci-logs/plugin-package.log python tools/package_plugins.py --release --api all --units '${{ matrix.unit.slug }}' --output-dir 'target/plugin-artifacts/${{ matrix.unit.slug }}' --target '${{ matrix.target }}'
+        env:
+          SOURCE_URL: ${{ needs.corresponding-source.outputs.url }}
+          SOURCE_SHA256: ${{ needs.corresponding-source.outputs.sha256 }}
+        run: bash tools/capture_ci_log.sh work/ci-logs/plugin-package.log python tools/package_plugins.py --release --api all --units '${{ matrix.unit.slug }}' --output-dir 'target/plugin-artifacts/${{ matrix.unit.slug }}' --target '${{ matrix.target }}' --source-url "$SOURCE_URL" --source-sha256 "$SOURCE_SHA256"
 
       - name: Check packaged AUv2 exports
         if: runner.os == 'macOS'
