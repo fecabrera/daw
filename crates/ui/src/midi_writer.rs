@@ -1,5 +1,6 @@
 //! Storage has its own worker so slow snapshots and disks cannot stall live note release.
 use super::midi_service::{AudioTake, Inbox, Message};
+use super::recording_preview::{AudioPreviewBuilder, TakePreview};
 use daw_core::Id;
 use daw_output::recording::{Capture, ClockPort};
 use daw_output::{MidiAction, MidiReceipt};
@@ -47,6 +48,7 @@ pub(super) struct Writer {
     events: Producer<MidiReceipt>,
     status: mpsc::Receiver<Status>,
     terminal: Arc<AtomicU64>,
+    preview_frame: Arc<AtomicU64>,
     last_frame: u64,
     worker: Option<std::thread::JoinHandle<()>>,
 }
@@ -57,6 +59,8 @@ impl Writer {
         let (status, updates) = mpsc::sync_channel(8);
         let terminal = Arc::new(AtomicU64::new(u64::MAX));
         let terminal_worker = terminal.clone();
+        let preview_frame = Arc::new(AtomicU64::new(0));
+        let preview_clock = preview_frame.clone();
         let worker = std::thread::spawn(move || {
             let initialized = (|| {
                 let choices = RecoveryStore::scan(&root)?;
@@ -75,6 +79,9 @@ impl Writer {
             let _ = status.send(Status::StorageReady);
             let mut take: Option<TakeJournal> = None;
             let mut audio_capture: Option<Capture> = None;
+            let mut audio_preview: Option<AudioPreviewBuilder> = None;
+            let mut preview_project = Id::nil();
+            let mut preview_update = Instant::now();
             let mut audio_end: Option<(u64, Instant)> = None;
             let mut last_midi_frame = 0;
             let mut audio_watermark = 0;
@@ -122,6 +129,9 @@ impl Writer {
                                 base = daw_project::recovery::digest(&session.project)
                                     .map_err(|e| e.to_string())?;
                                 revision = rev;
+                                preview_project = session.project.project_id;
+                                preview_clock.store(0, Ordering::Relaxed);
+                                audio_preview = None;
                                 interrupted = false;
                                 last_midi_frame = 0;
                                 audio_watermark = 0;
@@ -165,6 +175,8 @@ impl Writer {
                                             .map(|&(id, route)| (id, capture.peaks[route].clone()))
                                             .collect(),
                                     ));
+                                    audio_preview =
+                                        Some(AudioPreviewBuilder::new(audio.tracks, stereo.len()));
                                     audio_capture = Some(capture);
                                     journal
                                 } else {
@@ -385,7 +397,11 @@ impl Writer {
                         Ok(())
                     } else {
                         capture.poll_through(audio_watermark, |frame| {
-                            journal.audio_frame(frame).map_err(|e| e.to_string())
+                            journal.audio_frame(frame).map_err(|e| e.to_string())?;
+                            if let Some(preview) = &mut audio_preview {
+                                preview.push(frame);
+                            }
+                            Ok(())
                         })
                     };
                     if !interrupted && (capture.faulted() || poll.is_err()) {
@@ -419,6 +435,21 @@ impl Writer {
                         finish(&mut take, cutoff, revision, &base, &messages, &status);
                     }
                 }
+                if preview_update.elapsed() >= Duration::from_millis(50) {
+                    preview_update = Instant::now();
+                    if let Some(journal) = &take
+                        && let Some((start, midi)) =
+                            journal.midi_preview(preview_clock.load(Ordering::Relaxed))
+                    {
+                        let _ = messages.send(Message::RecordingPreview(Box::new(TakePreview {
+                            project: preview_project,
+                            start,
+                            audio: audio_preview.as_mut().map(AudioPreviewBuilder::snapshot),
+                            midi,
+                            sealed_at: audio_end.map(|(frame, _)| frame),
+                        })));
+                    }
+                }
                 if synced.elapsed() >= Duration::from_millis(250) {
                     if let Some(j) = &mut take
                         && let Err(error) = j.sync()
@@ -438,6 +469,7 @@ impl Writer {
             events,
             status: updates,
             terminal,
+            preview_frame,
             last_frame: 0,
             worker: Some(worker),
         }
@@ -459,6 +491,9 @@ impl Writer {
     }
     pub fn interrupt(&self, frame: u64) {
         self.terminal.store(frame, Ordering::Release);
+    }
+    pub fn preview_frame(&self, frame: u64) {
+        self.preview_frame.fetch_max(frame, Ordering::Relaxed);
     }
     pub fn poll(&self) -> Option<Status> {
         self.status.try_recv().ok()
@@ -555,8 +590,6 @@ mod tests {
                     velocity: 100,
                 },
             ),
-            (24000, MidiAction::Release { token }),
-            (24000, MidiAction::Seal),
         ]
         .into_iter()
         .enumerate()
@@ -567,6 +600,44 @@ mod tests {
                     frame,
                     clock: frame,
                     sequence: sequence as u64,
+                })
+                .unwrap();
+        }
+        writer.preview_frame(12_000);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Ok(Message::RecordingPreview(preview)) = inbox.try_recv()
+                && preview.midi.iter().all(|track| track.end == 12_000)
+                && preview.midi.iter().any(|track| !track.notes.is_empty())
+            {
+                assert_eq!(preview.start, 0);
+                assert_eq!(preview.midi.len(), 2);
+                for track in &preview.midi {
+                    assert_eq!(
+                        track.notes,
+                        [daw_project::midi_recording::PreviewNote {
+                            start: 0,
+                            end: 12_000,
+                            pitch: 60,
+                            held: true,
+                        }]
+                    );
+                }
+                break;
+            }
+            assert!(Instant::now() < deadline, "recording preview timed out");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        for (sequence, action) in [MidiAction::Release { token }, MidiAction::Seal]
+            .into_iter()
+            .enumerate()
+        {
+            writer
+                .packet(MidiReceipt {
+                    action,
+                    frame: 24_000,
+                    clock: 24_000,
+                    sequence: sequence as u64 + 2,
                 })
                 .unwrap();
         }

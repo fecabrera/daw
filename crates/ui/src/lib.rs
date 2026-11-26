@@ -48,6 +48,7 @@ mod midi_pattern_headers;
 mod placement;
 mod portion;
 mod range_selection;
+mod recording_preview;
 mod regular_save;
 mod separation_models;
 mod source_tempo;
@@ -2709,6 +2710,7 @@ impl DawUi {
                 self.output = None;
             }
         }
+        self.advance_recording_preview();
         let deferred_close = self.settings_window.take_root_close();
         if !self.allow_close && (deferred_close || ctx.input(|i| i.viewport().close_requested())) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -4041,6 +4043,7 @@ impl DawUi {
         self.finish_clip_drag(ui);
         self.update_portion(ui);
         self.paint_drag_preview(ui, tracks.inner_rect.intersect(timeline_rect));
+        self.paint_recording_preview(ui, tracks.inner_rect.intersect(timeline_rect));
         self.paint_file_hover(ui, tracks.inner_rect.intersect(timeline_rect));
         // Keep the horizontal separator continuous across the gap.
         painter.hline(
@@ -4166,7 +4169,7 @@ impl DawUi {
         }
         self.session
             .project
-            .seconds(self.session.project.end())
+            .seconds(self.session.project.end().max(self.recording_preview_end()))
             .max(60.0)
             + 30.0
     }
@@ -5388,11 +5391,13 @@ impl DawUi {
     }
 
     fn clip_block(&self, lane: Rect, clip: &Clip, start: u64) -> Rect {
+        self.clip_frame_block(lane, start, clip.length_frames)
+    }
+    fn clip_frame_block(&self, lane: Rect, start: u64, length: u64) -> Rect {
         let left = lane.left()
             + ((self.session.project.seconds(start) - self.view_scroll()) as f32)
                 * self.view_zoom();
-        let right =
-            left + self.session.project.seconds(clip.length_frames) as f32 * self.view_zoom();
+        let right = left + self.session.project.seconds(length) as f32 * self.view_zoom();
         Rect::from_min_max(
             Pos2::new(left, lane.top()),
             Pos2::new(right.max(left + 2.0), lane.bottom()),

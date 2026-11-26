@@ -58,6 +58,22 @@ struct OpenNote {
     pitch: u8,
     velocity: u8,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PreviewNote {
+    pub start: u64,
+    pub end: u64,
+    pub pitch: u8,
+    pub held: bool,
+}
+
+pub struct TrackPreview {
+    pub track: Id,
+    pub active: bool,
+    pub end: u64,
+    pub notes: Vec<PreviewNote>,
+}
+
 pub struct MidiCapture {
     pub id: Id,
     pub base: Session,
@@ -509,6 +525,60 @@ impl TakeJournal {
             self.flush_pcm()?;
         }
         Ok(())
+    }
+
+    /// Use the same routing and sustain-resolved notes that will build the take.
+    pub fn midi_preview(&self, end: u64) -> Option<(u64, Vec<TrackPreview>)> {
+        let capture = &self.capture;
+        let origin = capture.origin?;
+        let tracks = capture
+            .base
+            .project
+            .tracks
+            .iter()
+            .filter_map(|track| {
+                let id = track.id;
+                let active = capture.routes.contains(&id);
+                let closed = capture.notes.get(&id).map_or(&[][..], Vec::as_slice);
+                if !active && closed.is_empty() {
+                    return None;
+                }
+                let end = if active {
+                    end.max(origin)
+                } else {
+                    closed.last().map_or(origin, |note| note.1).min(end)
+                };
+                let notes = closed
+                    .iter()
+                    .step_by(closed.len().div_ceil(512).max(1))
+                    .map(|&(start, end, pitch, _)| PreviewNote {
+                        start,
+                        end,
+                        pitch,
+                        held: false,
+                    })
+                    .chain(
+                        capture
+                            .open
+                            .range((id, Id::nil())..=(id, Id::from_u128(u128::MAX)))
+                            .take(128)
+                            .map(|(_, note)| PreviewNote {
+                                start: note.start,
+                                end,
+                                pitch: note.pitch,
+                                held: true,
+                            }),
+                    )
+                    .collect();
+                Some(TrackPreview {
+                    track: id,
+                    active,
+                    end,
+                    notes,
+                })
+            })
+            .collect();
+        Some((origin, tracks))
     }
 
     fn flush_pcm(&mut self) -> Result<()> {

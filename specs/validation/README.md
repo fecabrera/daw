@@ -2,6 +2,45 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Playhead-driven recording previews — 2026-11-26
+
+The mixed Timeline fixture advanced the playhead without supplying a new
+waveform snapshot. Both clip edges and the held MIDI note followed the
+playhead. Existing peaks kept their positions, the trailing area remained
+empty, and the clip edge stopped advancing during finalization. The
+waveform fixture verified that a partial chunk reused the previous
+snapshot and that completed chunks preserved peak ranges through
+compaction.
+
+Formatting and strict workspace Clippy passed. Both workspace suites
+passed 3,846 tests with 25 ignored and 22 native Audio Unit cases filtered.
+The local macOS debug bundle passed strict signature verification. Live
+device performance was not benchmarked.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+## Live recording clip previews — 2026-11-25
+
+The recording worker test verified that a held note grew in both routed
+previews before the take was committed. The audio preview test verified that
+peak compaction retained the signal range and kept distinct input routes
+separate. The Timeline paint test verified that a mixed preview showed its
+waveform and MIDI notes in separate lanes without modifying the project.
+
+Formatting and strict workspace Clippy passed. Both workspace suites passed
+3,846 tests with 25 ignored and 22 native Audio Unit cases filtered. The local
+macOS debug bundle passed strict signature verification. The visual checks
+used a headless Timeline fixture. Live input rendering was not checked on
+hardware.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
 ## Recording clock publication — 2026-11-25
 
 A regression held an unpublished clock reading while it sent Record

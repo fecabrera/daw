@@ -101,6 +101,7 @@ pub(super) enum Message {
     Recoveries(Vec<RecoveryEntry>),
     Recovered(Session),
     AudioPeak(Vec<(Id, Arc<std::sync::atomic::AtomicU32>)>),
+    RecordingPreview(Box<crate::recording_preview::TakePreview>),
 }
 #[derive(Clone, Default)]
 pub(super) struct Inbox(Arc<Mutex<VecDeque<Message>>>);
@@ -115,13 +116,17 @@ impl Inbox {
                     | (Message::Connected(_), Message::Connected(_))
                     | (Message::Recording(_), Message::Recording(_))
                     | (Message::AudioPeak(_), Message::AudioPeak(_))
+                    | (Message::RecordingPreview(_), Message::RecordingPreview(_))
             )
         });
         if queue.len() >= 256 {
             if let Some(index) = queue.iter().position(|m| {
                 matches!(
                     m,
-                    Message::Pitch(..) | Message::Devices(..) | Message::Error(..)
+                    Message::Pitch(..)
+                        | Message::Devices(..)
+                        | Message::Error(..)
+                        | Message::RecordingPreview(_)
                 )
             }) {
                 queue.remove(index);
@@ -632,6 +637,9 @@ fn run(
                     o.panic();
                     let _ = messages.send(Message::Error(error));
                 }
+            }
+            if take_busy && capture_started {
+                writer.preview_frame(o.last_frame());
             }
         }
         std::thread::sleep(Duration::from_millis(1));

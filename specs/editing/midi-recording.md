@@ -28,6 +28,12 @@ The callback publishes complete clock readings to the input broker without
 waiting. The broker can use the last complete reading during publication.
 It treats a full event queue as a fault and retains the accepted take prefix.
 
+Timeline previews use the accepted take origin and the displayed playhead
+for active destinations. Build the preview from the journal's routed notes.
+Extend held notes to the current position and retain closed-note lengths. Bound the
+display sample for dense takes. Preview updates leave project and history
+state untouched.
+
 Route removals close notes on that target; additions accept only later attacks.
 Repeated pitches use physical tokens and FIFO releases. Sustain resolves to note
 durations. All tracks use one origin. Convert integer project frames to 960-PPQ

@@ -52,6 +52,18 @@ owners keep their PCM available through first Save, Save As and history.
 Preserve ordinary clip placement, existing project schema, and headless
 playback and export. See [recovery](../projects/autosave-recovery.md).
 
+## Timeline preview
+
+After the transport accepts Start, the active clip edge follows the displayed
+playhead. The worker reduces accepted project-rate samples in chunks of
+1,024 frames and publishes bounded peak histories at up to 20 updates per
+second. Merge bins as the take grows. Share unchanged histories and group
+subpixel bins when painting. Anchor peaks to their frame positions while
+the clip grows. Mixed takes also show the
+[MIDI preview](midi-recording.md#capture). Timeline paints them in their
+destination lanes without creating clips or adding history entries. Clear
+them when the take settles or the project changes.
+
 ## Acceptance
 
 | Area | Acceptance check |

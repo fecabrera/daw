@@ -25,6 +25,8 @@ impl Default for Preferences {
     }
 }
 pub(super) struct State {
+    pub(super) preview: Option<Box<crate::recording_preview::TakePreview>>,
+    pub(super) preview_head: u64,
     pub armed: HashSet<Id>,
     audio_armed: HashSet<Id>,
     audio_inputs: HashMap<Id, (Option<daw_output::DeviceId>, InputChannels)>,
@@ -55,6 +57,8 @@ pub(super) struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
+            preview: None,
+            preview_head: 0,
             armed: HashSet::new(),
             audio_armed: HashSet::new(),
             audio_inputs: HashMap::new(),
@@ -245,6 +249,8 @@ impl DawUi {
             },
             audio,
         )) {
+            self.midi.preview = None;
+            self.midi.preview_head = 0;
             self.midi.recording = true;
             self.midi.audio_take = audio_take;
             self.ensure_history();
@@ -282,6 +288,8 @@ impl DawUi {
             self.midi.audio_inputs.clear();
             self.midi.failed_audio_fallback = None;
             self.midi.audio_peaks.clear();
+            self.midi.preview = None;
+            self.midi.preview_head = 0;
             self.midi.targets.clear();
             self.midi.monitoring.clear();
             self.midi.project = Some(project);
@@ -318,9 +326,17 @@ impl DawUi {
                 Message::Devices(devices) => self.midi.devices = devices,
                 Message::Connected(value) => self.midi.connected = value,
                 Message::AudioPeak(value) => self.midi.audio_peaks = value.into_iter().collect(),
+                Message::RecordingPreview(preview)
+                    if self.midi.busy() && preview.project == project =>
+                {
+                    self.midi.preview_head = self.midi.preview_head.max(preview.start);
+                    self.midi.preview = Some(preview);
+                }
+                Message::RecordingPreview(_) => {}
                 Message::Recording(value) => {
                     self.midi.recording = value;
                     if !value {
+                        self.midi.preview = None;
                         self.midi.finalizing = false;
                         self.midi.audio_take = false;
                     }
@@ -352,6 +368,7 @@ impl DawUi {
                     }
                 }
                 Message::Take { base, mut session } => {
+                    self.midi.preview = None;
                     session.project.transport = self.session.project.transport.clone();
                     session.project.display = self.session.project.display;
                     self.midi.finalizing = false;

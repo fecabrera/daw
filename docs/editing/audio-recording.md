@@ -33,6 +33,11 @@ to hear your input. DAW software input monitoring is off.
    stop or pause, use Stop or Pause. The app prepares the new clips before
    publishing them together. Undo reverses the whole take.
 
+As you record, each clip preview in Timeline grows with the playhead. The
+waveform fills in as each chunk of captured audio is ready. A mixed take also
+shows the recorded MIDI notes on its MIDI tracks. The finished clips replace
+the previews.
+
 For a mixed take, explicitly arm the Audio and MIDI tracks before Record.
 The selected-track MIDI fallback can still play live during an audio-only
 take. It becomes a recording destination when you explicitly arm that

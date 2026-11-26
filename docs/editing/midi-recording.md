@@ -29,6 +29,9 @@ device; the app does not measure their latency automatically.
 2. Press the circle Record button in the transport, or choose Transport > Record.
 3. Play the notes. Press Record again to finish the take. Stop and Pause also finish it.
 
+Timeline shows a clip preview that grows with the playhead on each destination.
+Held notes extend as the take grows. The finished clips replace the previews.
+
 All R-enabled MIDI tracks receive the same fresh key presses. With none enabled,
 the selected MIDI track receives them. Removing a target closes its held recorded
 notes. Adding a target receives future presses. Sustained notes close when the
