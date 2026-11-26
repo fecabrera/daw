@@ -64,6 +64,7 @@ pub(super) struct EditorPane {
     mode: LowerPane,
     height: f32,
     resize: Option<EditorResize>,
+    pub(super) sample_drop_context: Option<(Id, Option<Id>)>,
     #[cfg(test)]
     pub(super) toggle_bounds: Rect,
     #[cfg(test)]
@@ -90,6 +91,7 @@ impl Default for EditorPane {
             mode: LowerPane::default(),
             height: daw_core::ProjectDisplay::default().timeline_editor_height_points,
             resize: None,
+            sample_drop_context: None,
             #[cfg(test)]
             toggle_bounds: Rect::NOTHING,
             #[cfg(test)]
@@ -206,6 +208,7 @@ impl DawUi {
             self.effects_drag = None;
         }
         self.midi_editor.cancel();
+        self.timeline_editor.sample_drop_context = None;
         self.midi_editor.delete_clips = true;
         self.cancel_beat_reorder(None);
         self.clear_clip_settings_edits();

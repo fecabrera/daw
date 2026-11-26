@@ -4,8 +4,11 @@ use daw_core::TrackKind;
 impl DawUi {
     pub(super) fn editor_track(&self) -> Option<&daw_core::Track> {
         if self.timeline_editor_visible() {
+            let track_id = self
+                .beat_sample_editor_context()
+                .map_or_else(|| self.track_context(), |(track, _)| Some(track));
             return self.session.project.tracks.iter().find(|track| {
-                Some(track.id) == self.selected_track
+                Some(track.id) == track_id
                     && matches!(
                         track.kind,
                         TrackKind::Audio | TrackKind::Midi | TrackKind::Beat
@@ -22,7 +25,7 @@ impl DawUi {
                     .project
                     .tracks
                     .iter()
-                    .find(|t| Some(t.id) == self.selected_track)
+                    .find(|t| Some(t.id) == self.track_context())
             })
     }
 

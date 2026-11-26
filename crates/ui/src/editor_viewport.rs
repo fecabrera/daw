@@ -229,10 +229,8 @@ impl DawUi {
     }
 
     pub(super) fn editor_content_header(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
-        let clip = track
-            .clips
-            .iter()
-            .find(|clip| Some(clip.id) == self.selected_clip);
+        let selected = self.beat_editor_clip_id();
+        let clip = track.clips.iter().find(|clip| Some(clip.id) == selected);
         let midi = track.kind == daw_core::TrackKind::Midi;
         let scrollbar = if midi || track.kind == daw_core::TrackKind::Beat {
             ui.spacing().scroll.allocated_width()

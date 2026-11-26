@@ -2,6 +2,11 @@
 use super::*;
 use daw_core::{SamplerInput, SamplerSettings};
 
+enum LayerSampleTarget {
+    Layer(Id, Id, bool),
+    BeatSubtrack(Id),
+}
+
 impl Session {
     pub fn sampler_preparation_needed(&self, project: &Project) -> bool {
         let requests = sampler_requests(project, &self.live_midi_pitches);
@@ -41,8 +46,33 @@ impl Session {
         clip: &Clip,
         cancelled: &impl Fn() -> bool,
     ) -> Result<Self> {
+        self.with_clip_sample(
+            LayerSampleTarget::Layer(track, layer, false),
+            clip,
+            cancelled,
+        )
+    }
+
+    pub fn with_beat_sampler_clip(
+        &self,
+        subtrack: Id,
+        clip: &Clip,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<Self> {
+        self.with_clip_sample(LayerSampleTarget::BeatSubtrack(subtrack), clip, cancelled)
+    }
+
+    fn with_clip_sample(
+        &self,
+        target: LayerSampleTarget,
+        clip: &Clip,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<Self> {
+        if self.project.audio_asset(clip.asset_id).is_none() {
+            return Err(error("The clip has no audio source"));
+        }
         let mut next = self.clone();
-        next.assign_sampler_input(track, layer, SamplerInput::from(clip))?;
+        next.assign_sampler_input(target, SamplerInput::from(clip))?;
         next.prepare_stretches_cancellable(cancelled)?;
         Ok(next)
     }
@@ -61,7 +91,12 @@ impl Session {
         data: AudioData,
         cancelled: &impl Fn() -> bool,
     ) -> Result<Self> {
-        self.with_decoded_layer_audio(track, layer, path, data, cancelled, false)
+        self.with_decoded_layer_audio(
+            LayerSampleTarget::Layer(track, layer, false),
+            path,
+            data,
+            cancelled,
+        )
     }
     /// File drop on a regular layer installs Sampler atomically with prepared audio.
     pub fn with_layer_sampler_decoded(
@@ -72,16 +107,34 @@ impl Session {
         data: AudioData,
         cancelled: &impl Fn() -> bool,
     ) -> Result<Self> {
-        self.with_decoded_layer_audio(track, layer, path, data, cancelled, true)
+        self.with_decoded_layer_audio(
+            LayerSampleTarget::Layer(track, layer, true),
+            path,
+            data,
+            cancelled,
+        )
     }
-    fn with_decoded_layer_audio(
+
+    pub fn with_beat_sampler_decoded(
         &self,
-        track: Id,
-        layer: Id,
+        subtrack: Id,
         path: &Path,
         data: AudioData,
         cancelled: &impl Fn() -> bool,
-        replace_source: bool,
+    ) -> Result<Self> {
+        self.with_decoded_layer_audio(
+            LayerSampleTarget::BeatSubtrack(subtrack),
+            path,
+            data,
+            cancelled,
+        )
+    }
+    fn with_decoded_layer_audio(
+        &self,
+        target: LayerSampleTarget,
+        path: &Path,
+        data: AudioData,
+        cancelled: &impl Fn() -> bool,
     ) -> Result<Self> {
         if cancelled() {
             return Err(error("Sample preparation cancelled"));
@@ -118,23 +171,8 @@ impl Session {
             source_metadata: data.metadata.clone(),
         });
         next.audio.insert(id, data);
-        let settings = next
-            .project
-            .instrument_settings_mut(track)
-            .and_then(|i| i.layers.iter_mut().find(|l| l.id == layer))
-            .ok_or_else(|| error("Instrument layer no longer exists"))?;
-        if replace_source
-            && settings
-                .sampler
-                .as_ref()
-                .is_none_or(|s| s.granulizer.is_some())
-        {
-            settings.clear_sources();
-            settings.sampler = Some(Default::default());
-        }
         next.assign_sampler_input(
-            track,
-            layer,
+            target,
             SamplerInput {
                 reversed: false,
                 asset_id: id,
@@ -148,14 +186,48 @@ impl Session {
         next.prepare_stretches_cancellable(cancelled)?;
         Ok(next)
     }
-    fn assign_sampler_input(&mut self, track: Id, layer: Id, input: SamplerInput) -> Result<()> {
+    fn assign_sampler_input(
+        &mut self,
+        target: LayerSampleTarget,
+        input: SamplerInput,
+    ) -> Result<()> {
         let rate = self.project.sample_rate_hz;
         let tempo = self.project.tempo_bpm;
-        let sampler = self
-            .project
-            .instrument_settings_mut(track)
-            .and_then(|i| i.layers.iter_mut().find(|l| l.id == layer))
-            .and_then(|l| l.sampler.as_mut())
+        let (layer, install) = match target {
+            LayerSampleTarget::Layer(owner, id, install) => (
+                self.project
+                    .instrument_settings_mut(owner)
+                    .and_then(|i| i.layers.iter_mut().find(|l| l.id == id))
+                    .ok_or_else(|| error("Instrument layer no longer exists"))?,
+                install,
+            ),
+            LayerSampleTarget::BeatSubtrack(owner) => {
+                if self.project.beat_subtrack(owner).is_none() {
+                    return Err(error("Beat subtrack no longer exists"));
+                }
+                let instrument = self
+                    .project
+                    .instrument_settings_mut(owner)
+                    .ok_or_else(|| error("Beat subtrack instrument no longer exists"))?;
+                let layer = instrument
+                    .layers
+                    .first_mut()
+                    .ok_or_else(|| error("Beat subtrack has no instrument layer"))?;
+                (layer, true)
+            }
+        };
+        if install
+            && layer
+                .sampler
+                .as_ref()
+                .is_none_or(|s| s.granulizer.is_some())
+        {
+            layer.clear_sources();
+            layer.sampler = Some(Default::default());
+        }
+        let sampler = layer
+            .sampler
+            .as_mut()
             .ok_or_else(|| error("Sampler no longer exists"))?;
         let first = sampler.input.is_none();
         sampler.start_frame = 0;

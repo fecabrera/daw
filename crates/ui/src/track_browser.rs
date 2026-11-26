@@ -192,7 +192,7 @@ impl DawUi {
     }
     fn browser_select(&mut self, row: &Row, shift: bool) {
         let parent = row.beat.unwrap_or(row.id);
-        let changed_parent = self.selected_track != Some(parent);
+        let changed_parent = self.track_context() != Some(parent);
         if self.view_mode.has_track_overview() {
             let selection = self.selected_tracks.clone();
             let primary = self.selected_track;
@@ -204,8 +204,8 @@ impl DawUi {
                 self.selected_track = primary;
                 self.select_track(parent, true);
             }
-        } else {
-            self.select_track(parent, shift && row.beat.is_none());
+        } else if row.beat.is_none() {
+            self.select_track(parent, shift);
         }
         if self.session.project.beat(parent).is_some() {
             self.navigate_beat_owner(parent, row.beat.map(|_| row.id), shift);
@@ -369,7 +369,7 @@ impl DawUi {
         let selected_parent = if self.view_mode.has_track_overview() {
             self.editor_track().map(|track| track.id)
         } else {
-            self.selected_track
+            self.track_context()
         };
         let selected = selected_parent.and_then(|parent| {
             self.session
@@ -735,7 +735,7 @@ impl DawUi {
         }
         self.finish_browser_drag(ui, scroll.inner_rect, &painted, available);
         if let Some(parent) = self
-            .selected_track
+            .track_context()
             .filter(|id| self.session.project.beat(*id).is_some())
         {
             let subrows: Vec<_> = painted

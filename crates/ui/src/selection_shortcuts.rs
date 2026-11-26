@@ -117,6 +117,7 @@ impl DawUi {
             self.deselect_beat_subtracks();
             self.clear_layer_selections_except(None);
         } else if self.view_mode == ViewMode::Mixer {
+            self.clear_beat_subtrack_context();
             self.selected_track = None;
             self.selected_tracks.clear();
             self.master_selected = false;
@@ -138,6 +139,7 @@ impl DawUi {
             self.selected_clips.clear();
             self.portion = None;
         } else if self.view_mode == ViewMode::Timeline {
+            self.clear_beat_subtrack_context();
             self.selected_track = None;
             self.selected_tracks.clear();
             self.master_selected = false;

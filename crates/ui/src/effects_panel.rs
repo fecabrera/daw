@@ -217,8 +217,13 @@ impl DawUi {
     }
 
     pub(super) fn effects_target(&self) -> Option<EffectTarget> {
+        let subtrack = if self.view_mode == ViewMode::Mixer {
+            self.selected_mixer_beat_row()
+        } else {
+            self.selected_beat_subtrack()
+        };
         if !self.master_selected
-            && let Some((_, row)) = self.selected_mixer_beat_row()
+            && let Some((_, row)) = subtrack
         {
             return Some(EffectTarget::Layer {
                 track: row.id,
@@ -624,6 +629,11 @@ impl DawUi {
             if self.error.is_none() {
                 match destination {
                     EffectTarget::Master => self.select_master(),
+                    EffectTarget::Layer { track, .. }
+                        if let Some((parent, _)) = self.session.project.beat_subtrack(track) =>
+                    {
+                        self.navigate_beat_owner(parent, Some(track), false);
+                    }
                     EffectTarget::Track(track) | EffectTarget::Layer { track, .. } => {
                         self.select_track(track, false);
                     }

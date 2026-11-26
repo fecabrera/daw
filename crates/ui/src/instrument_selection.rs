@@ -2,6 +2,49 @@
 use super::*;
 
 impl DawUi {
+    fn layer_delete_selection(&self) -> Option<(Id, &[daw_core::InstrumentLayerSettings])> {
+        let owner = self.selected_instrument_owner()?;
+        if self.instrument_ui.track != Some(owner) || self.instrument_ui.track_effects_target {
+            return None;
+        }
+        let layers = &self.session.project.instrument_settings(owner)?.layers;
+        Some((owner, layers))
+    }
+
+    pub(super) fn selected_layer_delete_count(&self) -> usize {
+        self.layer_delete_selection().map_or(0, |(_, layers)| {
+            layers
+                .iter()
+                .filter(|layer| self.instrument_ui.selected_layers.contains(&layer.id))
+                .count()
+        })
+    }
+
+    pub(super) fn layer_delete_enabled(&self, ctx: &egui::Context) -> bool {
+        self.layer_delete_selection().is_some_and(|(_, layers)| {
+            let count = self.selected_layer_delete_count();
+            count > 0 && count < layers.len()
+        }) && self.selection_shortcut_environment_available(ctx)
+            && !self.instrument_ui.has_layer_gesture()
+            && !ctx.text_edit_focused()
+            && ctx.dragged_id().is_none()
+    }
+
+    pub(super) fn delete_selected_layers(&mut self) {
+        if let Some((track_id, layers)) = self.layer_delete_selection() {
+            let layers = layers
+                .iter()
+                .filter_map(|layer| {
+                    self.instrument_ui
+                        .selected_layers
+                        .contains(&layer.id)
+                        .then_some(layer.id)
+                })
+                .collect();
+            self.edit(Edit::RemoveInstrumentLayers { track_id, layers });
+        }
+    }
+
     pub(super) fn instrument_mix_action(&mut self, action: TrackAction) {
         let Some(track) = self
             .selected_instrument_owner()

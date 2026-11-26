@@ -30,12 +30,7 @@ impl<'a> StripTarget<'a> {
     pub(super) fn selected(self, app: &DawUi) -> bool {
         match self {
             Self::Master => app.master_selected,
-            Self::Track(t) => {
-                app.track_selected(t.id)
-                    && !app
-                        .selected_mixer_beat_row()
-                        .is_some_and(|(parent, _)| parent == t.id)
-            }
+            Self::Track(t) => app.track_selected(t.id),
             Self::Beat { parent, row } => {
                 app.selected_mixer_beat_row()
                     .is_some_and(|(id, _)| id == parent.id)

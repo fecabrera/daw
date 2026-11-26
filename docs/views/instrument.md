@@ -64,6 +64,10 @@ Layer names use the same semibold text as track headers. Layers show a waveform 
 
 Right-click a regular layer header for **Rename layer**, **Duplicate layer**, and **Delete layer**. Duplicate inserts a copy immediately after that layer and selects it when ready. Delete is disabled for the last layer. Rename shows its Command+R/Ctrl+R shortcut and opens the name editor; press Enter to apply or Escape to cancel. With a regular layer selected in Instrument, Command+R on macOS or Ctrl+R on Windows/Linux opens that layer’s name editor. With several layers selected, it renames the primary layer. Track, subtrack and layer names use the same text input, with the whole name selected when editing starts. Moving focus away cancels the rename.
 
+Press **Cmd+Delete** on macOS or **Ctrl+Delete** on Windows and Linux to delete
+the selected regular layers in one undoable edit. Keep at least one regular
+layer unselected. Output and the modulation lanes cannot be deleted.
+
 Press M to toggle Mute and S to toggle Solo on each selected regular layer. With Output or a modulation lane selected, or with no layer selected, these keys target only the displayed track. Press Escape to clear layer selection. While editing text, Escape first leaves the editor; press it again to clear layer selection. These shortcuts work from any focused pane or non-text control in Instrument. Text entry and active gestures take precedence; dialogs and blocking jobs disable the shortcuts. Release a dragged control before using M/S. Holding a key does not toggle repeatedly.
 
 Drag a selected layer by its icon, name, or empty header space to move the selected layers together. They keep their existing order, even if you selected them in a different order. Dragging an unselected layer moves only that layer. Hold Option on macOS or Ctrl on Windows/Linux to duplicate the group at the insertion line. The modifier held at release chooses move or copy. Escape or dropping outside the layer area cancels the drag and keeps the layer selection. Output and the two modulation lanes cannot be moved or duplicated.

@@ -2,6 +2,81 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Delete selected beat subtracks shortcut — 2026-11-26
+
+Input tests verified Command+Delete on Timeline subtrack headers and
+Command+Backspace on Beat Editor headers. Both removed the selected group in
+one edit, retained the parent and selected pattern clip, and restored the
+subtracks with one Undo. The existing track and layer shortcut tests passed.
+Formatting and strict workspace Clippy passed.
+
+The debug and release workspace suites each passed 3,858 tests, with 25
+ignored and 22 native Audio Unit registration cases excluded.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+The macOS debug app built and passed signature verification. Interactive native
+keyboard delivery remains unverified.
+
+## Independent beat subtrack selection — 2026-11-26
+
+UI tests covered subtrack selection in the Timeline, Beat Editor, Instrument
+Tracks browser, and Mixer. They verified parent selection stays off, project
+track delete and duplicate stay disabled with only a Timeline subtrack selected,
+and the parent pattern and child instrument remain available. Existing group
+reorder, mute and solo, and sample-drop tests also passed. Formatting and strict
+workspace Clippy passed.
+
+The debug and release workspace suites each passed 3,857 tests, with 25
+ignored and 22 native Audio Unit registration cases excluded.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+The macOS debug app built and passed signature verification. Interactive native
+selection remains unverified.
+
+## Delete selected instrument layers shortcut — 2026-11-26
+
+Focused input tests verified group deletion and Undo, disconnection of deleted
+modulation sources, and targeting the displayed beat subtrack. They also
+verified protection for the last regular layer, Output, and both fixed
+modulation lanes. The existing Timeline track deletion tests passed.
+Formatting and strict workspace Clippy passed.
+
+The debug and release workspace suites each passed 3,857 tests, with 25
+ignored and 22 native Audio Unit registration cases excluded.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+The local macOS debug app built and passed signature verification.
+Interactive native keyboard delivery remains unverified.
+
+## Audio drops on beat subtracks — 2026-11-26
+
+The input test exercised file and clip drops in both the Timeline and Beat
+Editor. It verified preparation on release, the prepared sample length, the
+original clip mapping, retained Sampler settings, unchanged beat patterns and
+other layers, and one-step Undo. All 21 focused Sampler tests and strict workspace
+Clippy passed. The local macOS debug app built and passed signature
+verification. Interactive operating system drag and drop remains unverified.
+
+The debug and release workspace suites each passed 3,854 tests, with 25
+ignored and 22 native Audio Unit registration cases excluded.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
 ## Delete selected tracks shortcut — 2026-11-26
 
 Input tests verified that Command/Ctrl+Delete removes the selected tracks in

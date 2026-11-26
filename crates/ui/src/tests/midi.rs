@@ -1957,6 +1957,147 @@ fn selected_layer_rename_shortcut_uses_inline_editor_and_shared_native_dispatch(
 }
 
 #[test]
+fn command_delete_removes_selected_layers_and_disconnects_removed_providers() {
+    for (key, native) in [(egui::Key::Delete, false), (egui::Key::Backspace, true)] {
+        let (mut app, ctx, layers) = layer_header_fixture();
+        let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+        instrument.layers[0].macro_module.add();
+        let source = daw_core::ModulationSourceId {
+            layer: layers[0].id,
+            unit: instrument.layers[0].macro_module.controls[0].id,
+        };
+        let mut effect = daw_core::EffectInstance::auto_filter();
+        let daw_core::EffectSettings::AutoFilter(settings) = &mut effect.unit else {
+            unreachable!()
+        };
+        let mut route = daw_core::Modulation::new(daw_core::ModulationParameter::Level);
+        route.source = Some(source);
+        settings.modulations.push(route);
+        instrument.layers[1].effects.push(effect);
+        app.session.project.validate().unwrap();
+        app.history = None;
+        app.instrument_ui.select_layer(layers[0].id);
+        app.instrument_ui.selected_layers.insert(layers[2].id);
+        let before = app.session.project.clone();
+        assert_eq!(
+            app.track_action_label(TrackAction::Delete),
+            "Delete selected layers"
+        );
+        if native {
+            app.perform_track_action(TrackAction::Delete, &ctx);
+        } else {
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::COMMAND,
+                }],
+            );
+        }
+        frame(&mut app, &ctx, vec![]);
+        let track = &app.session.project.tracks[0];
+        assert_eq!(track.id, before.tracks[0].id);
+        assert_eq!(track.clips, before.tracks[0].clips);
+        let mut expected = before.tracks[0].instrument.as_ref().unwrap().clone();
+        expected.layers.remove(2);
+        expected.layers.remove(0);
+        expected.layers[0].effects[0].unit.modulations_mut()[0].source = None;
+        assert_eq!(track.instrument.as_ref(), Some(&expected));
+        assert_eq!(app.instrument_ui.selected_layer, Some(layers[1].id));
+        assert!(!app.track_action_enabled(TrackAction::Delete, &ctx));
+        app.perform_history_action(HistoryAction::Undo, &ctx);
+        assert_eq!(app.session.project, before);
+    }
+}
+
+#[test]
+fn command_delete_targets_the_displayed_beat_subtrack_layers() {
+    let (mut app, ctx, _) = layer_header_fixture();
+    let original_track = app.session.project.tracks[0].clone();
+    let parent = app.session.project.add_beat_track().unwrap();
+    let mut row = daw_core::BeatSubtrack::new("Kick".into());
+    row.instrument.layers.push(Default::default());
+    let owner = row.id;
+    let survivor = row.instrument.layers[1].clone();
+    let removed = row.instrument.layers[0].id;
+    app.session
+        .project
+        .edit(Edit::Beat {
+            track_id: parent,
+            edit: daw_core::BeatEdit::Add {
+                subtrack: Box::new(row),
+                index: 0,
+            },
+        })
+        .unwrap();
+    app.select_track(parent, false);
+    app.navigate_beat_owner(parent, Some(owner), false);
+    frame(&mut app, &ctx, vec![]);
+    app.instrument_ui.select_layer(removed);
+    assert!(app.track_action_enabled(TrackAction::Delete, &ctx));
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Key {
+            key: egui::Key::Backspace,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::COMMAND,
+        }],
+    );
+    assert_eq!(app.session.project.tracks[0], original_track);
+    let beat = app.session.project.beat(parent).unwrap();
+    assert_eq!(beat.subtracks.len(), 1);
+    assert_eq!(beat.subtracks[0].id, owner);
+    assert_eq!(beat.subtracks[0].instrument.layers, vec![survivor]);
+}
+
+#[test]
+fn command_delete_in_instrument_protects_fixed_lanes_and_the_last_regular_layer() {
+    let (mut app, ctx, layers) = layer_header_fixture();
+    let before = app.session.project.clone();
+    let instrument = before.tracks[0].instrument.as_ref().unwrap();
+    for selection in [
+        vec![],
+        vec![instrument.main.id],
+        vec![instrument.lfo_lane.id],
+        vec![instrument.envelope_lane.id],
+        layers.iter().map(|layer| layer.id).collect(),
+    ] {
+        app.instrument_ui.selected_layer = selection.first().copied();
+        app.instrument_ui.selected_layers = selection.into_iter().collect();
+        assert!(!app.track_action_enabled(TrackAction::Delete, &ctx));
+        app.perform_track_action(TrackAction::Delete, &ctx);
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::Key {
+                    key: egui::Key::Backspace,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::COMMAND,
+                },
+                egui::Event::Key {
+                    key: egui::Key::Backspace,
+                    physical_key: None,
+                    pressed: false,
+                    repeat: false,
+                    modifiers: egui::Modifiers::COMMAND,
+                },
+            ],
+        );
+        assert_eq!(app.session.project, before);
+    }
+}
+
+#[test]
 fn layer_menu_dismissal_and_rename_shortcut_guards_preserve_the_project() {
     for blocked in ["dismiss", "repeat", "shift", "job", "focus", "text"] {
         let (mut app, ctx, layers) = layer_header_fixture();

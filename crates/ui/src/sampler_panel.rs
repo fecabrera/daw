@@ -8,6 +8,12 @@ use daw_core::{
 const DURATION_INPUT_WIDTH: f32 = 120.0;
 const DURATION_UNIT_WIDTH: f32 = 60.0;
 
+enum SampleFileTarget {
+    Unit(Id, Id),
+    Layer(Id, Id),
+    BeatSubtrack(Id),
+}
+
 #[derive(Clone)]
 struct RangeDrag {
     original: SamplerSettings,
@@ -58,6 +64,51 @@ impl Bounds {
     }
 }
 impl DawUi {
+    pub(super) fn beat_sample_editor_context(&self) -> Option<(Id, Option<Id>)> {
+        if self.timeline_editor_visible() && self.drag.is_some() {
+            self.timeline_editor.sample_drop_context
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn beat_editor_clip_id(&self) -> Option<Id> {
+        self.beat_sample_editor_context()
+            .map_or(self.selected_clip, |(_, clip)| clip)
+    }
+
+    pub(super) fn beat_sample_drop_row(&mut self, ui: &egui::Ui, subtrack: Id, row: Rect) {
+        let row = row.intersect(ui.clip_rect());
+        if !row.is_positive()
+            || !ui.rect_contains_pointer(row)
+            || !ui.is_enabled()
+            || !self.media_ready()
+            || !self.edit_environment_available()
+        {
+            return;
+        }
+        let audio_clip = ui.input(|input| input.focused)
+            && self.drag.as_ref().is_some_and(|drag| {
+                drag.mode == ClipDragMode::Move
+                    && self
+                        .session
+                        .project
+                        .audio_asset(drag.clip.asset_id)
+                        .is_some()
+            });
+        if !audio_clip && self.file_hover.is_none() {
+            return;
+        }
+        self.beat_sample_drop = Some(subtrack);
+        ui.painter().rect_stroke(
+            row,
+            2.0,
+            Stroke::new(2.0, theme::accent(ui.ctx())),
+            StrokeKind::Inside,
+        );
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Copy);
+    }
+
     /// Hover Instrument while carrying one audio clip. Other view/drag guards stay intact.
     pub(super) fn sampler_drag_navigation(&mut self, ctx: &egui::Context) {
         if self.view_mode != ViewMode::Timeline
@@ -92,10 +143,10 @@ impl DawUi {
         let drag = self.drag.take();
         self.set_view_mode(ViewMode::Instrument, ctx);
         if self.view_mode == ViewMode::Instrument {
-            self.selected_track = Some(track);
-            self.master_selected = false;
             if track != owner {
                 self.navigate_beat_owner(track, Some(owner), false);
+            } else {
+                self.select_track(track, false);
             }
         }
         self.drag = drag;
@@ -520,7 +571,7 @@ impl DawUi {
             return None;
         }
         if self
-            .selected_track
+            .track_context()
             .and_then(|id| self.session.project.beat(id))
             .is_some()
         {
@@ -548,12 +599,15 @@ impl DawUi {
         self.settings_cancel = Some(cancel);
     }
     pub(super) fn load_sampler_file(&mut self, target: (Id, Id), path: PathBuf) {
-        self.load_source_file(target, path, false);
+        self.load_source_file(SampleFileTarget::Unit(target.0, target.1), path);
     }
     pub(super) fn load_layer_sampler_file(&mut self, target: (Id, Id), path: PathBuf) {
-        self.load_source_file(target, path, true);
+        self.load_source_file(SampleFileTarget::Layer(target.0, target.1), path);
     }
-    fn load_source_file(&mut self, target: (Id, Id), path: PathBuf, replace_source: bool) {
+    pub(super) fn load_beat_sampler_file(&mut self, subtrack: Id, path: PathBuf) {
+        self.load_source_file(SampleFileTarget::BeatSubtrack(subtrack), path);
+    }
+    fn load_source_file(&mut self, target: SampleFileTarget, path: PathBuf) {
         let session = self.session.clone();
         let hover = self.file_hover.take().filter(|h| h.path == path);
         self.run_sampler_job("Preparing sample", move |cancel| {
@@ -566,10 +620,16 @@ impl DawUi {
                 .map_err(|e| e.to_string())?
             };
             let cancelled = || cancel.load(Ordering::Relaxed);
-            if replace_source {
-                session.with_layer_sampler_decoded(target.0, target.1, &path, audio, &cancelled)
-            } else {
-                session.with_sampler_decoded(target.0, target.1, &path, audio, &cancelled)
+            match target {
+                SampleFileTarget::Unit(owner, layer) => {
+                    session.with_sampler_decoded(owner, layer, &path, audio, &cancelled)
+                }
+                SampleFileTarget::Layer(owner, layer) => {
+                    session.with_layer_sampler_decoded(owner, layer, &path, audio, &cancelled)
+                }
+                SampleFileTarget::BeatSubtrack(subtrack) => {
+                    session.with_beat_sampler_decoded(subtrack, &path, audio, &cancelled)
+                }
             }
             .map_err(|e| e.to_string())
         });

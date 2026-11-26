@@ -565,7 +565,7 @@ fn beat_editor_clip_header_restores_clip_delete_after_step_editing() {
 #[test]
 fn component_catalog_targets_local_provider_lanes_and_fixed_output_across_frames() {
     let (mut app, ctx, track, row, _) = setup();
-    app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);
+    app.navigate_beat_owner(app.track_context().unwrap(), app.beat_ui.primary, false);
     app.view_mode = ViewMode::Instrument;
     app.set_instrument_subview(
         crate::instrument_workspace::InstrumentSubview::Modulation,
@@ -685,7 +685,7 @@ fn catalog_drag_into_expanded_subtrack_reuses_release_only_component_placement()
     let frame = |app: &mut DawUi, ctx: &egui::Context, events| {
         frame_shapes(app, ctx, events, Vec2::new(1600.0, 1600.0));
     };
-    app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);
+    app.navigate_beat_owner(app.track_context().unwrap(), app.beat_ui.primary, false);
     app.view_mode = ViewMode::Instrument;
     app.set_instrument_subview(
         crate::instrument_workspace::InstrumentSubview::Modulation,
@@ -956,7 +956,7 @@ fn subtrack_meters_share_track_rails_and_keep_editor_rows_and_instrument_control
             assert_eq!(app.session.project, before);
             assert!(!app.dirty);
 
-            app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);
+            app.navigate_beat_owner(app.track_context().unwrap(), app.beat_ui.primary, false);
             app.view_mode = ViewMode::Instrument;
             app.set_instrument_subview(
                 crate::instrument_workspace::InstrumentSubview::Effects,
@@ -980,7 +980,7 @@ fn subtrack_meters_share_track_rails_and_keep_editor_rows_and_instrument_control
 }
 
 #[test]
-fn subtrack_layer_view_keeps_the_real_parent_track_and_local_source_scope() {
+fn subtrack_layer_view_keeps_parent_context_and_local_source_scope() {
     let (mut app, ctx, track, row, _) = setup();
     let other = BeatSubtrack::new("Other".into());
     let other_id = other.id;
@@ -999,7 +999,8 @@ fn subtrack_layer_view_keeps_the_real_parent_track_and_local_source_scope() {
     for owner in [row, other_id, row] {
         app.navigate_beat_owner(track, Some(owner), false);
         frame(&mut app, &ctx, vec![]);
-        assert_eq!(app.selected_track, Some(track));
+        assert!(!app.track_selected(track));
+        assert_eq!(app.track_context(), Some(track));
         assert_eq!(app.instrument_ui.track, Some(owner));
         let layer = app
             .session
@@ -1047,7 +1048,7 @@ fn selected_subtrack_adds_layers_through_the_standard_layers_plus() {
         2
     );
     assert_eq!(app.session.project.beat(track).unwrap().subtracks.len(), 1);
-    assert_eq!(app.selected_track, Some(track));
+    assert!(!app.track_selected(track));
     assert_eq!(app.selected_instrument_owner(), Some(row));
     assert!(app.error.is_none());
 }
@@ -1089,14 +1090,16 @@ fn escape_deselects_subtracks_in_both_views_without_editing_the_project() {
             "{view:?}"
         );
         assert_eq!(app.session.project, before);
-        assert_eq!(app.selected_track, Some(track));
+        assert!(!app.track_selected(track));
+        assert_eq!(app.track_context(), Some(track));
         assert_eq!(app.selected_clip, Some(clip));
         assert!(!app.dirty);
         if view == ViewMode::Edit {
             super::instrument_catalog::key(&mut app, &ctx, egui::Key::Escape, false, false);
             assert!(app.selected_clip.is_none());
             assert!(app.selected_clips.is_empty());
-            assert_eq!(app.selected_track, Some(track));
+            assert!(!app.track_selected(track));
+            assert_eq!(app.track_context(), Some(track));
             assert_eq!(app.session.project, before);
         }
     }
@@ -1148,7 +1151,7 @@ fn editor_blank_subtrack_header_double_click_renames_without_changing_mix() {
     let mut expected = before;
     expected
         .edit(Edit::Beat {
-            track_id: app.selected_track.unwrap(),
+            track_id: app.track_context().unwrap(),
             edit: BeatEdit::Rename {
                 id: row,
                 name: "Snare".into(),
@@ -1205,12 +1208,12 @@ fn escape_deselects_an_instrument_subtrack_in_the_tracks_tree() {
 #[test]
 fn instrument_escape_deselects_from_child_controls_and_shares_catalog_handling() {
     let (mut app, ctx, _, row, _) = setup();
-    app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);
+    app.navigate_beat_owner(app.track_context().unwrap(), app.beat_ui.primary, false);
     app.view_mode = ViewMode::Instrument;
     app.instrument_catalog_visible = true;
     app.instrument_catalog.expand_folders();
     frame(&mut app, &ctx, vec![]);
-    app.navigate_beat_owner(app.selected_track.unwrap(), Some(row), false);
+    app.navigate_beat_owner(app.track_context().unwrap(), Some(row), false);
     let layer = app.session.project.instrument_settings(row).unwrap().layers[0].id;
     let mute = app.midi_editor.layer_bounds[&layer].mix_controls[0].center();
     click(&mut app, &ctx, mute);
@@ -1222,7 +1225,7 @@ fn instrument_escape_deselects_from_child_controls_and_shares_catalog_handling()
     assert_eq!(app.session.project, before);
     assert!(!app.dirty);
 
-    app.navigate_beat_owner(app.selected_track.unwrap(), Some(row), false);
+    app.navigate_beat_owner(app.track_context().unwrap(), Some(row), false);
     let entry = app.instrument_catalog_bounds.entries[0].center();
     click(&mut app, &ctx, entry);
     assert!(app.beat_subtrack_selected(row));
@@ -1261,6 +1264,9 @@ fn editor_header_background_selects_subtracks_once_and_keeps_steps_separate() {
     app.dirty = false;
     let first_blank = blank(&app, first);
     click(&mut app, &ctx, first_blank);
+    assert!(!app.track_selected(track));
+    assert!(app.selected_tracks.is_empty());
+    assert_eq!(app.editor_track().map(|track| track.id), Some(track));
     assert!(app.beat_subtrack_selected(first));
     assert!(!app.beat_subtrack_selected(second_id));
     let right_padding = Pos2::new(app.midi_editor.content.ruler.left() - 2.0, first_blank.y);
@@ -2066,7 +2072,8 @@ fn subtrack_preview_step_plays_the_clicked_instrument_without_editing_or_selecti
     assert!(app.beat_subtrack_selected(first));
     assert!(!app.beat_subtrack_selected(second));
     assert_eq!(app.selected_clip, Some(clip));
-    assert_eq!(app.selected_track, Some(track));
+    assert!(!app.track_selected(track));
+    assert_eq!(app.track_context(), Some(track));
     assert!(!app.dirty);
 }
 
@@ -2335,7 +2342,7 @@ fn nested_layer_group_drag_moves_copies_and_cancels_without_early_edits() {
         instrument.envelope_lane.collapsed = true;
         instrument.main.collapsed = true;
         let ids: Vec<_> = instrument.layers.iter().map(|l| l.id).collect();
-        app.navigate_beat_owner(app.selected_track.unwrap(), app.beat_ui.primary, false);
+        app.navigate_beat_owner(app.track_context().unwrap(), app.beat_ui.primary, false);
         app.view_mode = ViewMode::Instrument;
         frame(&mut app, &ctx, vec![]);
         for (index, shift) in [(1, false), (0, true)] {
@@ -3365,7 +3372,14 @@ fn timeline_beat_child_controls_edit_only_the_shared_subtrack_bus() {
         (after.gain_db, after.pan, after.muted, after.soloed),
         (before.gain_db, before.pan, before.muted, before.soloed)
     );
-    assert_eq!(app.selected_track, Some(parent));
+    assert!(!app.track_selected(parent));
+    assert!(app.selected_tracks.is_empty());
+    assert!(app.track_action_enabled(TrackAction::Delete, &ctx));
+    assert_eq!(
+        app.track_action_label(TrackAction::Delete),
+        "Delete subtrack"
+    );
+    assert!(!app.track_action_enabled(TrackAction::Duplicate, &ctx));
     assert!(app.timeline_beat_child_selected(child));
     assert_eq!(app.instrument_ui.track, Some(child));
     assert!(
@@ -3407,6 +3421,82 @@ fn timeline_beat_child_controls_edit_only_the_shared_subtrack_bus() {
         app.session.project, unchanged,
         "child lanes reject clip placement"
     );
+}
+
+#[test]
+fn command_delete_removes_selected_subtracks_from_timeline_and_beat_editor() {
+    for (editor, key) in [(false, egui::Key::Delete), (true, egui::Key::Backspace)] {
+        let (mut app, ctx, parent, first, clip) = setup();
+        let survivor = BeatSubtrack::new("Snare".into());
+        let survivor_id = survivor.id;
+        let third = BeatSubtrack::new("Hat".into());
+        let third_id = third.id;
+        for (index, row) in [survivor, third].into_iter().enumerate() {
+            app.edit_beat(
+                parent,
+                BeatEdit::Add {
+                    subtrack: Box::new(row),
+                    index: index + 1,
+                },
+            );
+        }
+        app.set_view_mode(ViewMode::Timeline, &ctx);
+        app.set_timeline_editor_visible(editor);
+        frame(&mut app, &ctx, vec![]);
+        if !editor {
+            let toggle = app.timeline_beats.disclosure[&parent].center();
+            click(&mut app, &ctx, toggle);
+        }
+        let point = |app: &DawUi, id| {
+            if editor {
+                app.beat_ui.headers[&id].center()
+            } else {
+                app.timeline_beats.rows[&id].1.min + Vec2::new(29.0, 12.0)
+            }
+        };
+        let a = point(&app, first);
+        let b = point(&app, third_id);
+        click(&mut app, &ctx, a);
+        super::instrument_catalog::click(&mut app, &ctx, b, true);
+        assert!(app.beat_subtrack_selected(first) && app.beat_subtrack_selected(third_id));
+        assert!(!app.track_selected(parent));
+        assert_eq!(app.selected_clip, Some(clip));
+        assert_eq!(
+            app.track_action_label(TrackAction::Delete),
+            "Delete selected subtracks"
+        );
+        let before = app.session.project.clone();
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::COMMAND,
+            }],
+        );
+        let mut expected = before.clone();
+        expected
+            .edit(Edit::Beat {
+                track_id: parent,
+                edit: BeatEdit::Remove {
+                    ids: vec![first, third_id],
+                },
+            })
+            .unwrap();
+        assert_eq!(app.session.project, expected);
+        assert_eq!(
+            app.session.project.beat(parent).unwrap().subtracks[0].id,
+            survivor_id
+        );
+        assert_eq!(app.selected_clip, Some(clip));
+        assert!(!app.has_selected_beat_subtracks());
+        assert!(!app.track_action_enabled(TrackAction::Delete, &ctx));
+        app.perform_history_action(HistoryAction::Undo, &ctx);
+        assert_eq!(app.session.project, before);
+    }
 }
 
 #[test]

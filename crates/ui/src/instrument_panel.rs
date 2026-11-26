@@ -274,7 +274,7 @@ impl DawUi {
         }
 
         if self
-            .selected_track
+            .track_context()
             .and_then(|id| self.session.project.beat(id))
             .is_some()
         {
@@ -956,19 +956,7 @@ impl DawUi {
             self.instrument_ui.track_effects_target = false;
             settings.layers.insert(index + 1, copy);
         }
-        if let Some(id) = remove_layer {
-            if self
-                .instrument_ui
-                .name_edit
-                .as_ref()
-                .is_some_and(|edit| edit.layer == id)
-            {
-                self.instrument_ui.name_edit = None;
-            }
-            settings.layers.retain(|layer| layer.id != id);
-            self.instrument_ui.reconcile_layers(&settings);
-        }
-        self.commit_instrument_panel(&track, settings, previous_layer_selection);
+        self.commit_instrument_panel(&track, settings, previous_layer_selection, remove_layer);
     }
 
     /// Finish all installed/library gestures even when a beat group hides its child rows.
@@ -1023,6 +1011,7 @@ impl DawUi {
         track: &daw_core::Track,
         mut settings: daw_core::InstrumentSettings,
         previous_layer_selection: (Option<Id>, HashSet<Id>),
+        remove_layer: Option<Id>,
     ) {
         let mut edits = Vec::new();
         for layer in &mut settings.layers {
@@ -1061,6 +1050,12 @@ impl DawUi {
                     instrument: Some(settings),
                 },
             );
+        }
+        if let Some(layer) = remove_layer {
+            edits.push(Edit::RemoveInstrumentLayers {
+                track_id: track.id,
+                layers: vec![layer],
+            });
         }
         if !edits.is_empty() {
             self.edit(Edit::Batch(edits));

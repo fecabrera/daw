@@ -243,7 +243,8 @@ fn beat_mixer_selection_targets_lane_effects_and_parent_click_restores_track_sco
             layer: row.instrument.main.id
         })
     );
-    assert_eq!(app.selected_track, Some(parent));
+    assert!(!app.track_selected(parent));
+    assert!(app.selected_tracks.is_empty());
     let parent_rect = app.mixer_bounds[&parent];
     click(
         &mut app,

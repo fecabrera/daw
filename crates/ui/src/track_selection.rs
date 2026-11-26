@@ -24,6 +24,7 @@ impl DawUi {
     }
 
     pub(super) fn select_track(&mut self, id: Id, toggle: bool) {
+        self.clear_beat_subtrack_context();
         self.master_selected = false;
         if toggle {
             if let Some(primary) = self.selected_track {
@@ -49,6 +50,7 @@ impl DawUi {
     }
 
     pub(super) fn select_master(&mut self) {
+        self.clear_beat_subtrack_context();
         self.master_selected = true;
         self.selected_track = None;
         self.selected_tracks.clear();
@@ -73,6 +75,11 @@ impl DawUi {
     }
 
     pub(super) fn prune_track_selection(&mut self) {
+        if let Some(parent) = self.beat_subtrack_parent() {
+            self.reconcile_beat(parent);
+        } else {
+            self.clear_beat_subtrack_context();
+        }
         self.selected_tracks.retain(|id| {
             self.session
                 .project
@@ -103,6 +110,9 @@ impl DawUi {
     }
 
     pub fn track_action_enabled(&self, action: TrackAction, ctx: &egui::Context) -> bool {
+        if action == TrackAction::Delete && self.view_mode == ViewMode::Instrument {
+            return self.layer_delete_enabled(ctx);
+        }
         // Non-text controls can retain keyboard focus outside the Tracks pane.
         let input_available = match action {
             TrackAction::Rename if self.selected_rename_layer().is_some() => {
@@ -134,6 +144,21 @@ impl DawUi {
             }
             _ => !ctx.egui_wants_keyboard_input(),
         };
+        let mixer_subtrack = self.selected_mixer_beat_row().is_some();
+        let subtrack_action = match action {
+            TrackAction::Rename => mixer_subtrack,
+            TrackAction::Delete => {
+                self.beat_subtrack_delete_parent().is_some() && !self.beat_subtrack_rename_active()
+            }
+            TrackAction::Mute | TrackAction::Solo => {
+                (self.view_mode == ViewMode::Instrument && self.beat_subtrack_parent().is_some())
+                    || (self.view_mode == ViewMode::Timeline
+                        && self.beat_subtrack_parent().is_some()
+                        && self.has_selected_beat_subtracks())
+                    || mixer_subtrack
+            }
+            _ => false,
+        };
         (action != TrackAction::Bounce || self.bounce_request_enabled(daw_core::BounceMode::Tracks))
             && (action != TrackAction::Group
                 || !self
@@ -156,6 +181,7 @@ impl DawUi {
             && self.selection_shortcut_environment_available(ctx)
             && (action != TrackAction::Rename
                 || self.selected_rename_layer().is_some()
+                || subtrack_action
                 || self
                     .session
                     .project
@@ -172,12 +198,14 @@ impl DawUi {
                     | TrackAction::AddGroup
                     | TrackAction::AddReturn
                     | TrackAction::AddSubtrack
-            ) || self
-                .session
-                .project
-                .tracks
-                .iter()
-                .any(|track| self.track_selected(track.id)))
+            ) || subtrack_action
+                || self.selected_rename_layer().is_some() && action == TrackAction::Rename
+                || self
+                    .session
+                    .project
+                    .tracks
+                    .iter()
+                    .any(|track| self.track_selected(track.id)))
     }
 
     pub fn perform_track_action(&mut self, action: TrackAction, ctx: &egui::Context) {
@@ -200,6 +228,12 @@ impl DawUi {
             if let Some(parent) = self.selected_beat_parent() {
                 self.add_subtrack_from_menu(parent, ctx);
             }
+            return;
+        }
+        if action == TrackAction::Delete
+            && let Some(parent) = self.beat_subtrack_delete_parent()
+        {
+            self.delete_selected_beat_subtracks(parent);
             return;
         }
         if self.mixer_beat_action(action) {
@@ -241,7 +275,11 @@ impl DawUi {
             return;
         }
         if action == TrackAction::Delete {
-            self.delete_selected_tracks(ctx);
+            if self.view_mode == ViewMode::Instrument {
+                self.delete_selected_layers();
+            } else {
+                self.delete_selected_tracks(ctx);
+            }
             return;
         }
         if action == TrackAction::Duplicate {
@@ -403,6 +441,20 @@ impl DawUi {
     }
 
     pub fn track_action_label(&self, action: TrackAction) -> &'static str {
+        if action == TrackAction::Delete && self.view_mode == ViewMode::Instrument {
+            return if self.selected_layer_delete_count() > 1 {
+                "Delete selected layers"
+            } else {
+                "Delete layer"
+            };
+        }
+        if action == TrackAction::Delete && self.beat_subtrack_delete_parent().is_some() {
+            return if self.selected_beat_subtrack_count() > 1 {
+                "Delete selected subtracks"
+            } else {
+                "Delete subtrack"
+            };
+        }
         if action == TrackAction::Rename && self.selected_rename_layer().is_some() {
             return "Rename layer";
         }
@@ -429,7 +481,7 @@ impl DawUi {
         let id = if self.view_mode.has_track_overview() {
             self.editor_track().map(|track| track.id)
         } else {
-            self.selected_track
+            self.track_context()
         }?;
         self.session.project.beat(id).map(|_| id)
     }

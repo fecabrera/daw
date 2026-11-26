@@ -11,21 +11,9 @@ pub(crate) struct TimelineState {
 
 impl DawUi {
     pub(crate) fn timeline_beat_mix_action(&mut self, action: TrackAction) -> bool {
-        let Some(parent) = self.selected_track else {
+        let Some(parent) = self.beat_subtrack_parent() else {
             return false;
         };
-        if self.beat_ui.track != Some(parent)
-            || self.beat_ui.output_selected
-            || !self.timeline_beat_open(parent)
-            || self
-                .session
-                .project
-                .tracks
-                .iter()
-                .any(|track| track.id != parent && self.track_selected(track.id))
-        {
-            return false;
-        }
         let Some(beat) = self.session.project.beat(parent) else {
             return false;
         };
@@ -127,9 +115,7 @@ impl DawUi {
             .rows
             .get(&id)
             .is_some_and(|(parent, _, _)| {
-                self.selected_track == Some(*parent)
-                    && self.beat_ui.track == Some(*parent)
-                    && self.beat_subtrack_selected(id)
+                self.beat_subtrack_parent() == Some(*parent) && self.beat_subtrack_selected(id)
             })
     }
 
@@ -316,7 +302,6 @@ impl DawUi {
                 && ui.rect_contains_pointer(panel)
                 && ui.input(|input| input.focused && input.pointer.primary_pressed())
             {
-                self.select_track(parent, false);
                 self.navigate_beat_owner(
                     parent,
                     Some(row.id),
@@ -353,6 +338,7 @@ impl DawUi {
                 false,
                 true,
             );
+            self.beat_sample_drop_row(ui, row.id, Rect::from_min_max(panel.min, lane.max));
             ui.allocate_space(bounds.size());
         }
         panels

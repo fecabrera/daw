@@ -31,10 +31,11 @@ impl DawUi {
 
     // Selecting another clip on the same track must retain the viewport.
     pub(super) fn prepare_track_overview(&mut self, track: Option<&Track>) {
+        let selected = self.beat_editor_clip_id();
         self.midi_editor.source_origin = 0.0;
-        if self.midi_editor.active_clip != self.selected_clip && !self.midi_editor.dragging() {
+        if self.midi_editor.active_clip != selected && !self.midi_editor.dragging() {
             self.midi_editor.clear_note_selection();
-            self.midi_editor.active_clip = self.selected_clip;
+            self.midi_editor.active_clip = selected;
         }
         if let Some(track) = track
             && self.midi_editor.active_track != Some(track.id)
@@ -43,10 +44,10 @@ impl DawUi {
             self.midi_editor.scroll = track
                 .clips
                 .iter()
-                .find(|clip| Some(clip.id) == self.selected_clip)
+                .find(|clip| Some(clip.id) == selected)
                 .map_or(0.0, |clip| self.session.project.seconds(clip.start_frame));
             self.midi_editor.active_track = Some(track.id);
-            self.midi_editor.active_clip = self.selected_clip;
+            self.midi_editor.active_clip = selected;
         } else if track.is_none() && self.timeline_editor_visible() {
             self.midi_editor.cancel();
             self.midi_editor.active_track = None;

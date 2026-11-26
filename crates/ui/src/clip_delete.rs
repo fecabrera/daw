@@ -2,7 +2,7 @@
 use super::*;
 
 /// Consume pressed Delete/Backspace events, including repeats, while reserving
-/// Command/Ctrl for track deletion. A held key must not fall through from
+/// Command/Ctrl for the contextual Delete action. A held key must not fall through from
 /// deleting notes/units to deleting their containing clip.
 pub(super) fn take_delete(ctx: &egui::Context) -> bool {
     ctx.input_mut(|input| {

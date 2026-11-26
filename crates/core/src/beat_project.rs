@@ -58,6 +58,39 @@ impl Project {
     pub fn instrument_settings_mut(&mut self, owner: Id) -> Option<&mut InstrumentSettings> {
         self.instrument_parts_mut(owner).map(|(i, _)| i)
     }
+    pub(crate) fn remove_instrument_layers(&mut self, owner: Id, layers: &[Id]) -> Result<()> {
+        let (instrument, track_effects) = self
+            .instrument_parts_mut(owner)
+            .ok_or_else(|| Error("Instrument not found".into()))?;
+        let removed: HashSet<_> = layers.iter().copied().collect();
+        if removed.is_empty()
+            || removed.len() >= instrument.layers.len()
+            || !removed
+                .iter()
+                .all(|id| instrument.layers.iter().any(|layer| layer.id == *id))
+        {
+            return Err(Error(
+                "Select regular layers and keep at least one layer".into(),
+            ));
+        }
+        instrument
+            .layers
+            .retain(|layer| !removed.contains(&layer.id));
+        for route in instrument.modulation_routes_mut().chain(
+            track_effects
+                .iter_mut()
+                .flat_map(|effect| effect.unit.modulations_mut()),
+        ) {
+            if route
+                .source
+                .is_some_and(|source| removed.contains(&source.layer))
+            {
+                route.source = None;
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn instrument_parts_mut(
         &mut self,
         owner: Id,

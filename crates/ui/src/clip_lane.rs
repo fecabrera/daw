@@ -178,6 +178,17 @@ impl DawUi {
             if self.midi_editor.content_active && mode == ClipDragMode::Body {
                 return;
             }
+            self.timeline_editor.sample_drop_context = if mode == ClipDragMode::Move
+                && !self.midi_editor.content_active
+                && self.timeline_editor_visible()
+                && self.session.project.audio_asset(clip.asset_id).is_some()
+            {
+                self.editor_track()
+                    .filter(|track| track.kind == daw_core::TrackKind::Beat)
+                    .map(|track| (track.id, self.selected_clip))
+            } else {
+                None
+            };
             if !self.clip_selected(clip.id) {
                 let additive = ui.input(|input| {
                     input.modifiers.shift

@@ -63,7 +63,9 @@ Space works from any DAW view when playback controls are available. Use
 | Rename the selected track or regular instrument layer | Cmd+R | Ctrl+R |
 | Group selected tracks | Cmd+G | Ctrl+G |
 | Ungroup the selected group | Cmd+Shift+G | Ctrl+Shift+G |
-| Delete selected tracks | Cmd+Delete | Ctrl+Delete or Ctrl+Backspace |
+| Delete selected tracks in Timeline or Mixer | Cmd+Delete | Ctrl+Delete or Ctrl+Backspace |
+| Delete selected beat subtracks in Timeline, Beat Editor, or Mixer | Cmd+Delete | Ctrl+Delete or Ctrl+Backspace |
+| Delete selected regular layers in Instrument | Cmd+Delete | Ctrl+Delete or Ctrl+Backspace |
 | Toggle Mute | M | M |
 | Toggle Solo | S | S |
 | Undo a project edit | Cmd+Z | Ctrl+Z |

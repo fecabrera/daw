@@ -14,6 +14,19 @@ While the pane is open, select a beat clip in the arrangement. The grid shows th
 range. Other clips, loop repetitions and empty cells beyond the source are not
 shown. Subtrack controls and audition buttons remain available without a clip selected.
 
+## Load an audio sample
+
+Drag one audio file or audio clip onto a subtrack row in the Timeline or Beat
+Editor. Expand the parent beat track to show its subtracks in the Timeline.
+To drop an audio clip into the Beat Editor, open the editor for the destination
+beat track, then drag the audio clip from the arrangement. The Beat Editor stays
+visible during the drag and after you drop the clip there.
+
+The drop loads the first layer’s Sampler or replaces that layer’s source with
+a Sampler. A file uses its full recording. A clip uses its visible source
+range, and the original clip stays in place. The beat pattern keeps its
+existing steps.
+
 ## Grid and hit controls
 
 Patterns share one grid across all subtracks. **Clip length** uses the transport’s musical-position display, with duration counts starting at zero: `0001.00` means one bar and `0000.02` means two beats. It follows the project time signature, trimming, stretching and repetitions. Drag the bar or beat section up or down to adjust it; hold Shift for slower adjustment. Release to apply, or press Escape to cancel. The tooltip shows the exact duration in seconds and samples, including fractions smaller than one beat.
@@ -71,14 +84,18 @@ button group; each button remains independent.
 
 The beat editor and Instrument share subtrack names, order, selection, and mix settings. Timeline shows subtrack mix controls in expandable child rows under the beat parent. Edit steps in the beat editor pane. Projects save each Timeline beat folder’s open or closed state. Instrument’s **Tracks** panel lists subtracks below their beat parent.
 Subtrack names use the same hoverable name buttons as other tracks and align to the standard left padding. Hover to see the full name. A single click selects; double-click the name to rename it.
-Selecting a subtrack in the beat editor also selects its instrument when you return to
-Instrument, including after selecting the final Output.
+Selecting a subtrack highlights only the subtrack. The parent beat track stays
+available to the Beat Editor, and the subtrack’s instrument opens when you
+switch to Instrument. Click the parent explicitly to select the whole beat track.
 
 - Click a name to select one subtrack; Shift-click headers to toggle group membership. In the beat editor, clicking any part of a subtrack header, including its controls or empty space, selects that subtrack. Press Escape to clear subtrack selection in the beat editor or Instrument. Escape first cancels an active rename or drag.
 - Right-click anywhere in a subtrack header, including its controls, meters or empty space, to open its context menu. Opening or dismissing the menu does not change controls or pattern content.
 - Double-click a name, or use its context menu, to rename it. In the beat editor, double-clicking the empty header area beside the name also starts renaming. Mix controls retain their own double-click actions. The name uses the same text input as track names and starts with the whole name selected. Enter accepts; Escape or moving focus elsewhere cancels.
 - Drag a selected name to reorder the selected subtracks together. Release over a subtrack in the same beat track and panel to apply the move. Only the panel where the drag started scrolls at its edges. Moving a subtrack to a different panel, beat track, project group or Master is rejected. Escape, focus loss, closing the originating panel or an outside release cancels it.
-- Use the name's context menu to delete selected subtracks. Delete/Backspace also removes them while a subtrack name has keyboard focus. Text, step and unit controls retain their own keyboard behavior.
+- Press **Cmd+Delete** on macOS or **Ctrl+Delete** on Windows and Linux to remove
+  the selected subtracks in the Timeline or Beat Editor. One Undo restores the
+  group. You can also use the context menu, or press plain Delete/Backspace when a
+  subtrack name has keyboard focus. Text fields keep their editing keys.
 - Use Mute, Solo, Pan and Gain in the beat editor or Instrument. Solo a
   subtrack to hear it through the beat parent and any enclosing groups. The
   regular track Solo rules exclude unrelated branches and keep sends from

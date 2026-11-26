@@ -572,7 +572,8 @@ fn selecting_subtrack_opens_shared_layers_and_parent_opens_only_final_output() {
     assert!(app.midi_editor.layer_bounds.is_empty());
     let point = row(&app, ids[1]);
     click(&mut app, &ctx, point);
-    assert_eq!(app.selected_track, Some(parent));
+    assert!(!app.track_selected(parent));
+    assert_eq!(app.track_context(), Some(parent));
     assert_eq!(app.selected_instrument_owner(), Some(ids[1]));
     let layer = app
         .session
@@ -838,7 +839,8 @@ fn editor_subtrack_navigation_retains_the_active_pattern_and_disclosure_retains_
     let point = row(&app, ids[1]);
     click(&mut app, &ctx, point);
     assert_eq!(app.selected_clip, Some(clip));
-    assert_eq!(app.selected_track, Some(parent));
+    assert!(!app.track_selected(parent));
+    assert_eq!(app.track_context(), Some(parent));
     assert_eq!(app.selected_instrument_owner(), Some(ids[1]));
     let disclosure = app.track_browser.bounds.disclosure[&parent].center();
     click(&mut app, &ctx, disclosure);
@@ -1141,7 +1143,8 @@ fn plus_and_blank_panel_menus_share_all_creation_actions_and_commit_on_release()
                         original.beat(parent).unwrap().subtracks.len() + 1
                     );
                     assert_eq!(app.session.project.beat(other), original.beat(other));
-                    assert_eq!(app.selected_track, Some(parent));
+                    assert!(!app.track_selected(parent));
+                    assert_eq!(app.track_context(), Some(parent));
                     assert_eq!(app.beat_ui.primary, beat.subtracks.last().map(|row| row.id));
                     assert_eq!(app.selected_clip, Some(clip));
                 } else {
@@ -1201,7 +1204,8 @@ fn beat_row_add_subtrack_targets_the_clicked_collapsed_parent_in_both_views() {
         pointer(&mut app, &ctx, add, true);
         assert_eq!(app.session.project, original);
         pointer(&mut app, &ctx, add, false);
-        assert_eq!(app.selected_track, Some(parent));
+        assert!(!app.track_selected(parent));
+        assert_eq!(app.track_context(), Some(parent));
         assert_eq!(
             app.session.project.beat(parent).unwrap().subtracks.len(),
             original.beat(parent).unwrap().subtracks.len() + 1
@@ -1328,7 +1332,8 @@ fn timeline_beat_context_uses_clicked_parent_when_audio_is_primary_in_a_group_se
         original.beat(parent).unwrap().subtracks.len() + 1
     );
     assert_eq!(app.session.project.beat(other), original.beat(other));
-    assert_eq!(app.selected_track, Some(parent));
+    assert!(!app.track_selected(parent));
+    assert_eq!(app.track_context(), Some(parent));
 }
 
 #[test]

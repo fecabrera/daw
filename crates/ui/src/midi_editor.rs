@@ -946,7 +946,13 @@ impl DawUi {
         if self.selected_clip != Some(clip) {
             self.midi_editor.clear_note_selection();
         }
-        self.select_clip(clip, track, false);
+        if self.beat_subtrack_parent() == Some(track) {
+            self.portion = None;
+            self.selected_clip = Some(clip);
+            self.selected_clips = HashSet::from([clip]);
+        } else {
+            self.select_clip(clip, track, false);
+        }
         self.midi_editor.active_clip = Some(clip);
         self.midi_editor.content.retain_on_selection = true;
     }

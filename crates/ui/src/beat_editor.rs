@@ -71,6 +71,7 @@ impl From<&BeatSubtrack> for BeatRow {
 #[derive(Default)]
 pub(super) struct BeatUi {
     track: Option<Id>,
+    subtrack_context: bool,
     pub primary: Option<Id>,
     primary_index: usize,
     pub output_selected: bool,
@@ -126,6 +127,26 @@ pub(super) enum BeatDragPane {
     Tracks,
 }
 impl DawUi {
+    pub(super) fn beat_subtrack_parent(&self) -> Option<Id> {
+        self.beat_ui.track.filter(|&id| {
+            self.selected_track.is_none()
+                && self.beat_ui.subtrack_context
+                && self.session.project.beat(id).is_some()
+        })
+    }
+
+    pub(super) fn track_context(&self) -> Option<Id> {
+        self.selected_track.or_else(|| self.beat_subtrack_parent())
+    }
+
+    pub(super) fn clear_beat_subtrack_context(&mut self) {
+        if self.beat_ui.subtrack_context {
+            self.beat_ui.subtrack_context = false;
+            self.beat_ui.output_selected = true;
+            self.beat_ui.selected.clear();
+        }
+    }
+
     pub(super) fn cancel_beat_reorder(&mut self, pane: Option<BeatDragPane>) {
         if pane.is_none_or(|pane| self.beat_ui.drag.as_ref().is_some_and(|d| d.pane == pane)) {
             self.beat_ui.drag = None;
@@ -178,7 +199,7 @@ impl DawUi {
             .map(|b| (b.track, b.layer))
     }
     pub(super) fn selected_instrument_owner(&self) -> Option<Id> {
-        let parent = self.selected_track?;
+        let parent = self.track_context()?;
         if let Some(beat) = self.session.project.beat(parent) {
             if self.beat_ui.track != Some(parent) || self.beat_ui.output_selected {
                 return Some(beat.output.id);
@@ -270,9 +291,8 @@ impl DawUi {
                         index: beat.subtracks.len(),
                     },
                 );
-                self.beat_ui.output_selected = false;
-                self.beat_ui.primary = Some(id);
-                self.beat_ui.selected = HashSet::from([id]);
+                self.reconcile_beat(track);
+                self.select_beat_subtrack(id, false);
             }
             Err(error) => self.fail(error),
         }
@@ -294,13 +314,14 @@ impl DawUi {
         self.beat_ui.selected.clear();
     }
     pub(super) fn selected_mixer_beat_row(&self) -> Option<(Id, &BeatSubtrack)> {
-        if self.view_mode != ViewMode::Mixer || self.beat_ui.output_selected {
-            return None;
-        }
-        let parent = self.selected_track?;
-        if self.beat_ui.track != Some(parent) || !self.timeline_beat_open(parent) {
-            return None;
-        }
+        (self.view_mode == ViewMode::Mixer)
+            .then(|| self.selected_beat_subtrack())
+            .flatten()
+            .filter(|(parent, _)| self.timeline_beat_open(*parent))
+    }
+
+    pub(super) fn selected_beat_subtrack(&self) -> Option<(Id, &BeatSubtrack)> {
+        let parent = self.beat_subtrack_parent()?;
         let beat = self.session.project.beat(parent)?;
         let row = beat
             .subtracks
@@ -312,6 +333,38 @@ impl DawUi {
                     .find(|row| self.beat_subtrack_selected(row.id))
             })?;
         Some((parent, row))
+    }
+
+    pub(super) fn beat_subtrack_delete_parent(&self) -> Option<Id> {
+        match self.view_mode {
+            ViewMode::Timeline => self.selected_beat_subtrack(),
+            ViewMode::Mixer => self.selected_mixer_beat_row(),
+            _ => None,
+        }
+        .map(|(parent, _)| parent)
+    }
+
+    pub(super) fn selected_beat_subtrack_count(&self) -> usize {
+        self.beat_ui.selected.len()
+    }
+
+    pub(super) fn beat_subtrack_rename_active(&self) -> bool {
+        self.beat_ui.rename.is_some()
+    }
+
+    pub(super) fn delete_selected_beat_subtracks(&mut self, parent: Id) {
+        let Some(beat) = self.session.project.beat(parent) else {
+            return;
+        };
+        let ids: Vec<_> = beat
+            .subtracks
+            .iter()
+            .filter(|row| self.beat_subtrack_selected(row.id))
+            .map(|row| row.id)
+            .collect();
+        if !ids.is_empty() {
+            self.edit_beat(parent, BeatEdit::Remove { ids });
+        }
     }
     pub(super) fn beat_subtrack_selected(&self, id: Id) -> bool {
         self.beat_ui.selected.contains(&id)
@@ -328,6 +381,10 @@ impl DawUi {
         self.beat_ui.focus.set(ui, rect, false);
     }
     fn select_beat_subtrack(&mut self, id: Id, shift: bool) {
+        self.selected_track = None;
+        self.selected_tracks.clear();
+        self.master_selected = false;
+        self.beat_ui.subtrack_context = true;
         self.beat_ui.output_selected = false;
         self.beat_ui.primary = Some(id);
         crate::unit_selection::select(&mut self.beat_ui.selected, id, shift);
@@ -408,6 +465,9 @@ impl DawUi {
         if let Some(owner) = owner {
             self.select_beat_subtrack(owner, shift);
         } else {
+            if self.beat_subtrack_parent() == Some(track) {
+                self.select_track(track, false);
+            }
             self.beat_ui.output_selected = true;
             self.beat_ui.selected.clear();
         }
@@ -527,12 +587,11 @@ impl DawUi {
                     .add(menus::action_button("Delete selected subtracks"))
                     .clicked()
                 {
-                    let ids = if self.beat_ui.selected.contains(&row.id) {
-                        self.beat_ui.selected.iter().copied().collect()
+                    if self.beat_subtrack_selected(row.id) {
+                        self.delete_selected_beat_subtracks(track);
                     } else {
-                        vec![row.id]
-                    };
-                    self.edit_beat(track, BeatEdit::Remove { ids });
+                        self.edit_beat(track, BeatEdit::Remove { ids: vec![row.id] });
+                    }
                     ui.close();
                 }
                 menus::separator(ui);
@@ -668,21 +727,13 @@ impl DawUi {
             && self.edit_environment_available()
             && clip_delete::take_delete(ui.ctx());
         if delete {
-            self.edit_beat(
-                track,
-                BeatEdit::Remove {
-                    ids: self.beat_ui.selected.iter().copied().collect(),
-                },
-            );
+            self.delete_selected_beat_subtracks(track);
         }
     }
     pub(super) fn beat_pattern_options(&mut self, ui: &mut egui::Ui, track: &daw_core::Track) {
         self.reconcile_beat(track.id);
-        let active = track
-            .clips
-            .iter()
-            .find(|c| Some(c.id) == self.selected_clip)
-            .cloned();
+        let selected = self.beat_editor_clip_id();
+        let active = track.clips.iter().find(|c| Some(c.id) == selected).cloned();
         let mut pattern = active
             .as_ref()
             .and_then(|c| {
@@ -865,11 +916,8 @@ impl DawUi {
         else {
             return;
         };
-        let active = track
-            .clips
-            .iter()
-            .find(|c| Some(c.id) == self.selected_clip)
-            .cloned();
+        let selected = self.beat_editor_clip_id();
+        let active = track.clips.iter().find(|c| Some(c.id) == selected).cloned();
         let pattern = active
             .as_ref()
             .and_then(|c| {
@@ -1282,6 +1330,7 @@ impl DawUi {
                             }
                         });
                     });
+                    self.beat_sample_drop_row(ui, row.id, rect);
                     ui.advance_cursor_after_rect(rect);
                 }
                 // Draw one shared boundary across headers, audition gutter and step grid.
@@ -1377,7 +1426,7 @@ impl DawUi {
         knobs
     }
     pub(super) fn beat_instrument_view(&mut self, ui: &mut egui::Ui) {
-        let Some(track) = self.selected_track else {
+        let Some(track) = self.track_context() else {
             return;
         };
         self.reconcile_beat(track);

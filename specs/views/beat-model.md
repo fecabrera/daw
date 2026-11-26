@@ -12,11 +12,16 @@ See the [requirements](beat-editor.md), [delivery plan](beat-tracks-plan.md) and
 
 The subtrack's `main` bus owns its Output lane, canonical gain/pan and strip-collapse state. Its Output panel exposes mute/solo, gain/pan and the shared meter. Its compact Tracks row always mirrors the four mix controls; source layers are added through the selected subtrack’s standard Layers Plus. No second equivalent mix stage exists. The final beat Output stays outside subtrack ordering and cannot be removed or renamed as a subtrack. It may contain effects and local Macros, but no kit-wide LFO/Envelope pair or source layer.
 
-Instrument lookup and source-layer drag capture use stable owner IDs for both ordinary MIDI tracks and nested beat subtracks. `Project::instrument_owners` publishes parent/owner/settings tuples for shared source discovery. Timeline clip-drag navigation searches those owners for Sampler/Granulizer and selects the real parent beat track and the matching subtrack owner; a completed source drop retains the original Timeline clip. Read-only nested presentation snapshots copy only parent metadata and the requested instrument, without cloning siblings, effects or clips. They do not replace the real Project or parent-track selection. Missing-effect load diagnostics use the same complete effect-chain owner traversal as core validation, including beat source layers, subtrack Output and final Output. Opaque settings remain retained and warnings identify their owner. Component/effect transfers reuse existing metadata, scope checks, transactions and graph-copy helpers. Instrument copies assign fresh owner, provider, source, effect and route identities and remap local references. Track duplication follows the existing settings-only behavior: no clips or assets are copied. Stop targets remap to copied siblings.
+Instrument lookup and source-layer drag capture use stable owner IDs for both ordinary MIDI tracks and nested beat subtracks. `Project::instrument_owners` publishes parent/owner/settings tuples for shared source discovery. Timeline clip-drag navigation searches those owners for Sampler/Granulizer and selects the matching subtrack owner and keeps its parent as editor context; a completed source drop retains the original Timeline clip. Read-only nested presentation snapshots copy only parent metadata and the requested instrument, without cloning siblings, effects or clips. They do not replace the real Project or parent-track selection. Missing-effect load diagnostics use the same complete effect-chain owner traversal as core validation, including beat source layers, subtrack Output and final Output. Opaque settings remain retained and warnings identify their owner. Component/effect transfers reuse existing metadata, scope checks, transactions and graph-copy helpers. Instrument copies assign fresh owner, provider, source, effect and route identities and remap local references. Track duplication follows the existing settings-only behavior: no clips or assets are copied. Stop targets remap to copied siblings.
 
 Project validation checks required/forbidden payloads, owner/effect/sample identities, sample asset/range references and instrument-local modulation. Sibling discovery lists are never merged. Final Output effects can reference its local Macros only. Group collapse changes presentation without changing pattern content or disabling processing.
 
 ## Embedded content and edits
+
+Selecting a subtrack leaves the project track selection empty. Keep the
+parent as editor context so the active pattern and subtrack instrument stay
+available. Track-only actions require an explicit track selection. Subtrack
+mix and effect actions use the selected child owner.
 
 `Asset::beat_pattern` holds a `BeatPatternSource` with the same ID as its Asset. It binds a versioned pattern to one beat container ID. The source uses `kind: beat_pattern`, `path_kind: embedded` and Embedded storage; no media path is decoded or copied. Asset payloads cannot contain both beat and MIDI content. `Asset::is_audio` and `pattern_length_ticks` centralize classification and timing.
 
@@ -27,6 +32,16 @@ Grid edits retain all stored steps. Hits outside the selected length or between 
 `Edit::Beat` applies structural/mix edits through cloned-container and final Project validation. `Edit::ReplaceBeatPattern` creates a fresh embedded source for the active clip. Other clips retain their source IDs and content. The normal history owns model snapshots and shared prepared buffers; no-op UI releases do not publish edits. Invalid grid/source ranges or clip overlaps reject the complete transaction. Rate/tempo changes use the shared tick/frame and bounded source-range helpers; sample inputs inside subtracks rescale with ordinary instruments.
 
 Every placement is checked against its source's container ID. Cross-beat-track moves, copies, paste and new-track drops are rejected. Same-track arrangement operations retain the normal trim, repeat, split, stretch and priority-placement rules.
+
+Visible subtrack rows in the Timeline and Beat Editor accept one external
+audio file or audio clip. Use clipped row hit bounds and the shared Sampler
+preparation worker. Prepare the input in the first regular layer. Keep
+existing Sampler settings or replace another source with a default Sampler
+through the regular layer replacement rules.
+Publish one undoable edit after preparation succeeds. Keep the source clip,
+the beat patterns, other layers and the transport intact. An audio clip drag
+from the arrangement retains the open Beat Editor's track and pattern during
+the gesture and after a drop on its rows.
 
 ## Preparation and processing
 

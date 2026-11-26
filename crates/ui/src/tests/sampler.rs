@@ -537,6 +537,131 @@ fn sampler_audio_clip_drag_opens_instrument_and_assigns_on_drop_without_moving_t
 }
 
 #[test]
+fn beat_subtrack_rows_load_audio_files_and_clips_without_changing_the_pattern() {
+    for editor in [false, true] {
+        for from_clip in [false, true] {
+            let mut app = DawUi::default();
+            let ctx = context();
+            let audio_track = app.session.project.add_track().unwrap();
+            let parent = app.session.project.add_beat_track().unwrap();
+            let pattern = app.session.project.add_beat_pattern(parent, 0).unwrap();
+            let mut row = daw_core::BeatSubtrack::new("Kick".into());
+            if editor && from_clip {
+                row.instrument.layers[0].sampler = Some(daw_core::SamplerSettings {
+                    gain_db: -3.0,
+                    ..Default::default()
+                });
+            } else {
+                row.instrument.layers[0]
+                    .oscillators
+                    .push(Default::default());
+            }
+            row.instrument.layers.push(Default::default());
+            let subtrack = row.id;
+            app.session
+                .project
+                .edit(Edit::Beat {
+                    track_id: parent,
+                    edit: daw_core::BeatEdit::Add {
+                        subtrack: Box::new(row),
+                        index: 0,
+                    },
+                })
+                .unwrap();
+            let file = TestWav::new();
+            let source = if from_clip {
+                app.session.import(&file.0, Some(audio_track), 0).unwrap();
+                let source = &mut app.session.project.tracks[0].clips[0];
+                source.source_offset_frame = 4_800;
+                source.length_frames = 30_000;
+                source.reversed = true;
+                Some(source.clone())
+            } else {
+                None
+            };
+            app.select_clip(pattern, parent, false);
+            app.set_timeline_editor_visible(editor);
+            frame(&mut app, &ctx, vec![]);
+            let target = if editor && from_clip {
+                app.beat_ui.steps[&(subtrack, 0)].center()
+            } else if editor {
+                app.beat_ui.header_panels[&subtrack].center()
+            } else {
+                let toggle = app.timeline_beats.disclosure[&parent].center();
+                click(&mut app, &ctx, toggle, false);
+                app.timeline_beats.rows[&subtrack].2.center()
+            };
+            let before = app.session.project.clone();
+            let original = before.instrument_settings(subtrack).unwrap();
+            if let Some(source) = &source {
+                let start = app.clip_block(app.lane_bounds[&audio_track], source, 0).min
+                    + Vec2::new(20.0, 12.0);
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(start), button(start, true)],
+                );
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(start + Vec2::new(9.0, 0.0))],
+                );
+                assert!(app.drag.is_some());
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(target)]);
+                assert_eq!(app.beat_sample_drop, Some(subtrack));
+                assert_eq!(app.session.project, before);
+                assert!(app.job.is_none());
+                frame(&mut app, &ctx, vec![button(target, false)]);
+            } else {
+                file_frame(&mut app, &ctx, &file.0, target, false);
+                assert_eq!(app.beat_sample_drop, Some(subtrack));
+                assert_eq!(app.session.project, before);
+                assert!(app.job.is_none());
+                file_frame(&mut app, &ctx, &file.0, target, true);
+            }
+            wait(&mut app, &ctx);
+            assert!(app.error.is_none(), "{:?}", app.error);
+            if editor {
+                assert_eq!(app.selected_track, Some(parent));
+                assert_eq!(app.selected_clip, Some(pattern));
+            }
+            let project = &app.session.project;
+            assert_eq!(project.tracks[0], before.tracks[0]);
+            assert_eq!(project.tracks[1].clips, before.tracks[1].clips);
+            assert_eq!(
+                &project.assets[..before.assets.len()],
+                before.assets.as_slice()
+            );
+            assert_eq!(project.transport, before.transport);
+            let instrument = project.instrument_settings(subtrack).unwrap();
+            assert_eq!(instrument.layers[0].id, original.layers[0].id);
+            assert_eq!(instrument.layers[1], original.layers[1]);
+            assert!(instrument.layers[0].oscillators.is_empty());
+            let sampler = instrument.layers[0].sampler.as_ref().unwrap();
+            if let Some(previous) = &original.layers[0].sampler {
+                assert_eq!(sampler.id, previous.id);
+                assert_eq!(sampler.gain_db, previous.gain_db);
+            }
+            let input = sampler.input.as_ref().unwrap();
+            if let Some(source) = &source {
+                assert_eq!(*input, daw_core::SamplerInput::from(source));
+            } else {
+                assert_eq!(input.length_frames, 48_000);
+                assert!(project.audio_asset(input.asset_id).is_some());
+            }
+            assert_eq!(
+                app.session.sampler_audio[&sampler.id]
+                    .root_audio()
+                    .frame_count(),
+                input.length_frames
+            );
+            app.perform_history_action(HistoryAction::Undo, &ctx);
+            assert_eq!(app.session.project, before);
+        }
+    }
+}
+
+#[test]
 fn beat_sampler_audio_clip_drag_opens_parent_and_assigns_without_moving_the_clip() {
     for granular in [false, true] {
         let mut app = DawUi::default();
@@ -595,7 +720,8 @@ fn beat_sampler_audio_clip_drag_opens_parent_and_assigns_without_moving_the_clip
         app.dirty = false;
         frame(&mut app, &ctx, vec![egui::Event::PointerMoved(instrument)]);
         assert_eq!(app.view_mode, ViewMode::Instrument);
-        assert_eq!(app.selected_track, Some(parent));
+        assert!(!app.track_selected(parent));
+        assert_eq!(app.track_context(), Some(parent));
         frame(&mut app, &ctx, vec![]);
         let target = app.beat_sampler_waveform(owner, layer).unwrap().center();
         frame(&mut app, &ctx, vec![egui::Event::PointerMoved(target)]);

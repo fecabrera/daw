@@ -36,7 +36,6 @@ impl DawUi {
                         .is_some_and(|(id, _)| id == parent.id)
                         && self.beat_subtrack_selected(row.id);
                     if ui.input(|i| i.pointer.primary_pressed()) || !selected {
-                        self.select_track(parent.id, false);
                         self.navigate_beat_owner(
                             parent.id,
                             Some(row.id),
@@ -109,27 +108,13 @@ impl DawUi {
 
     /// Track-menu operations follow the selected lane, as its strip controls do.
     pub(crate) fn mixer_beat_action(&mut self, action: TrackAction) -> bool {
-        let Some((parent, row)) = self.selected_mixer_beat_row() else {
+        let Some((_, row)) = self.selected_mixer_beat_row() else {
             return false;
         };
         match action {
             TrackAction::Mute | TrackAction::Solo => self.timeline_beat_mix_action(action),
             TrackAction::Rename => {
                 self.begin_beat_rename(row.id, row.name.clone());
-                true
-            }
-            TrackAction::Delete => {
-                let ids = self
-                    .session
-                    .project
-                    .beat(parent)
-                    .unwrap()
-                    .subtracks
-                    .iter()
-                    .filter(|row| self.beat_subtrack_selected(row.id))
-                    .map(|row| row.id)
-                    .collect();
-                self.edit_beat(parent, daw_core::BeatEdit::Remove { ids });
                 true
             }
             _ => false,

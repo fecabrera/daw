@@ -510,9 +510,6 @@ impl DawUi {
                                 && ui.rect_contains_pointer(rect)
                                 && ui.input(|input| input.focused && input.pointer.any_pressed())
                             {
-                                if track.kind == daw_core::TrackKind::Beat {
-                                    self.navigate_beat_owner(track.id, None, false);
-                                }
                                 if ui.input(|i| i.pointer.secondary_pressed()) {
                                     if !self.track_selected(track.id) {
                                         self.select_track(track.id, false);
@@ -521,6 +518,9 @@ impl DawUi {
                                     let toggle =
                                         ui.input(|i| i.modifiers.shift || i.modifiers.command);
                                     self.select_track(track.id, toggle);
+                                }
+                                if track.kind == daw_core::TrackKind::Beat {
+                                    self.navigate_beat_owner(track.id, None, false);
                                 }
                             }
                             let send_hover = !track.sends.is_empty()

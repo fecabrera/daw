@@ -1016,6 +1016,7 @@ pub struct DawUi {
     portion_drag: Option<portion::PortionDrag>,
     file_hover: Option<file_drop::FileHover>,
     file_drop_target: Option<FileDropTarget>,
+    beat_sample_drop: Option<Id>,
     loop_drag: Option<LoopDrag>,
     lane_bounds: HashMap<Id, Rect>,
     timeline_bounds: Rect,
@@ -1194,6 +1195,7 @@ impl Default for DawUi {
             portion_drag: None,
             file_hover: None,
             file_drop_target: None,
+            beat_sample_drop: None,
             loop_drag: None,
             lane_bounds: HashMap::new(),
             timeline_bounds: Rect::NOTHING,
@@ -1671,6 +1673,7 @@ impl DawUi {
     }
     fn update_file_hover(&mut self, ctx: &egui::Context) {
         self.file_drop_target = None;
+        self.beat_sample_drop = None;
         let path = if self.file_action_enabled(FileAction::Import) {
             ctx.input(|input| {
                 input
@@ -1981,7 +1984,7 @@ impl DawUi {
             self.restore_project_display();
         }
         self.prune_clip_selection();
-        self.selected_track = if self.master_selected {
+        self.selected_track = if self.master_selected || self.beat_subtrack_parent().is_some() {
             None
         } else {
             self.selected_track
@@ -2989,7 +2992,17 @@ impl DawUi {
                 .input(|i| i.pointer.latest_pos())
                 .and_then(|p| self.sampler_drop_target(p))
                 .zip(ctx.input(|i| i.raw.dropped_files.first().cloned()));
-            if self.edit_environment_available()
+            if self.file_action_enabled(FileAction::Import)
+                && let Some(subtrack) = self.beat_sample_drop
+                && let Some(dropped) = ctx.input(|i| i.raw.dropped_files.first().cloned())
+            {
+                self.file_drop_target = None;
+                if ctx.input(|i| i.raw.dropped_files.len()) == 1 {
+                    self.load_beat_sampler_file(subtrack, dropped.path().to_path_buf());
+                } else {
+                    self.fail("Drop one audio file onto a beat subtrack");
+                }
+            } else if self.edit_environment_available()
                 && let Some((target, dropped)) = sampler_file
             {
                 self.file_drop_target = None;
@@ -3013,6 +3026,7 @@ impl DawUi {
             {
                 let path = dropped.path().to_path_buf();
                 let prepared = self.file_hover.take().filter(|hover| hover.path == path);
+                self.clear_beat_subtrack_context();
                 self.master_selected = false;
                 self.selected_track = target.track;
                 self.selected_tracks.clear();
@@ -3859,6 +3873,10 @@ impl DawUi {
         );
         workspace.set_clip_rect(content.intersect(ui.clip_rect()));
         self.effects_workspace(&mut workspace);
+        // The Beat Editor draws after the arrangement. Resolve its target before release.
+        if self.beat_sample_editor_context().is_some() {
+            self.finish_clip_drag(ui);
+        }
         // Paint last so toolbar/catalog fills cannot cover the shared top edge.
         ui.painter().hline(
             bounds.x_range(),
@@ -3989,7 +4007,7 @@ impl DawUi {
         );
         self.lane_bounds.clear();
         let selected_before_tracks = self.selected_clip;
-        let track_before = self.selected_track;
+        let track_before = self.track_context();
         let mut track_scroll = egui::ScrollArea::vertical()
             .max_height((return_rect.top() - ui.cursor().top()).max(0.0))
             .auto_shrink([false, false]);
@@ -4048,7 +4066,7 @@ impl DawUi {
         );
         self.timeline_select_all(ui, clip_focus_bounds);
         if self.timeline_editor_visible()
-            && (self.selected_track != track_before
+            && (self.track_context() != track_before
                 || ui.input(|i| {
                     i.pointer
                         .press_origin()
@@ -4059,7 +4077,9 @@ impl DawUi {
             self.midi_editor.delete_clips = true;
             self.midi_editor.clear_note_selection();
         }
-        self.finish_clip_drag(ui);
+        if self.beat_sample_editor_context().is_none() {
+            self.finish_clip_drag(ui);
+        }
         self.update_portion(ui);
         self.paint_drag_preview(ui, tracks.inner_rect.intersect(timeline_rect));
         self.paint_recording_preview(ui, tracks.inner_rect.intersect(timeline_rect));
@@ -5376,7 +5396,7 @@ impl DawUi {
         )
         .with_time_signature(self.display_time_signature());
         if self.midi_editor.content_active
-            && self.selected_track.is_some_and(|id| {
+            && self.track_context().is_some_and(|id| {
                 self.session
                     .project
                     .tracks
@@ -6144,6 +6164,10 @@ impl DawUi {
         let Some(drag) = self.drag.as_ref() else {
             return;
         };
+        if self.beat_sample_drop.is_some() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Copy);
+            return;
+        }
         let preview_project = self.clip_trim_preview_project(ui);
         let previews = if let Some(project) = &preview_project {
             let requested = drag
@@ -6255,6 +6279,7 @@ impl DawUi {
         self.finish_clip_drag_in_view(ui);
         if self.drag.is_none() {
             self.content_clip_drag = false;
+            self.timeline_editor.sample_drop_context = None;
         }
     }
     fn finish_clip_drag_in_view(&mut self, ui: &mut egui::Ui) {
@@ -6283,6 +6308,7 @@ impl DawUi {
             }
             return;
         }
+        let beat_editor = self.beat_sample_editor_context();
         if ui.input(|input| input.pointer.button_released(egui::PointerButton::Primary))
             && let Some(drag) = self.drag.take()
             && drag.mode != ClipDragMode::Body
@@ -6291,6 +6317,31 @@ impl DawUi {
                 .input(|input| input.pointer.latest_pos())
                 .unwrap_or(drag.origin);
             if drag.mode == ClipDragMode::Move {
+                if let Some(subtrack) = self.beat_sample_drop {
+                    if drag.clips.len() > 1 {
+                        self.fail("Drop one audio clip onto a beat subtrack");
+                        return;
+                    }
+                    if let Some((track, active_clip)) = beat_editor {
+                        if let Some(id) = active_clip {
+                            self.select_clip(id, track, false);
+                        } else {
+                            self.select_track(track, false);
+                            self.selected_clip = None;
+                            self.selected_clips.clear();
+                        }
+                    }
+                    let session = self.session.clone();
+                    let clip = drag.clip;
+                    self.run_sampler_job("Preparing sample", move |cancel| {
+                        session
+                            .with_beat_sampler_clip(subtrack, &clip, &|| {
+                                cancel.load(Ordering::Relaxed)
+                            })
+                            .map_err(|e| e.to_string())
+                    });
+                    return;
+                }
                 if let Some(target) = self.sampler_unit_drop_target(pointer) {
                     if drag.clips.len() > 1 {
                         self.fail("Drop one audio clip onto Sampler or Granulizer");

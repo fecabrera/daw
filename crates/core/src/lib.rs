@@ -1143,6 +1143,9 @@ impl Project {
             } => {
                 self.set_instrument_settings(track_id, instrument)?;
             }
+            Edit::RemoveInstrumentLayers { track_id, layers } => {
+                self.remove_instrument_layers(track_id, &layers)?;
+            }
             Edit::Batch(commands) => {
                 for command in commands {
                     self.apply_edit(command)?;
@@ -1573,6 +1576,10 @@ pub enum Edit {
     SetInstrument {
         track_id: Id,
         instrument: Option<InstrumentSettings>,
+    },
+    RemoveInstrumentLayers {
+        track_id: Id,
+        layers: Vec<Id>,
     },
     /// Apply all commands and validate the final state as one transaction.
     Batch(Vec<Edit>),
