@@ -4,6 +4,9 @@ Use these guides to arrange audio, build MIDI instruments, and export a mix. For
 
 ## Menus and shortcuts
 
+See the [keyboard shortcut reference](editing/keyboard-shortcuts.md) for
+macOS, Windows, and Linux commands and modifier gestures.
+
 Dropdown and context menus use padded rows and the same corner rounding as standard controls. Unit selectors, including modulation sources, layer submenus and destinations, use smaller text. Their hover background matches unselected view buttons. Selected view and toolbar buttons keep their active background when hovered or pressed. Open a layer submenu to choose its modulation sources. Effects, Components and Chords catalogs and the Instrument Tracks panel use the same corner rounding, row spacing and inset selection highlights.
 
 On Windows and Linux, open the application menu for File, Edit, Clip, Track, Transport and View. Its categories and submenus use the same design as dropdown menus. Keyboard shortcuts appear beside the actions that support them. Unavailable actions appear dimmed.
