@@ -119,7 +119,7 @@ To add a theme, save a copy with its own name and an ID such as `user.blue-room`
 
 On Windows, **Appearance > Titlebar > Custom** combines the menu, project title, and view buttons in the titlebar. A continuous divider separates this row from playback controls in restored and maximized windows. **Native** is the default titlebar style.
 
-On Linux, **Appearance > Titlebar > Custom** combines the menu, project title and view buttons with actual GTK window buttons. **Native** uses the regular titlebar above the app toolbar. New preferences select Custom; saved choices are retained. Both modes work with the standard launcher. See [Linux setup](../development/linux.md) for prerequisites and remaining platform limits.
+On Linux, **Appearance > Titlebar > Custom** combines the menu, project title, and view controls with GTK window buttons. The window buttons match the DAW theme and follow your desktop's button order. **Native** uses the regular titlebar above the app toolbar. New preferences select Custom. The app keeps saved choices. Both modes work with the standard launcher. See [Linux setup](../development/linux.md) for prerequisites and remaining platform limits.
 
 ## Audio devices
 

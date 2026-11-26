@@ -17,6 +17,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "gtk_host/caption.rs"]
+mod caption;
 #[path = "gtk_host/input.rs"]
 mod input;
 #[path = "gtk_host/preferences.rs"]
@@ -118,6 +120,7 @@ fn build(
     let left = gtk4::WindowControls::new(gtk4::PackType::Start);
     let right = gtk4::WindowControls::new(gtk4::PackType::End);
     for (controls, align) in [(&left, gtk4::Align::Start), (&right, gtk4::Align::End)] {
+        controls.add_css_class("daw-caption");
         controls.set_halign(align);
         controls.set_valign(gtk4::Align::Start);
         controls.set_margin_start(4);
@@ -219,6 +222,9 @@ fn build(
             return glib::Propagation::Stop;
         }
         let mut state = render_state.borrow_mut();
+        if state.close_approved {
+            return glib::Propagation::Stop;
+        }
         if state.painter.is_none() {
             match make_painter() {
                 Ok((mut painter, library)) => {
@@ -247,11 +253,17 @@ fn build(
             );
             let pending = render_pending.clone();
             let destroyed = render_destroyed.clone();
+            let state = Rc::downgrade(&render_state);
             // Run after this snapshot, before GTK's next redraw. Default idle
             // priority can starve while the UI requests continuous repaints.
             glib::idle_add_local_full(glib::Priority::HIGH_IDLE, move || {
                 pending.set(false);
-                if destroyed.get() || !window.is_visible() {
+                if destroyed.get()
+                    || !window.is_visible()
+                    || state
+                        .upgrade()
+                        .is_none_or(|state| state.borrow().close_approved)
+                {
                     return glib::ControlFlow::Break;
                 }
                 let maximized = window.is_maximized();
@@ -284,14 +296,6 @@ fn build(
         if state.smoke {
             // Exercise titlebar switching while redraws remain continuously due.
             ctx.request_repaint();
-        }
-        if let Some(settings) = gtk4::Settings::default() {
-            let dark = ctx.global_style().visuals.dark_mode;
-            if settings.is_gtk_application_prefer_dark_theme() != dark {
-                glib::idle_add_local_once(move || {
-                    settings.set_gtk_application_prefer_dark_theme(dark)
-                });
-            }
         }
         let (_, left_width, _, _) = left.measure(gtk4::Orientation::Horizontal, -1);
         let (_, right_width, _, _) = right.measure(gtk4::Orientation::Horizontal, -1);
@@ -382,8 +386,14 @@ fn build(
         save_settings(&mut state, close);
         if close {
             state.close_approved = true;
-            drop(state);
-            window.close();
+            let window = weak_window.clone();
+            // Closing unrealizes the GLArea. Wait until GTK finishes its snapshot.
+            glib::idle_add_local_full(glib::Priority::HIGH_IDLE, move || {
+                if let Some(window) = window.upgrade() {
+                    window.close();
+                }
+                glib::ControlFlow::Break
+            });
         }
         glib::Propagation::Stop
     });
@@ -416,8 +426,9 @@ fn build(
     let settings_state = Rc::downgrade(&state);
     let settings_root = window.downgrade();
     let mut settings_host = settings::Host::default();
+    let mut caption_style = caption::Style::new(&window, &state.borrow().ctx);
     let weak_area = area.downgrade();
-    // Poll only the repaint flag; worker callbacks never access GTK objects.
+    // Apply GTK style changes outside the snapshot. Workers only set the repaint flag.
     glib::timeout_add_local(Duration::from_millis(16), move || {
         if destroyed.get() {
             return glib::ControlFlow::Break;
@@ -427,6 +438,7 @@ fn build(
         };
         if let (Some(window), Some(state)) = (settings_root.upgrade(), settings_state.upgrade()) {
             settings_host.update(&window, &area, &state);
+            caption_style.update(&state.borrow().ctx);
         }
         if repaint_clock.elapsed().as_millis() >= u128::from(repaint.load(Ordering::Relaxed)) {
             repaint.store(u64::MAX, Ordering::Relaxed);
@@ -456,9 +468,12 @@ fn build(
                 return glib::ControlFlow::Break;
             }
             let native = state.ui.settings().titlebar == TitlebarStyle::Native;
+            let caption_palette_matches =
+                native || caption::matches_foreground([left, right], &state.ctx);
             let correct = window.titlebar().is_none() == native
                 && left.is_visible() != native
                 && right.is_visible() != native
+                && caption_palette_matches
                 && !titlebar_pending.get()
                 && state.painter.is_some()
                 && state.renderer_generation > step;
@@ -472,6 +487,7 @@ fn build(
                     titlebar = window.titlebar().is_some(),
                     left_visible = left.is_visible(),
                     right_visible = right.is_visible(),
+                    caption_palette_matches,
                     pending = titlebar_pending.get(),
                     generation = state.renderer_generation,
                     "GTK smoke test: titlebar transition did not complete"
@@ -501,6 +517,7 @@ fn build(
                 settings.titlebar = if step == 0 {
                     TitlebarStyle::Native
                 } else {
+                    settings.theme = daw_ui::settings::ColorTheme::Light;
                     TitlebarStyle::Custom
                 };
                 let ctx = state.ctx.clone();
@@ -525,11 +542,26 @@ fn build(
                 return glib::ControlFlow::Break;
             }
             save_snapshot(&window, "custom.png");
-            passed.set(true);
-            eprintln!(
-                "GTK smoke test passed: rendered DAW and switched Custom → Native → Custom with native Settings open, then closed Settings."
-            );
-            state.close_approved = true;
+            // The host's first close handler stops the initial request. This
+            // handler runs when the DAW has approved and reissued it.
+            let close_passed = passed.clone();
+            window.connect_close_request(move |_| {
+                close_passed.set(true);
+                eprintln!(
+                    "GTK smoke test passed: switched Custom → Native → Custom, matched Dark and Light captions, and closed Settings and the DAW."
+                );
+                glib::Propagation::Proceed
+            });
+            let close_window = window.downgrade();
+            let close_passed = passed.clone();
+            glib::timeout_add_local_once(Duration::from_secs(10), move || {
+                if !close_passed.get()
+                    && let Some(window) = close_window.upgrade()
+                {
+                    tracing::error!("GTK smoke test: main window did not close");
+                    window.destroy();
+                }
+            });
             drop(state);
             window.close();
             glib::ControlFlow::Break

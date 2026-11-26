@@ -17,11 +17,21 @@ GTK startup and embedded icon registration share the normal launcher implementat
 follows GTK's decoration layout. Custom mode reserves their measured widths and
 height in the shared header. Empty control groups reserve no width, including
 their CSS padding, so the menu/title/view group uses the same left margin as
-the Windows custom header. Custom mode keeps an empty titlebar widget for GTK's client frame and resize edges.
+the Windows custom header. CSS scoped to these controls gives the buttons
+24-pixel targets with 7 pixels of vertical padding around each group in GTK
+logical pixels. The buttons use the current DAW palette for their icons,
+hover fills, and pressed fills. GTK retains the button actions, icons,
+accessibility, and decoration layout. Custom mode keeps an empty titlebar
+widget for GTK's client frame and resize edges.
 Native mode clears the custom titlebar with `set_titlebar(None)` so GTK or the
 window manager supplies its regular titlebar, above the ordinary DAW menu/view
 toolbar. No explicit `GtkHeaderBar` is installed. The UI exposes the Linux titlebar selector only
 after this host registers its capability. Fresh Linux settings default to Custom; saved mode choices are retained.
+
+The host applies DAW theme changes to GTK on the main thread outside snapshots.
+On GTK 4.20 and later, it sets `gtk-interface-color-scheme` by looking up the
+property at runtime. GTK 4.8 through 4.18 use
+`gtk-application-prefer-dark-theme`.
 
 The internal GTK capability query compiles only on Windows/Linux, matching its
 shared toolbar callers. macOS excludes the helper so strict all-target Clippy
@@ -67,7 +77,9 @@ clear the held pointer without activating a button. Unused custom-header touches
 continue to GTK's native window-drag gesture. Title/unused
 header gestures use shared hit-testing for native dragging and double-click
 maximize. Root close requests enter the existing unsaved-project guard before
-GTK closes.
+GTK closes. The host saves preferences after the guard accepts the request.
+It closes the window from a high-priority idle callback after GTK finishes
+its snapshot, so the GLArea stays realized while GTK uses it.
 
 ### Titlebar surface recreation
 
@@ -113,9 +125,11 @@ cargo test -p daw-ui titlebar::tests --locked --offline
 ```
 
 The smoke test renders the DAW with continuous repaint requests, switches
-Custom → Native → Custom, checks GTK custom-titlebar presence and control
-visibility, verifies surface recreation,
-saves `work/gtk-titlebar/native.png` and `work/gtk-titlebar/custom.png`, and closes.
+Custom → Native → Custom, changes the DAW theme from Dark to Light, checks
+GTK custom-titlebar presence, control visibility and caption foregrounds,
+and verifies surface recreation. It saves `work/gtk-titlebar/native.png` and
+`work/gtk-titlebar/custom.png`, closes Settings, and requests a normal main
+window close through the DAW's close guard.
 Each transition has a ten-second deadline and must finish with a recreated
 renderer before the next step. Failure reports the requested mode, titlebar,
 control visibility, pending switch and renderer generation. It does not load or

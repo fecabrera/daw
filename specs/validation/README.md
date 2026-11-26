@@ -16320,3 +16320,26 @@ glide estimator. See the [revision-8 specification](../audio/timestretch.md#long
   doctest pass. The separate workspace doctest command passed.
 - Native Audio Unit registration returned no component inside the sandbox.
   All 22 registration checks passed separately outside it in both profiles.
+
+## GTK titlebar buttons and shutdown on KDE — 2026-11-26
+
+- Reproduced the GTK color-scheme warning on KDE Wayland with GTK 4.24.1.
+- The rebuilt release desktop passed `--smoke-test` on KDE Wayland and X11
+  with `G_DEBUG=fatal-warnings`. The test switched Custom → Native → Custom
+  and verified that GTK button foregrounds matched both the Dark and Light
+  DAW themes. It then closed Settings and the main window through the normal
+  close request.
+- An X11 capture confirmed that the Custom window buttons sit in the center
+  of the dark header with transparent idle backgrounds.
+- A separate X11 check launched the normal application with isolated
+  preferences and sent a window-manager close request. The previous build
+  exited with signal 11 during GTK's snapshot. The rebuilt release app saved
+  preferences and exited with code 0.
+- `cargo fmt --all --check` and strict workspace Clippy passed.
+- `cargo test --workspace --locked --offline --no-fail-fast` passed in the
+  debug profile with debug assertions enabled.
+- `cargo test --workspace --release --locked --offline --no-fail-fast` passed
+  in a separate target directory with `CARGO_PROFILE_RELEASE_LTO=off` and
+  `CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16`. The KDE checks used the desktop
+  executable built with the repository's default release profile.
+- GTK 4.8 runtime behavior and manual window gestures were outside these checks.
