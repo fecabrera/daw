@@ -4140,7 +4140,7 @@ impl DawUi {
         tracks.inner.iter().find_map(|(id, header)| {
             let row = Rect::from_min_max(header.min, Pos2::new(visible.right(), header.bottom()))
                 .intersect(visible);
-            let target = self.timeline_beat_effect_target(*id);
+            let target = effects_panel::EffectTarget::Track(*id);
             row.contains(pointer).then_some((target, row))
         })
     }

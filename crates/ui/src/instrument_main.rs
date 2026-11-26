@@ -1,6 +1,5 @@
 //! Shared instrument-wide rows. Output also provides audio mix controls.
 use super::*;
-use crate::instrument_workspace::InstrumentSubview;
 use daw_core::InstrumentBusSettings;
 
 pub(super) struct LaneRow<'a> {
@@ -60,25 +59,8 @@ impl DawUi {
             shared_sources,
         } = row;
         let subview = self.instrument_subview;
-        let output = subview == InstrumentSubview::Effects;
-        let title = kind.map_or(
-            if output {
-                InstrumentBusSettings::DISPLAY_NAME
-            } else {
-                "Macros"
-            },
-            daw_core::ModulationLaneKind::name,
-        );
-        let units: Vec<_> = bus
-            .visible_units()
-            .into_iter()
-            .filter(|unit| subview.shows(*unit))
-            .collect();
-        let beat_output = self.session.project.tracks.iter().any(|t| {
-            t.beat
-                .as_ref()
-                .is_some_and(|b| b.output.id == track && b.output.id == bus.id)
-        });
+        let title = kind.map_or("Macros", daw_core::ModulationLaneKind::name);
+        let units = bus.visible_components();
         let compact = bus.collapsed;
         let height = panels::unit_height(compact);
         let mut child = ui.new_child(
@@ -141,7 +123,7 @@ impl DawUi {
                     !self.instrument_ui.has_layer_gesture() && !self.instrument_ui.editing_name()
                         && self.editing_enabled() && ui.input(|input| input.focused),
                     [icons::Lucide::ArrowDownFromLine, icons::Lucide::ArrowUpFromLine],
-                    [if output {"Expand Output"} else {"Expand modulation lane"}, if output {"Collapse Output"} else {"Collapse modulation lane"}],
+                    ["Expand modulation lane", "Collapse modulation lane"],
                 );
                 if collapse.clicked() { ui.ctx().request_repaint(); }
                 let (label, response) =
@@ -155,13 +137,13 @@ impl DawUi {
                         .layout(egui::Layout::top_down(egui::Align::Min)),
                 );
                 header.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-                if output {
-                let (levels, held) = self.output.as_ref().and_then(|o| if beat_output {o.track_meter(bus.id)} else {o.layer_meter(track, bus.id)}).map_or(([(0.0, false); 2], [0.0; 2]), |m| (m.levels(), m.held_peaks()));
+                if kind.is_none() {
+                let (levels, held) = self.output.as_ref().and_then(|o| o.layer_meter(track, bus.id)).map_or(([(0.0, false); 2], [0.0; 2]), |m| (m.levels(), m.held_peaks()));
                 let cleared = meters::stereo_panel_held(&mut header, ROW_HEIGHT - 14.0, levels, held, |header| {
                 rows::centered(header, toolbars::CONTROL_HEIGHT, |ui| {
                     let icon = icons::header_icon_with_rotation(ui, icons::Lucide::Merge, Sense::hover(), std::f32::consts::FRAC_PI_2).on_hover_text("Instrument output");
                     icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument output"));
-                    let name = ui.label(egui::RichText::new(InstrumentBusSettings::DISPLAY_NAME).font(crate::fonts::semibold(rows::NAME_FONT_SIZE)));
+                    let name = ui.label(egui::RichText::new(title).font(crate::fonts::semibold(rows::NAME_FONT_SIZE)));
                     #[cfg(test)] { bounds.icon = icon.rect; bounds.name = name.rect; }
                     #[cfg(not(test))] let _ = (icon, name);
                 });
@@ -177,7 +159,7 @@ impl DawUi {
                 #[cfg(not(test))] let _ = gain;
                 }
                 });
-                meters::reset_on_click(ui, self.output.as_ref().and_then(|o| if beat_output {o.track_meter(bus.id)} else {o.layer_meter(track, bus.id)}), cleared);
+                meters::reset_on_click(ui, self.output.as_ref().and_then(|o| o.layer_meter(track, bus.id)), cleared);
                 } else {
                     rows::centered(&mut header, toolbars::CONTROL_HEIGHT, |ui| {
                         let icon=icons::header_icon(ui, icons::Lucide::Activity, Sense::hover());
@@ -210,9 +192,6 @@ impl DawUi {
                             if self.component_drag.as_ref().is_some_and(|d| d.active) {
                                 drag::scroll_drag(ui, drag::Axis::Horizontal, 360.0, self.edit_environment_available(), Rect::from_x_y_ranges(ui.clip_rect().x_range(), label.y_range()));
                             }
-                            if self.effects_drag.as_ref().is_some_and(|d| d.active) {
-                                drag::scroll_drag(ui, drag::Axis::Horizontal, 360.0, self.edit_environment_available(), Rect::from_x_y_ranges(ui.clip_rect().x_range(), label.y_range()));
-                            }
                             for &component in &units {
                                 let selected = self.instrument_ui.selected_components.iter()
                                     .filter(|(id, _)| *id == bus.id)
@@ -224,10 +203,6 @@ impl DawUi {
                                     targets.iter().filter_map(|c| crate::unit_power::bus_enabled(bus, *c).copied()),
                                 );
                                 let rect = ui.scope_builder(menu.scope(component, selected.contains(&component)), |ui| match component {
-                                    daw_core::InstrumentComponent::Effect(id) => {
-                                        let effect=bus.effects.iter_mut().find(|e|e.id==id).unwrap();
-                                        Some(self.inline_layer_effect(ui,track,bus.id,effect,(height,compact),sources))
-                                    }
                                     daw_core::InstrumentComponent::Envelope(id) => {
                                         let index = bus.envelopes.iter().position(|e| e.id == id).unwrap();
                                         {
@@ -270,17 +245,14 @@ impl DawUi {
                                         if let Some(state) = crate::unit_power::bus_enabled(bus, target) { *state = enable; }
                                     }
                                 }
-                                if let Some(rect) = rect
- && !matches!(component, daw_core::InstrumentComponent::Effect(_)) {
+                                if let Some(rect) = rect {
  self.instrument_ui.component_slots.push((bus.id, component, rect));
  }
                             }
-                            if output && self.effects_drag.is_some() {ui.allocate_exact_size(Vec2::new(crate::midi_editor::UNIT_STRIP_WIDTH,height),Sense::hover());}
 
                         });
                     });
                 let viewport = Rect::from_min_size(components.inner_rect.min, Vec2::new(components.inner_rect.width(), height)).intersect(components.inner_rect).intersect(ui.clip_rect());
-                if output {self.finish_inline_layer_effects(ui, track, crate::layer_effects::InlineEffects { id: bus.id, effects: &mut bus.effects }, viewport);}
                 self.instrument_ui.component_viewports.push((bus.id,viewport));
                 ui.advance_cursor_after_rect(toolbar);
             });
@@ -289,9 +261,7 @@ impl DawUi {
         ui.advance_cursor_after_rect(rect);
         #[cfg(test)]
         {
-            if output {
-                self.instrument_ui.main_bounds = bounds;
-            } else if kind.is_some() {
+            if kind.is_some() {
                 self.instrument_ui
                     .modulation_lane_bounds
                     .insert(bus.id, bounds);

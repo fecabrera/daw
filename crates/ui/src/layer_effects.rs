@@ -12,13 +12,12 @@ impl DawUi {
             && let Some(track) = self.selected_instrument_owner()
             && !self.instrument_ui.track_effects_target
             && let Some(layer) = self.instrument_ui.selected_layer
+            && self
+                .session
+                .project
+                .instrument_settings(track)
+                .is_some_and(|i| i.layers.iter().any(|l| l.id == layer))
         {
-            let i = self.session.project.instrument_snapshot(track)?;
-            let layer = if layer == i.main.id || i.layers.iter().any(|l| l.id == layer) {
-                layer
-            } else {
-                i.layers.first().map_or(i.main.id, |l| l.id)
-            };
             return Some(EffectTarget::Layer { track, layer });
         }
         self.effects_target()

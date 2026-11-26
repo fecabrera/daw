@@ -38,13 +38,12 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
         .effects
         .push(daw_core::EffectInstance::drive());
     instrument.layers[0].macro_module.add();
-    instrument
-        .main
-        .effects
-        .push(daw_core::EffectInstance::drive());
     instrument.main.macro_module.add();
     let [lfo, envelope] = [instrument.lfo_lane.id, instrument.envelope_lane.id];
     let [layer, output] = [instrument.layers[0].id, instrument.main.id];
+    app.session.project.tracks[0]
+        .effects
+        .push(daw_core::EffectInstance::drive());
     let ctx = context();
     app.select_track(track, false);
     app.set_view_mode(ViewMode::Instrument, &ctx);
@@ -58,7 +57,6 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
         expanded_height
     );
     assert!(app.instrument_ui.modulation_lane_bounds.is_empty());
-    assert!(app.instrument_ui.main_bounds.row.is_negative());
     assert!(app.instrument_ui.effect_slots.is_empty());
     assert_eq!(
         app.instrument_ui
@@ -98,15 +96,13 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
     assert_eq!(app.midi_editor.instrument_header_bounds, layers_header);
     assert!(app.midi_editor.add_layer_bounds.is_positive());
     assert!(app.instrument_ui.modulation_lane_bounds.is_empty());
-    assert!(!app.instrument_ui.main_bounds.row.is_negative());
-    assert_eq!(app.instrument_ui.main_bounds.row.height(), expanded_height);
     assert_eq!(
         app.instrument_ui
             .effect_slots
             .iter()
             .map(|(owner, _, _)| *owner)
             .collect::<Vec<_>>(),
-        [layer, output]
+        [layer]
     );
     assert!(app.instrument_ui.component_slots.is_empty());
     assert!(app.instrument_ui.source_drop_rows.is_empty());
@@ -131,7 +127,6 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
         (layer, InstrumentComponent::Macros)
     );
     assert!(lanes[&envelope].row.top() < macros[0].2.top());
-    assert!(app.instrument_ui.main_bounds.row.is_negative());
     assert!(app.instrument_ui.effect_slots.is_empty());
     click(&mut app, sources_tab);
     assert_eq!(app.instrument_subview, InstrumentSubview::Sources);
@@ -139,6 +134,7 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
     app.toggle_view_panel(ViewPanel::EffectsLane, &ctx);
     frame(&mut app, &ctx, vec![]);
     assert!(app.effects_bounds.strip.is_positive());
+    assert_eq!(app.effects_bounds.chain.len(), 1);
     assert_eq!(app.effects_bounds.track_mixer_toggle, mixer_toggle);
 
     app.set_view_mode(ViewMode::Timeline, &ctx);
@@ -150,24 +146,58 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
 }
 
 #[test]
-fn beat_parent_output_uses_effects_and_macros_use_modulation() {
+fn beat_parent_uses_the_audio_and_group_instrument_layout_in_every_tab() {
     use crate::instrument_workspace::InstrumentSubview;
     let mut app = DawUi::default();
+    let audio = app.session.project.add_track().unwrap();
+    let group = app.session.project.add_group_track().unwrap();
     let beat = app.session.project.add_beat_track().unwrap();
-    let output = app.session.project.beat(beat).unwrap().output.id;
+    for track in &mut app.session.project.tracks {
+        track.effects.push(daw_core::EffectInstance::drive());
+    }
+    app.session.project.tracks[2]
+        .beat
+        .as_mut()
+        .unwrap()
+        .output
+        .macro_module
+        .add();
+    let before = app.session.project.clone();
     let ctx = context();
-    app.select_track(beat, false);
     app.set_view_mode(ViewMode::Instrument, &ctx);
-    frame(&mut app, &ctx, vec![]);
-    assert!(app.beat_ui.final_output.is_none());
-    assert!(app.instrument_ui.component_viewports.is_empty());
-    app.set_instrument_subview(InstrumentSubview::Effects, &ctx);
-    frame(&mut app, &ctx, vec![]);
-    assert!(app.beat_ui.final_output.is_some());
-    app.set_instrument_subview(InstrumentSubview::Modulation, &ctx);
-    frame(&mut app, &ctx, vec![]);
-    assert!(app.beat_ui.final_output.is_none());
-    assert_eq!(app.selected_instrument_owner(), Some(output));
+    app.set_effects_lane_visible(true);
+    for subview in [
+        InstrumentSubview::Sources,
+        InstrumentSubview::Effects,
+        InstrumentSubview::Modulation,
+    ] {
+        app.set_instrument_subview(subview, &ctx);
+        let mut layout = None;
+        for id in [audio, group, beat] {
+            app.select_track(id, false);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 900.0));
+            let text = |message| {
+                shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == message => Some(text.pos),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| panic!("Missing {message}"))
+            };
+            let empty = [text("Layers"), text("Select an instrument track")];
+            assert_eq!(layout.get_or_insert(empty), &empty);
+            assert!(app.midi_editor.layer_bounds.is_empty());
+            assert!(app.instrument_ui.component_viewports.is_empty());
+            assert!(app.instrument_catalog_target().is_none());
+            assert_eq!(
+                app.effects_target(),
+                Some(daw_core::EffectChainTarget::Track(id))
+            );
+            assert_eq!(app.effects_bounds.chain.len(), 1);
+        }
+    }
+    assert_eq!(app.session.project, before);
     assert!(!app.dirty);
 }
 

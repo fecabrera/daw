@@ -203,6 +203,10 @@ pub struct BeatSubtrack {
     pub muted: bool,
     pub soloed: bool,
     pub instrument: InstrumentSettings,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effects: Vec<crate::EffectInstance>,
+    #[serde(default)]
+    pub effects_compact: bool,
     /// Directed trigger links, not modulation routes or audio sends.
     pub stops: Vec<Id>,
 }
@@ -215,12 +219,15 @@ impl BeatSubtrack {
             muted: false,
             soloed: false,
             instrument: InstrumentSettings::default(),
+            effects: Vec::new(),
+            effects_compact: false,
             stops: Vec::new(),
         }
     }
 
     pub fn heap_bytes(&self) -> u64 {
         self.name.capacity() as u64
+            + daw_unit_core::memory::effect_settings_bytes(&self.effects)
             + self.instrument.heap_bytes()
             + daw_unit_core::memory::vec_bytes(&self.stops)
     }
@@ -337,7 +344,7 @@ impl BeatInstrument {
                     ));
                 }
             }
-            crate::instrument_validation::validate_routes(Some(&row.instrument), &[])?;
+            crate::instrument_validation::validate_routes(Some(&row.instrument), &row.effects)?;
         }
         for sampler in self
             .subtracks
@@ -354,11 +361,13 @@ impl BeatInstrument {
             .effects
             .iter()
             .chain(self.subtracks.iter().flat_map(|row| {
-                row.instrument
-                    .layers
-                    .iter()
-                    .flat_map(|l| &l.effects)
-                    .chain(row.instrument.buses().flat_map(|b| &b.effects))
+                row.effects.iter().chain(
+                    row.instrument
+                        .layers
+                        .iter()
+                        .flat_map(|l| &l.effects)
+                        .chain(row.instrument.buses().flat_map(|b| &b.effects)),
+                )
             }))
         {
             if effect.id.is_nil() || !ids.insert(effect.id) {

@@ -180,10 +180,9 @@ For a repeated option, pass multiple values after the flag or repeat the flag.
 - Instrument owners are `track:TRACK_UUID` or `subtrack:SUBTRACK_UUID`.
   Use `instrument.layer.list` to find a layer. Component listings show the
   stable IDs of oscillator strips, envelopes, LFOs and sample sources.
-- Effect owners are `master`, `track:TRACK_UUID`, `layer:OWNER_UUID:LAYER_UUID`,
-  or `output:BEAT_TRACK_UUID`. Use the Main ID returned by
-  `instrument.layer.list` to address its chain. Hosted instrument sources
-  use `source:OWNER_UUID:LAYER_UUID`.
+- Effect owners are `master`, `track:TRACK_UUID`, `subtrack:SUBTRACK_UUID`,
+  or `layer:OWNER_UUID:LAYER_UUID` for a regular layer. Hosted instrument
+  sources use `source:OWNER_UUID:LAYER_UUID`.
 - Use `effect.catalog.list` and `midi.chord.list` for built-in keys.
   `midi.chord.add` uses the full MIDI note number for the root.
   `midi.options.set --channel` accepts `all` or `1` through `16`. Monitor

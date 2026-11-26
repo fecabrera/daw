@@ -238,10 +238,7 @@ fn beat_mixer_selection_targets_lane_effects_and_parent_click_restores_track_sco
     let row = &app.session.project.beat(parent).unwrap().subtracks[1];
     assert_eq!(
         app.effects_target(),
-        Some(effects_panel::EffectTarget::Layer {
-            track: row.id,
-            layer: row.instrument.main.id
-        })
+        Some(effects_panel::EffectTarget::Track(row.id))
     );
     assert!(!app.track_selected(parent));
     assert!(app.selected_tracks.is_empty());

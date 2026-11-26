@@ -491,7 +491,11 @@ pub(crate) fn duplicate_track_settings(track: &Track, id: Id) -> Track {
             let old = row.id;
             row.id = Id::new_v4();
             remap.insert(old, row.id);
+            let legacy_count = row.instrument.main.effects.len();
+            row.instrument.main.effects.append(&mut row.effects);
             row.instrument = row.instrument.duplicate();
+            row.effects = row.instrument.main.effects.split_off(legacy_count);
+            row.instrument.main.prune_component_order();
         }
         for row in &mut beat.subtracks {
             for stop in &mut row.stops {
@@ -503,6 +507,24 @@ pub(crate) fn duplicate_track_settings(track: &Track, id: Id) -> Track {
             ..Default::default()
         };
         beat.output = temporary.duplicate().main;
+        for route in copy
+            .effects
+            .iter_mut()
+            .flat_map(|e| e.unit.modulations_mut())
+        {
+            if let Some(source) = &mut route.source
+                && source.layer == temporary.main.id
+                && let Some(index) = temporary
+                    .main
+                    .macro_module
+                    .controls
+                    .iter()
+                    .position(|control| control.id == source.unit)
+            {
+                source.layer = beat.output.id;
+                source.unit = beat.output.macro_module.controls[index].id;
+            }
+        }
     }
     let mut effect_ids = HashMap::new();
     for effect in copy

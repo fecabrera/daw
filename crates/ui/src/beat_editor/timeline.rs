@@ -119,25 +119,6 @@ impl DawUi {
             })
     }
 
-    pub(crate) fn timeline_beat_effect_target(&self, id: Id) -> effects_panel::EffectTarget {
-        self.timeline_beats
-            .rows
-            .get(&id)
-            .and_then(|(parent, _, _)| {
-                self.session
-                    .project
-                    .beat(*parent)?
-                    .subtracks
-                    .iter()
-                    .find(|row| row.id == id)
-                    .map(|row| effects_panel::EffectTarget::Layer {
-                        track: id,
-                        layer: row.instrument.main.id,
-                    })
-            })
-            .unwrap_or(effects_panel::EffectTarget::Track(id))
-    }
-
     pub(crate) fn timeline_beat_children(
         &mut self,
         ui: &mut egui::Ui,

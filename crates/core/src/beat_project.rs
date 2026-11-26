@@ -104,7 +104,7 @@ impl Project {
                 .as_mut()
                 .and_then(|b| b.subtracks.iter_mut().find(|s| s.id == owner))
             {
-                return Some((&mut row.instrument, &mut []));
+                return Some((&mut row.instrument, &mut row.effects));
             }
         }
         None
@@ -116,27 +116,32 @@ impl Project {
                 return Some(track.clone());
             }
             if let Some(beat) = &track.beat {
-                let (name, instrument, gain_db, pan, muted, soloed) = if beat.output.id == owner {
-                    (
-                        "Output".into(),
-                        beat.output_settings(),
-                        track.gain_db,
-                        track.pan,
-                        track.muted,
-                        track.soloed,
-                    )
-                } else if let Some(row) = beat.subtracks.iter().find(|s| s.id == owner) {
-                    (
-                        row.name.clone(),
-                        row.instrument.clone(),
-                        0.0,
-                        0.0,
-                        row.muted,
-                        row.soloed,
-                    )
-                } else {
-                    continue;
-                };
+                let (name, instrument, gain_db, pan, muted, soloed, effects, effects_compact) =
+                    if beat.output.id == owner {
+                        (
+                            "Output".into(),
+                            beat.output_settings(),
+                            track.gain_db,
+                            track.pan,
+                            track.muted,
+                            track.soloed,
+                            Vec::new(),
+                            track.effects_compact,
+                        )
+                    } else if let Some(row) = beat.subtracks.iter().find(|s| s.id == owner) {
+                        (
+                            row.name.clone(),
+                            row.instrument.clone(),
+                            0.0,
+                            0.0,
+                            row.muted,
+                            row.soloed,
+                            row.effects.clone(),
+                            row.effects_compact,
+                        )
+                    } else {
+                        continue;
+                    };
                 // Copy only this owner's presentation data, not sibling instruments or clips.
                 return Some(Track {
                     sends: vec![],
@@ -149,8 +154,8 @@ impl Project {
                     group_collapsed: false,
                     color: track.color,
                     midi_options: track.midi_options,
-                    effects: Vec::new(),
-                    effects_compact: track.effects_compact,
+                    effects,
+                    effects_compact,
                     clips: Vec::new(),
                     gain_db,
                     pan,

@@ -363,6 +363,8 @@ fn beat_output_controls_apply_once_and_its_local_macro_drives_shared_effects() {
         settings.modulations.push(route);
     }
     output.effects.push(effect);
+    plan.project = serde_json::from_value(serde_json::to_value(&plan.project).unwrap()).unwrap();
+    assert_eq!(plan.project.tracks[0].effects[0].id, effect_id);
     plan.project.validate().unwrap();
     let mut renderer = Renderer::new(plan);
     renderer.render_offline(&mut attenuated);
@@ -452,9 +454,9 @@ fn beat_clip_gain_retains_timing_through_nested_latency_and_loops() {
             let beat = wet.project.tracks[0].beat.as_mut().unwrap();
             match placement {
                 "layer" => beat.subtracks[0].instrument.layers[0].effects.push(limiter),
-                "subtrack" => beat.subtracks[0].instrument.main.effects.push(limiter),
+                "subtrack" => beat.subtracks[0].effects.push(limiter),
                 "output" => beat.output.effects.push(limiter),
-                "sibling" => beat.subtracks[1].instrument.main.effects.push(limiter),
+                "sibling" => beat.subtracks[1].effects.push(limiter),
                 _ => wet.project.tracks[0].effects.push(limiter),
             }
             wet.project.validate().unwrap();

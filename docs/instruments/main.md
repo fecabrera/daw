@@ -2,13 +2,13 @@
 
 Output combines the audio from all layers of one MIDI instrument. It is separate from the project Master, which combines tracks.
 
-Layer sources pass through Amplitude, layer effects, and layer mix controls. Output then processes the combined layer output through its effects and gain/pan, followed by track effects and track gain/pan.
+Layer sources pass through Amplitude, layer effects, and layer mix controls. Output applies its gain and pan to the combined layers. The signal then passes through the track Effects Lane and the track mix controls.
 
 ## Use Output
 
-In the **Effects** tab, Output follows the regular layers and scrolls with them. New Output rows start expanded. Edit its Macro controls in **Modulation**. The expand/collapse button at the top of its right toolbar shows or hides its controls. The toolbar stays at the right edge while components scroll horizontally. Output cannot be removed, renamed, or reordered.
+Open **Modulation** to find the instrument’s Output gain, meters, and Macro controls on the Macros row. You can scroll to this row below the LFO and Envelope lanes. The expand/collapse button at the top of its right toolbar shows or hides its controls. The toolbar stays at the right edge while components scroll horizontally. Output cannot be removed, renamed, or reordered.
 
-Use the gain knob at the right of the Output header’s second row to change the combined instrument level. Its default is 0 dB. The stereo meters beside Gain show the combined instrument signal after Output effects and gain, before track effects and track gain/pan. They work like track meters: either channel above 0 dBFS lights both clipping indicators, and clicking either rail clears them. Output has no Pan, Mute, or Solo control. Gain does not accept modulation.
+Use the gain knob at the right of the Output header’s second row to change the combined instrument level. Its default is 0 dB. The stereo meters beside Gain show the combined instrument signal after Output gain and pan, before track effects. They work like track meters: either channel above 0 dBFS lights both clipping indicators, and clicking either rail clears them. For a beat subtrack this row also shows its Pan, Mute, and Solo controls. Gain does not accept modulation.
 
 ## Add shared controls
 
@@ -18,4 +18,4 @@ LFOs and envelopes belong to their dedicated [instrument-wide lanes](modulation-
 
 Adding a modulator does not create connections. Open a receiving unit's [modulation controls](../modulation/README.md) to assign it. Output settings and layout save with the project.
 
-Output effects process the combined layer output before Output gain and pan. Select Output to add effects from the Effects catalog. Drag effect headers between Output, regular layers, and the track effects lane to move them; hold Option on macOS or Ctrl on Windows/Linux to copy. Click the bottom effects lane to add track effects.
+Use the bottom Effects Lane to add effects to the whole instrument or selected beat subtrack. Open **Effects** to edit the chains on individual layers. When you open an older project, the former Output effects move to the start of the corresponding bottom Effects Lane in their saved order.

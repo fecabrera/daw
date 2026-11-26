@@ -104,8 +104,6 @@ pub(super) struct BeatUi {
     #[cfg(test)]
     pub audition_steps: std::collections::HashMap<Id, Rect>,
     #[cfg(test)]
-    pub final_output: Option<Rect>,
-    #[cfg(test)]
     pub grid_options: Option<Rect>,
     #[cfg(test)]
     pub subdivision_bounds: Option<Rect>,
@@ -202,14 +200,13 @@ impl DawUi {
         let parent = self.track_context()?;
         if let Some(beat) = self.session.project.beat(parent) {
             if self.beat_ui.track != Some(parent) || self.beat_ui.output_selected {
-                return Some(beat.output.id);
+                return None;
             }
             return self
                 .beat_ui
                 .primary
                 .filter(|id| beat.subtracks.iter().any(|r| r.id == *id))
-                .or_else(|| beat.subtracks.first().map(|r| r.id))
-                .or(Some(beat.output.id));
+                .or_else(|| beat.subtracks.first().map(|r| r.id));
         }
         Some(parent)
     }
@@ -229,7 +226,7 @@ impl DawUi {
             .retain(|id| beat.subtracks.iter().any(|r| r.id == *id));
         self.beat_ui
             .states
-            .retain(|id, _| *id == beat.output.id || beat.subtracks.iter().any(|r| r.id == *id));
+            .retain(|id, _| beat.subtracks.iter().any(|r| r.id == *id));
         if self
             .beat_ui
             .primary
@@ -450,17 +447,17 @@ impl DawUi {
         let Some(beat) = self.session.project.beat(track) else {
             return;
         };
-        let destination = owner.unwrap_or(beat.output.id);
-        if self.instrument_ui.track != Some(destination) {
+        if self.instrument_ui.track != owner {
             if let Some(previous) = self.instrument_ui.track
-                && (previous == beat.output.id
-                    || beat.subtracks.iter().any(|row| row.id == previous))
+                && beat.subtracks.iter().any(|row| row.id == previous)
             {
                 self.beat_ui
                     .states
                     .insert(previous, std::mem::take(&mut self.instrument_ui));
             }
-            self.instrument_ui = self.beat_ui.states.remove(&destination).unwrap_or_default();
+            self.instrument_ui = owner
+                .and_then(|destination| self.beat_ui.states.remove(&destination))
+                .unwrap_or_default();
         }
         if let Some(owner) = owner {
             self.select_beat_subtrack(owner, shift);
@@ -471,11 +468,7 @@ impl DawUi {
             self.beat_ui.output_selected = true;
             self.beat_ui.selected.clear();
         }
-        self.clear_layer_selections_except(Some(destination));
-        if owner.is_none() {
-            self.instrument_ui.select_layer(destination);
-            self.instrument_ui.track_effects_target = false;
-        }
+        self.clear_layer_selections_except(owner);
     }
     pub(super) fn beat_name(
         &mut self,
@@ -1430,86 +1423,16 @@ impl DawUi {
             return;
         };
         self.reconcile_beat(track);
-        let Some(output) = self.session.project.beat(track).map(|beat| beat.output.id) else {
+        let Some(snapshot) = self
+            .selected_instrument_owner()
+            .and_then(|owner| self.session.project.instrument_track(owner))
+        else {
+            self.beat_ui.group_viewport = None;
+            self.empty_instrument_panel(ui, "Select an instrument track");
             return;
         };
-        let owner = self.selected_instrument_owner().unwrap_or(output);
         self.beat_ui.group_viewport = Some(ui.max_rect());
-        if owner != output {
-            if let Some(snapshot) = self.session.project.instrument_track(owner) {
-                self.instrument_body(ui, snapshot, false);
-            }
-            return;
-        }
-        use crate::instrument_workspace::InstrumentSubview;
-        let subview = self.instrument_subview;
-        let original = self.session.project.beat(track).unwrap().output.clone();
-        if subview == InstrumentSubview::Sources {
-            self.empty_instrument_panel(ui, "Select a beat subtrack");
-            return;
-        }
-        let mut settings = self.session.project.instrument_snapshot(output).unwrap();
-        self.activate_component_drag(ui);
-        let panel = panels::ControlPanel::begin(ui, ui.max_rect());
-        let header = if subview == InstrumentSubview::Effects {
-            panel.header(ui, "Output", |_| {}).response
-        } else {
-            self.layers_header(ui, &panel, false).response
-        };
-        panels::ControlPanel::row_dividers(ui, header.rect, false, true);
-        self.instrument_ui.clear_layout();
-        self.instrument_ui.track = Some(owner);
-        #[cfg(test)]
-        {
-            self.midi_editor.layer_bounds.clear();
-            self.midi_editor.add_layer_bounds = Rect::NOTHING;
-        }
-        self.sidechain_context(ui.ctx(), owner);
-        let (sources, providers) =
-            crate::modulation_panel::instrument_sources(&settings, &self.session.project);
-        let scroll = egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .id_salt(("beat-output", owner, subview))
-            .show(ui, |ui| {
-                let rect = Rect::from_min_size(
-                    ui.next_widget_position(),
-                    Vec2::new(
-                        ui.available_width(),
-                        panels::unit_height(original.collapsed),
-                    ),
-                );
-                self.instrument_main(
-                    ui,
-                    owner,
-                    &mut settings.main,
-                    crate::instrument_main::LaneRow {
-                        rect,
-                        kind: None,
-                        shared_sources: &[],
-                    },
-                    &sources,
-                    &providers,
-                );
-                panels::ControlPanel::row_dividers(ui, rect, false, true);
-                rect
-            });
-        let rect = scroll.inner;
-        let target = Rect::from_min_max(rect.min, lane_toolbar::bounds(rect).left_bottom());
-        let handled = self.finish_instrument_components(
-            ui,
-            owner,
-            &mut settings,
-            &[(owner, target)],
-            scroll.inner_rect,
-        );
-        if !handled && settings.main != original {
-            self.edit_beat(track, BeatEdit::SetOutput(Box::new(settings.main)));
-        }
-        #[cfg(test)]
-        if subview == InstrumentSubview::Effects {
-            self.beat_ui.final_output = Some(rect);
-        }
-        panel.finish(ui);
+        self.instrument_body(ui, snapshot, false);
     }
 }
 /// Exact audible interval in beats, shared with placeholder geometry.

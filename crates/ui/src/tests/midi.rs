@@ -1093,7 +1093,12 @@ fn layer_shift_selection_toggles_backgrounds_and_keeps_output_exclusive() {
         }
         assert!(app.instrument_ui.selected_layers.is_empty());
         assert_eq!(app.instrument_ui.selected_layer, None);
-        let output = app.instrument_ui.main_bounds.icon.center();
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Modulation,
+            &ctx,
+        );
+        frame_sized(&mut app, &ctx, vec![], Vec2::new(1280.0, 1400.0));
+        let output = app.instrument_ui.macro_bounds.icon.center();
         super::instrument_catalog::click(&mut app, &ctx, output, true);
         let bus = app.session.project.tracks[0]
             .instrument
@@ -1102,6 +1107,11 @@ fn layer_shift_selection_toggles_backgrounds_and_keeps_output_exclusive() {
             .main
             .id;
         assert_eq!(app.instrument_ui.selected_layers, HashSet::from([bus]));
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Effects,
+            &ctx,
+        );
+        frame(&mut app, &ctx, vec![]);
         let p = app.midi_editor.layer_bounds[&ids[1]].icon.center();
         super::instrument_catalog::click(&mut app, &ctx, p, true);
         assert_eq!(app.instrument_ui.selected_layers, HashSet::from([ids[1]]));
@@ -1126,7 +1136,6 @@ fn selected_layer_groups_move_copy_cancel_and_undo_in_saved_order() {
             "same",
             "escape",
             "outside",
-            "output",
             "unselected",
             "fast",
         ] {
@@ -1171,7 +1180,6 @@ fn selected_layer_groups_move_copy_cancel_and_undo_in_saved_order() {
                     }
                 }
                 "outside" => Pos2::new(start.x, 5.0),
-                "output" => app.instrument_ui.main_bounds.label.center(),
                 "move" => Pos2::new(
                     start.x,
                     app.midi_editor.layer_bounds[&ids[2]].row.bottom() - 8.0,
@@ -1396,7 +1404,7 @@ fn layer_drag_duplicates_on_release_and_preserves_the_complete_original() {
 #[test]
 fn layer_copy_modifier_can_be_released_and_invalid_drops_do_not_copy() {
     for action in [
-        "move", "escape", "outside", "output", "same", "changed", "disabled", "focus",
+        "move", "escape", "outside", "same", "changed", "disabled", "focus",
     ] {
         let (mut app, ctx, _) = layer_header_fixture();
         app.set_instrument_subview(
@@ -1418,7 +1426,6 @@ fn layer_copy_modifier_can_be_released_and_invalid_drops_do_not_copy() {
         let start = bounds.icon.center();
         let end = match action {
             "outside" => Pos2::new(start.x, 5.0),
-            "output" => app.instrument_ui.main_bounds.label.center(),
             "same" => start + Vec2::new(8.0, 0.0),
             _ => Pos2::new(
                 start.x,

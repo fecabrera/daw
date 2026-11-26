@@ -1,6 +1,6 @@
 # Beat tracks and step editor
 
-Use beat tracks to build rhythms from independently configured instruments. Mixer shows the parent beat track and expandable subtrack strips. Use the parent for whole-beat controls and each child for its gain, pan, Mute, Solo and output effects. You can place that parent inside a [project track group](../editing/track-groups.md).
+Use beat tracks to build rhythms from independently configured instruments. Mixer shows the parent beat track and expandable subtrack strips. Use the parent for whole-beat controls and each child for its gain, pan, Mute, Solo and its own Effects Lane. You can place that parent inside a [project track group](../editing/track-groups.md).
 
 ## Create a beat
 
@@ -106,13 +106,13 @@ Deleting a subtrack removes its stop links. Its old pattern steps remain dormant
 
 ## Instrument layers and Output
 
-Select a subtrack in **Tracks** to open its **Layers** page. It uses the same layout and controls as a MIDI instrument: source layers, local LFO and Envelope lanes, and Output in one scroll area. The Layers Plus button adds a source layer to that subtrack. Each subtrack's modulation sources stay local to its instrument. Selecting another subtrack replaces the visible instrument and its layer selection.
+Select a subtrack in **Tracks** to open its **Layers** page. It uses the same layout as a MIDI instrument, with source layers, individual layer effects, and local modulation lanes. Find the subtrack’s Output controls in **Modulation**. To process all layers of the selected subtrack, use the bottom Effects Lane. The Layers Plus button adds a source layer to that subtrack. Each subtrack's modulation sources stay local to its instrument. Selecting another subtrack replaces the visible instrument and its layer selection.
 
 Drag selected source-layer headers to reorder them within the selected subtrack. Hold Option on macOS or Ctrl on Windows/Linux to copy them. Release inside the layer list to apply; Escape, focus loss or an outside release cancels the drag.
 
-Select the beat parent in **Tracks** to show only its final **Output**. This combines the subtracks before the parent track's effects and mix controls. It supports output effects and local Macros. It cannot be renamed, deleted or reordered as a subtrack. Selecting a subtrack returns to that instrument's Layers page.
+Select the beat parent in **Tracks** to edit whole-beat effects in the bottom Effects Lane. The Layers pane shows the same empty state as an audio track or group. Select a subtrack to edit its layers and instrument controls. Older projects retain their saved beat Output gain, pan, and Macro settings during playback.
 
-In Instrument’s **Tracks** panel, the beat parent's chevron hides or shows its subtrack rows. Beat parents start expanded. Hiding rows retains playback and the selected instrument. The Output strip's toolbar controls that strip separately.
+In Instrument’s **Tracks** panel, the beat parent's chevron hides or shows its subtrack rows. Beat parents start expanded. Hiding rows retains playback and the selected instrument.
 
 ## Stop another subtrack
 
@@ -181,7 +181,7 @@ will be trimmed or removed. Undo restores the complete change.
 
 ## Playback and effect tails
 
-Clip Gain also controls retained Output effect tails in a gap. The next unmuted
+Clip Gain also controls retained subtrack effect tails in a gap. The next unmuted
 clip takes over the shared bus gain, including any remaining tails, over up to
 5 ms. A following clip or loop boundary can shorten that transition.
 Silence applies exactly at the clip start.

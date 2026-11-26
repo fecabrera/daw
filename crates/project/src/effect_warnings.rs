@@ -12,7 +12,12 @@ pub(super) fn missing(project: &Project) -> Vec<String> {
                 let label = match owner {
                     EffectChainTarget::Master => "Master".into(),
                     EffectChainTarget::Track(id) => {
-                        format!("track {}", project.tracks.iter().find(|t| t.id == id)?.name)
+                        if let Some((parent, row)) = project.beat_subtrack(id) {
+                            let track = project.tracks.iter().find(|t| t.id == parent)?;
+                            format!("track {} / subtrack {}", track.name, row.name)
+                        } else {
+                            format!("track {}", project.tracks.iter().find(|t| t.id == id)?.name)
+                        }
                     }
                     EffectChainTarget::Layer { track: id, layer } => {
                         if let Some((parent, row)) = project.beat_subtrack(id) {

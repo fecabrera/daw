@@ -155,6 +155,9 @@ impl RenderPlan {
                 .main
                 .component_order
                 .retain(|u| !matches!(u, daw_core::InstrumentComponent::Effect(_)));
+            if !parent.effects.is_empty() && !graph.main.macro_module.controls.is_empty() {
+                parent.instrument = Some(graph.clone());
+            }
             output.instrument = Some(graph);
             output.effects = beat.output.effects.clone();
             output.gain_db = beat.output.gain_db;
@@ -173,7 +176,8 @@ impl RenderPlan {
                 child.name = row.name.clone();
                 child.group_id = Some(beat.output.id);
                 child.instrument = Some(row.instrument.clone());
-                child.effects.clear();
+                child.effects = row.effects.clone();
+                child.effects_compact = row.effects_compact;
                 child.gain_db = 0.0;
                 child.pan = 0.0;
                 child.muted = false;

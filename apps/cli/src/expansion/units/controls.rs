@@ -26,12 +26,22 @@ pub(super) fn parameters(path: &str, args: &ArgMatches, session: &mut Session) -
             return Ok(result);
         }
     }
-    let (owner, required_layer) =
-        if let Ok(Chain::Layer { track, layer }) = chain(&session.project, text) {
-            (track, Some(layer))
-        } else {
-            (instrument_owner(&session.project, text)?, None)
-        };
+    let project = &session.project;
+    let mut parts = text.split(':');
+    let (owner, required_layer) = match (parts.next(), parts.next(), parts.next(), parts.next()) {
+        (Some("layer"), Some(track), Some(layer), None) => {
+            let (track, layer) = (uuid(track)?, uuid(layer)?);
+            let owner = project.beat(track).filter(|beat| beat.output.id == layer);
+            (owner.map_or(track, |beat| beat.output.id), Some(layer))
+        }
+        (Some("output"), Some(track), None, None) => {
+            let beat = project
+                .beat(uuid(track)?)
+                .ok_or_else(|| error("Beat Output not found"))?;
+            (beat.output.id, Some(beat.output.id))
+        }
+        _ => (instrument_owner(project, text)?, None),
+    };
     let mut instrument = session
         .project
         .instrument_snapshot(owner)
@@ -236,15 +246,11 @@ type Destinations<'a> = Vec<(Id, &'a mut Vec<Modulation>)>;
 pub(super) fn modulation(path: &str, args: &ArgMatches, session: &mut Session) -> Result<Value> {
     let project = &session.project;
     let text = raw(args, "owner");
-    let target = if text.starts_with("subtrack:") {
-        None
-    } else {
-        Some(chain(project, text)?)
-    };
+    let target = chain(project, text)?;
     let owner = match target {
-        Some(Chain::Track(owner) | Chain::Layer { track: owner, .. }) => Some(owner),
-        Some(Chain::Master) => None,
-        None => Some(instrument_owner(project, text)?),
+        Chain::Track(owner) => Some(project.beat(owner).map_or(owner, |beat| beat.output.id)),
+        Chain::Layer { track, .. } => Some(track),
+        Chain::Master => None,
     };
     let source = if path == "modulation.route.set" {
         let (layer, provider) = raw(args, "source")
@@ -255,7 +261,7 @@ pub(super) fn modulation(path: &str, args: &ArgMatches, session: &mut Session) -
             unit: uuid(provider)?,
         };
         if !owner
-            .and_then(|owner| project.instrument_settings(owner))
+            .and_then(|owner| project.instrument_snapshot(owner))
             .is_some_and(|settings| {
                 settings
                     .modulation_source(source)
@@ -271,14 +277,10 @@ pub(super) fn modulation(path: &str, args: &ArgMatches, session: &mut Session) -
         None
     };
     let mut instrument = owner
-        .filter(|_| matches!(target, None | Some(Chain::Track(_))))
+        .filter(|_| matches!(target, Chain::Track(_)))
         .and_then(|owner| project.instrument_snapshot(owner));
-    let (mut effects, compact) = target
-        .and_then(|target| project.effect_chain(target))
-        .map_or_else(
-            || (Vec::new(), false),
-            |(units, compact)| (units.to_vec(), compact),
-        );
+    let (effects, compact) = project.effect_chain(target).expect("resolved chain");
+    let mut effects = effects.to_vec();
     let mut banks = Destinations::new();
     effect_banks(&mut effects, &mut banks);
     if let Some(instrument) = &mut instrument {
@@ -343,10 +345,7 @@ pub(super) fn modulation(path: &str, args: &ArgMatches, session: &mut Session) -
     } else {
         json!({"deleted": route_id})
     };
-    let mut edits = Vec::new();
-    if let Some(target) = target {
-        edits.push(target.edit(effects, compact));
-    }
+    let mut edits = vec![target.edit(effects, compact)];
     if let (Some(track_id), Some(instrument)) = (owner, instrument) {
         edits.push(Edit::SetInstrument {
             track_id,

@@ -563,7 +563,12 @@ fn track_tail_frames(plan: &RenderPlan, t: &daw_core::Track) -> (u64, bool) {
         }
     }
     if let Some(beat) = &t.beat {
-        for e in &beat.output.effects {
+        for e in beat
+            .output
+            .effects
+            .iter()
+            .chain(beat.subtracks.iter().flat_map(|row| &row.effects))
+        {
             effect(e);
         }
         for envelope in beat

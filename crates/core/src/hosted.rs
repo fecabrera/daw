@@ -75,7 +75,12 @@ impl Project {
                 units.extend(
                     beat.subtracks
                         .iter()
-                        .flat_map(|row| instrument(&row.instrument))
+                        .flat_map(|row| {
+                            row.effects
+                                .iter()
+                                .filter_map(effect)
+                                .chain(instrument(&row.instrument))
+                        })
                         .map(|s| (track.id, s)),
                 );
             }
@@ -141,9 +146,12 @@ impl Project {
                     .chain(track.instrument.iter_mut().flat_map(instrument_mut))
                     .chain(track.beat.iter_mut().flat_map(|beat| {
                         beat.output.effects.iter_mut().filter_map(effect_mut).chain(
-                            beat.subtracks
-                                .iter_mut()
-                                .flat_map(|row| instrument_mut(&mut row.instrument)),
+                            beat.subtracks.iter_mut().flat_map(|row| {
+                                row.effects
+                                    .iter_mut()
+                                    .filter_map(effect_mut)
+                                    .chain(instrument_mut(&mut row.instrument))
+                            }),
                         )
                     }))
             })
@@ -197,7 +205,12 @@ impl Project {
                         })
                     || t.beat
                         .iter()
-                        .flat_map(|b| &b.output.effects)
+                        .flat_map(|b| {
+                            b.output
+                                .effects
+                                .iter()
+                                .chain(b.subtracks.iter().flat_map(|row| &row.effects))
+                        })
                         .any(|e| !e.unit.can_duplicate_hosted())
             })
         {

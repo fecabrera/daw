@@ -27,8 +27,6 @@ pub(super) struct InstrumentUi {
     pub(super) source_drop_rows: Vec<(Id, Rect)>,
     pub(super) component_slots: Vec<(Id, daw_core::InstrumentComponent, Rect)>,
     #[cfg(test)]
-    pub(super) main_bounds: crate::instrument_main::MainBounds,
-    #[cfg(test)]
     pub(super) macro_bounds: crate::instrument_main::MainBounds,
     #[cfg(test)]
     pub(super) modulation_lane_bounds:
@@ -268,9 +266,7 @@ impl DawUi {
             self.midi_editor.add_layer_bounds = Rect::NOTHING;
             self.midi_editor.instrument_header_bounds = Rect::NOTHING;
             self.instrument_ui.modulation_lane_bounds.clear();
-            self.instrument_ui.main_bounds = Default::default();
             self.instrument_ui.macro_bounds = Default::default();
-            self.beat_ui.final_output = None;
         }
 
         if self
@@ -870,9 +866,6 @@ impl DawUi {
                             }
                         });
                     }
-                    if subview == InstrumentSubview::Effects {
-                        render_bus(self, ui, &mut settings.main, None);
-                    }
                     // Each following row paints the shared edge above it. Close the final row.
                     let last = reorder_rows.last().into_iter().chain(lane_rows.last())
                         .max_by(|(_, a), (_, b)| a.bottom().total_cmp(&b.bottom()));
@@ -1029,18 +1022,6 @@ impl DawUi {
                     compact: layer.collapsed,
                 });
             }
-        }
-        if let Some(previous) = track.instrument.as_ref()
-            && settings.main.effects != previous.main.effects
-        {
-            let effects =
-                std::mem::replace(&mut settings.main.effects, previous.main.effects.clone());
-            edits.push(Edit::SetLayerEffects {
-                track_id: track.id,
-                layer_id: settings.main.id,
-                effects,
-                compact: settings.main.collapsed,
-            });
         }
         if Some(&settings) != track.instrument.as_ref() {
             edits.insert(

@@ -5745,296 +5745,268 @@ fn layer_effect_library_drag_targets_empty_layers_without_the_bottom_lane() {
 
 #[test]
 fn selected_effect_groups_move_and_duplicate_across_layer_lanes() {
-    for main in [false, true] {
-        for duplicate in [false, true] {
-            for direction in [false, true] {
-                let (mut app, ctx) =
-                    categorized_catalog_fixture(settings::ColorTheme::Dark, "instrument");
-                let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
-                i.layers.push(daw_core::InstrumentLayerSettings::default());
-                for l in &mut i.layers {
-                    l.collapsed = true;
+    for duplicate in [false, true] {
+        for direction in [false, true] {
+            let (mut app, ctx) =
+                categorized_catalog_fixture(settings::ColorTheme::Dark, "instrument");
+            let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+            i.layers.push(daw_core::InstrumentLayerSettings::default());
+            for l in &mut i.layers {
+                l.collapsed = true;
+            }
+            let owners = [i.layers[0].id, i.layers[1].id];
+            let (source, destination) = if direction { (1, 0) } else { (0, 1) };
+            let src = owners[source];
+            let dst = owners[destination];
+            i.layers[source].effects = vec![
+                daw_core::EffectInstance::saturator(),
+                daw_core::EffectInstance::auto_filter(),
+            ];
+            let target = |layer| daw_core::EffectChainTarget::Layer {
+                track: app.session.project.tracks[0].id,
+                layer,
+            };
+            let source_target = target(src);
+            let destination_target = target(dst);
+            let ids: Vec<_> = app
+                .session
+                .project
+                .effect_chain(source_target)
+                .unwrap()
+                .0
+                .iter()
+                .map(|e| e.id)
+                .collect();
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            let slots: Vec<_> = app
+                .instrument_ui
+                .effect_slots
+                .iter()
+                .filter(|(owner, _, _)| *owner == src)
+                .map(|(_, id, r)| (*id, *r))
+                .collect();
+            click_effect_with_shift(&mut app, &ctx, unit_slot_point(slots[0].1), false);
+            assert_eq!(
+                app.selected_effects,
+                HashSet::from([ids[0]]),
+                "first selection, source {src}, slots {slots:?}"
+            );
+            click_effect_with_shift(&mut app, &ctx, unit_slot_point(slots[1].1), true);
+            assert_eq!(
+                app.selected_effects,
+                ids.iter().copied().collect(),
+                "IDs {ids:?}, slots {slots:?}, pane {:?}",
+                app.instrument_ui.effects_layer
+            );
+            end_click_sequence(&mut app, &ctx);
+            let start = unit_slot_point(slots[0].1);
+            let label = app.midi_editor.layer_bounds[&dst].label;
+            let end = Pos2::new(label.right() + 45.0, label.top() + 12.0);
+            let modifiers = if duplicate {
+                egui::Modifiers {
+                    alt: true,
+                    ctrl: !cfg!(target_os = "macos"),
+                    ..Default::default()
                 }
-                i.main.collapsed = true;
-                let owners = [
-                    i.layers[0].id,
-                    if main { i.main.id } else { i.layers[1].id },
-                ];
-                let (source, destination) = if direction { (1, 0) } else { (0, 1) };
-                let src = owners[source];
-                let dst = owners[destination];
-                i.layers[source].effects = vec![
-                    daw_core::EffectInstance::saturator(),
-                    daw_core::EffectInstance::auto_filter(),
-                ];
-                if main && source == 1 {
-                    i.main.effects = std::mem::take(&mut i.layers[1].effects);
-                }
-                let target = |layer| daw_core::EffectChainTarget::Layer {
-                    track: app.session.project.tracks[0].id,
-                    layer,
-                };
-                let source_target = target(src);
-                let destination_target = target(dst);
-                let ids: Vec<_> = app
-                    .session
+            } else {
+                Default::default()
+            };
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::ModifiersChanged(modifiers),
+                    egui::Event::PointerMoved(start),
+                    button(start, true),
+                ],
+            );
+            if direction {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(end), button(end, false)],
+                );
+            } else {
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+                assert!(!app.dirty);
+                frame(&mut app, &ctx, vec![button(end, false)]);
+            }
+            let effects = app
+                .session
+                .project
+                .effect_chain(destination_target)
+                .unwrap()
+                .0;
+            assert_eq!(effects.len(), 2);
+            assert_eq!(
+                app.session
                     .project
                     .effect_chain(source_target)
                     .unwrap()
                     .0
-                    .iter()
-                    .map(|e| e.id)
-                    .collect();
-                frame(&mut app, &ctx, vec![]);
-                app.dirty = false;
-                let slots: Vec<_> = app
-                    .instrument_ui
-                    .effect_slots
-                    .iter()
-                    .filter(|(owner, _, _)| *owner == src)
-                    .map(|(_, id, r)| (*id, *r))
-                    .collect();
-                click_effect_with_shift(&mut app, &ctx, unit_slot_point(slots[0].1), false);
-                assert_eq!(
-                    app.selected_effects,
-                    HashSet::from([ids[0]]),
-                    "first selection, source {src}, slots {slots:?}"
-                );
-                click_effect_with_shift(&mut app, &ctx, unit_slot_point(slots[1].1), true);
-                assert_eq!(
-                    app.selected_effects,
-                    ids.iter().copied().collect(),
-                    "IDs {ids:?}, slots {slots:?}, pane {:?}",
-                    app.instrument_ui.effects_layer
-                );
-                end_click_sequence(&mut app, &ctx);
-                let start = unit_slot_point(slots[0].1);
-                let label = if main && destination == 1 {
-                    app.instrument_ui.main_bounds.label
-                } else {
-                    app.midi_editor.layer_bounds[&dst].label
-                };
-                let end = Pos2::new(label.right() + 45.0, label.top() + 12.0);
-                let modifiers = if duplicate {
-                    egui::Modifiers {
-                        alt: true,
-                        ctrl: !cfg!(target_os = "macos"),
-                        ..Default::default()
-                    }
-                } else {
-                    Default::default()
-                };
-                frame(
-                    &mut app,
-                    &ctx,
-                    vec![
-                        egui::Event::ModifiersChanged(modifiers),
-                        egui::Event::PointerMoved(start),
-                        button(start, true),
-                    ],
-                );
-                if direction {
-                    frame(
-                        &mut app,
-                        &ctx,
-                        vec![egui::Event::PointerMoved(end), button(end, false)],
-                    );
-                } else {
-                    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-                    assert!(!app.dirty);
-                    frame(&mut app, &ctx, vec![button(end, false)]);
-                }
-                let effects = app
-                    .session
-                    .project
-                    .effect_chain(destination_target)
-                    .unwrap()
-                    .0;
-                assert_eq!(effects.len(), 2);
-                assert_eq!(
-                    app.session
-                        .project
-                        .effect_chain(source_target)
-                        .unwrap()
-                        .0
-                        .len(),
-                    if duplicate { 2 } else { 0 }
-                );
-                let selected: HashSet<_> = effects.iter().map(|e| e.id).collect();
-                assert_eq!(app.selected_effects, selected);
-                assert_eq!(effects[0].id == ids[0], !duplicate);
-                assert_eq!(effects[1].id == ids[1], !duplicate);
-                assert!(app.dirty);
-                assert_eq!(app.instrument_ui.effects_layer, Some(dst));
-            }
+                    .len(),
+                if duplicate { 2 } else { 0 }
+            );
+            let selected: HashSet<_> = effects.iter().map(|e| e.id).collect();
+            assert_eq!(app.selected_effects, selected);
+            assert_eq!(effects[0].id == ids[0], !duplicate);
+            assert_eq!(effects[1].id == ids[1], !duplicate);
+            assert!(app.dirty);
+            assert_eq!(app.instrument_ui.effects_layer, Some(dst));
         }
     }
 }
 
 #[test]
-fn main_catalog_effects_are_inline_and_track_effects_remain_separate() {
+fn output_owner_uses_the_track_effects_lane_for_catalog_additions() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx) = categorized_catalog_fixture(theme, "instrument");
-        let main = app.session.project.tracks[0]
-            .instrument
-            .as_ref()
+        let track = app.session.project.tracks[0].id;
+        let main = app
+            .session
+            .project
+            .instrument_settings(track)
             .unwrap()
             .main
             .id;
-        let point = app.instrument_ui.main_bounds.label.center();
-        click(&mut app, &ctx, point);
-        let target = daw_core::EffectChainTarget::Layer {
-            track: app.session.project.tracks[0].id,
-            layer: main,
-        };
+        app.instrument_ui.select_layer(main);
+        frame(&mut app, &ctx, vec![]);
+        let target = daw_core::EffectChainTarget::Track(track);
         assert_eq!(app.effect_catalog_target(), Some(target));
-        let entry = reveal_catalog_row(&mut app, &ctx, |b| b.drive_entry);
+        assert!(app.instrument_ui.macro_bounds.row.is_negative());
+        let entry = reveal_catalog_row(&mut app, &ctx, |bounds| bounds.drive_entry);
         click(&mut app, &ctx, entry);
         library_key(&mut app, &ctx, egui::Key::Enter, false);
         frame(&mut app, &ctx, vec![]);
         assert_eq!(app.session.project.effect_chain(target).unwrap().0.len(), 1);
-        assert!(app.session.project.tracks[0].effects.is_empty());
-        let rect = app
-            .instrument_ui
-            .effect_slots
-            .iter()
-            .find(|(owner, _, _)| *owner == main)
-            .unwrap()
-            .2;
-        let row = app.instrument_ui.main_bounds.row;
-        assert_eq!(rect.top(), row.top());
-        assert_eq!(rect.height(), row.height());
-        let strip = app.effects_bounds.strip;
-        click(&mut app, &ctx, strip.right_center() - Vec2::new(80.0, 0.0));
-        assert_eq!(app.effect_catalog_target(), app.effects_target());
-        let entry = reveal_catalog_row(&mut app, &ctx, |b| b.drive_entry);
-        click(&mut app, &ctx, entry);
-        library_key(&mut app, &ctx, egui::Key::Enter, false);
-        assert_eq!(app.session.project.tracks[0].effects.len(), 1);
-        assert_eq!(app.session.project.effect_chain(target).unwrap().0.len(), 1);
+        assert_eq!(app.effects_bounds.chain.len(), 1);
+        assert!(app.instrument_ui.effect_slots.is_empty());
+        assert!(
+            app.session
+                .project
+                .instrument_settings(track)
+                .unwrap()
+                .main
+                .effects
+                .is_empty()
+        );
     }
 }
 
 #[test]
-fn effects_move_and_copy_between_track_lane_regular_layers_and_main() {
-    for main in [false, true] {
-        for from_track in [false, true] {
-            for duplicate in [false, true] {
-                let (mut app, ctx) =
-                    categorized_catalog_fixture(settings::ColorTheme::Dark, "instrument");
-                let track = app.session.project.tracks[0].id;
-                let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
-                i.layers[0].collapsed = true;
-                i.main.collapsed = true;
-                let owner = if main { i.main.id } else { i.layers[0].id };
-                let layer = daw_core::EffectChainTarget::Layer {
-                    track,
-                    layer: owner,
-                };
-                let track_target = daw_core::EffectChainTarget::Track(track);
-                let (source, destination) = if from_track {
-                    (track_target, layer)
-                } else {
-                    (layer, track_target)
-                };
-                app.session
-                    .project
-                    .edit(source.edit(
-                        vec![
-                            daw_core::EffectInstance::drive(),
-                            daw_core::EffectInstance::auto_filter(),
-                        ],
-                        true,
-                    ))
-                    .unwrap();
-                let ids: Vec<_> = app
-                    .session
-                    .project
-                    .effect_chain(source)
-                    .unwrap()
-                    .0
+fn effects_move_and_copy_between_track_lane_and_regular_layers() {
+    for from_track in [false, true] {
+        for duplicate in [false, true] {
+            let (mut app, ctx) =
+                categorized_catalog_fixture(settings::ColorTheme::Dark, "instrument");
+            let track = app.session.project.tracks[0].id;
+            let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
+            i.layers[0].collapsed = true;
+            let owner = i.layers[0].id;
+            let layer = daw_core::EffectChainTarget::Layer {
+                track,
+                layer: owner,
+            };
+            let track_target = daw_core::EffectChainTarget::Track(track);
+            let (source, destination) = if from_track {
+                (track_target, layer)
+            } else {
+                (layer, track_target)
+            };
+            app.session
+                .project
+                .edit(source.edit(
+                    vec![
+                        daw_core::EffectInstance::drive(),
+                        daw_core::EffectInstance::auto_filter(),
+                    ],
+                    true,
+                ))
+                .unwrap();
+            let ids: Vec<_> = app
+                .session
+                .project
+                .effect_chain(source)
+                .unwrap()
+                .0
+                .iter()
+                .map(|e| e.id)
+                .collect();
+            frame(&mut app, &ctx, vec![]);
+            app.dirty = false;
+            let slots: Vec<_> = if from_track {
+                app.effects_bounds.chain.clone()
+            } else {
+                app.instrument_ui
+                    .effect_slots
                     .iter()
-                    .map(|e| e.id)
-                    .collect();
-                frame(&mut app, &ctx, vec![]);
-                app.dirty = false;
-                let slots: Vec<_> = if from_track {
-                    app.effects_bounds.chain.clone()
-                } else {
-                    app.instrument_ui
-                        .effect_slots
-                        .iter()
-                        .filter(|(o, _, _)| *o == owner)
-                        .map(|(_, id, r)| (*id, *r))
-                        .collect()
-                };
-                let start = unit_slot_point(slots[0].1);
-                click_effect_with_shift(&mut app, &ctx, start, false);
-                click_effect_with_shift(&mut app, &ctx, unit_slot_point(slots[1].1), true);
-                assert_eq!(app.selected_effects, ids.iter().copied().collect());
-                end_click_sequence(&mut app, &ctx);
-                let destination_rect = if from_track {
-                    let label = if main {
-                        app.instrument_ui.main_bounds.label
-                    } else {
-                        app.midi_editor.layer_bounds[&owner].label
-                    };
-                    Rect::from_min_max(
-                        label.right_top(),
-                        Pos2::new(label.right() + 90.0, label.bottom()),
-                    )
-                } else {
-                    app.effects_bounds.lane_viewport
-                };
-                let end = destination_rect.left_top() + Vec2::new(45.0, 12.0);
-                let modifiers = if duplicate {
-                    egui::Modifiers {
-                        alt: true,
-                        ctrl: !cfg!(target_os = "macos"),
-                        ..Default::default()
-                    }
-                } else {
-                    Default::default()
-                };
+                    .filter(|(o, _, _)| *o == owner)
+                    .map(|(_, id, r)| (*id, *r))
+                    .collect()
+            };
+            let start = unit_slot_point(slots[0].1);
+            click_effect_with_shift(&mut app, &ctx, start, false);
+            click_effect_with_shift(&mut app, &ctx, unit_slot_point(slots[1].1), true);
+            assert_eq!(app.selected_effects, ids.iter().copied().collect());
+            end_click_sequence(&mut app, &ctx);
+            let destination_rect = if from_track {
+                let label = app.midi_editor.layer_bounds[&owner].label;
+                Rect::from_min_max(
+                    label.right_top(),
+                    Pos2::new(label.right() + 90.0, label.bottom()),
+                )
+            } else {
+                app.effects_bounds.lane_viewport
+            };
+            let end = destination_rect.left_top() + Vec2::new(45.0, 12.0);
+            let modifiers = if duplicate {
+                egui::Modifiers {
+                    alt: true,
+                    ctrl: !cfg!(target_os = "macos"),
+                    ..Default::default()
+                }
+            } else {
+                Default::default()
+            };
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    egui::Event::ModifiersChanged(modifiers),
+                    egui::Event::PointerMoved(start),
+                    button(start, true),
+                ],
+            );
+            if from_track {
                 frame(
                     &mut app,
                     &ctx,
-                    vec![
-                        egui::Event::ModifiersChanged(modifiers),
-                        egui::Event::PointerMoved(start),
-                        button(start, true),
-                    ],
+                    vec![egui::Event::PointerMoved(end), button(end, false)],
                 );
-                if main {
-                    frame(
-                        &mut app,
-                        &ctx,
-                        vec![egui::Event::PointerMoved(end), button(end, false)],
-                    );
-                } else {
-                    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
-                    assert!(!app.dirty);
-                    frame(&mut app, &ctx, vec![button(end, false)]);
-                }
-                let effects = app.session.project.effect_chain(destination).unwrap().0;
-                assert_eq!(
-                    effects.len(),
-                    2,
-                    "Main {main}, from track {from_track}, copy {duplicate}"
-                );
-                assert_eq!(
-                    app.session.project.effect_chain(source).unwrap().0.len(),
-                    if duplicate { 2 } else { 0 }
-                );
-                assert_eq!(effects[0].id == ids[0], !duplicate);
-                assert_eq!(effects[1].id == ids[1], !duplicate);
-                assert_eq!(app.selected_effects, effects.iter().map(|e| e.id).collect());
-                assert_eq!(
-                    app.instrument_ui.effects_layer,
-                    if from_track { Some(owner) } else { None }
-                );
-                assert!(app.dirty);
+            } else {
+                frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
+                assert!(!app.dirty);
+                frame(&mut app, &ctx, vec![button(end, false)]);
             }
+            let effects = app.session.project.effect_chain(destination).unwrap().0;
+            assert_eq!(
+                effects.len(),
+                2,
+                "From track {from_track}, copy {duplicate}"
+            );
+            assert_eq!(
+                app.session.project.effect_chain(source).unwrap().0.len(),
+                if duplicate { 2 } else { 0 }
+            );
+            assert_eq!(effects[0].id == ids[0], !duplicate);
+            assert_eq!(effects[1].id == ids[1], !duplicate);
+            assert_eq!(app.selected_effects, effects.iter().map(|e| e.id).collect());
+            assert_eq!(
+                app.instrument_ui.effects_layer,
+                if from_track { Some(owner) } else { None }
+            );
+            assert!(app.dirty);
         }
     }
 }

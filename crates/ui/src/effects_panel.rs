@@ -225,10 +225,7 @@ impl DawUi {
         if !self.master_selected
             && let Some((_, row)) = subtrack
         {
-            return Some(EffectTarget::Layer {
-                track: row.id,
-                layer: row.instrument.main.id,
-            });
+            return Some(EffectTarget::Track(row.id));
         }
         if self.view_mode == ViewMode::Instrument {
             return self
@@ -629,7 +626,7 @@ impl DawUi {
             if self.error.is_none() {
                 match destination {
                     EffectTarget::Master => self.select_master(),
-                    EffectTarget::Layer { track, .. }
+                    EffectTarget::Track(track) | EffectTarget::Layer { track, .. }
                         if let Some((parent, _)) = self.session.project.beat_subtrack(track) =>
                     {
                         self.navigate_beat_owner(parent, Some(track), false);
@@ -776,16 +773,27 @@ impl DawUi {
                 EffectTarget::Master => self.session.project.project_id,
             }),
         );
-        let mut modulation_sources =
-            crate::modulation_panel::sources(target.and_then(|target| match target {
-                EffectTarget::Track(id) | EffectTarget::Layer { track: id, .. } => {
-                    self.session.project.instrument_settings(id)
-                }
+        let beat_output = target.and_then(|target| match target {
+            EffectTarget::Track(id) => self
+                .session
+                .project
+                .beat(id)
+                .map(|beat| beat.output_settings()),
+            _ => None,
+        });
+        let mut modulation_sources = crate::modulation_panel::sources(target.and_then(|target| {
+            match target {
+                EffectTarget::Track(id) | EffectTarget::Layer { track: id, .. } => self
+                    .session
+                    .project
+                    .instrument_settings(id)
+                    .or(beat_output.as_ref()),
                 EffectTarget::Master => None,
-            }))
-            .into_iter()
-            .filter(|s| daw_unit_core::ModulationScope::Shared.accepts(s.scope))
-            .collect::<Vec<_>>();
+            }
+        }))
+        .into_iter()
+        .filter(|s| daw_unit_core::ModulationScope::Shared.accepts(s.scope))
+        .collect::<Vec<_>>();
         crate::audio_sidechain::append_sources(&mut modulation_sources, &self.session.project);
         let mut remove = None;
         let mut slots = Vec::with_capacity(effects.len());

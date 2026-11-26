@@ -520,7 +520,6 @@ fn compact_controls_keep_catalog_row_sizes_and_right_alignment_for_every_owner()
 #[test]
 fn row_controls_edit_the_canonical_bus_without_changing_navigation_or_starting_drags() {
     let (mut app, ctx, parent, ids, _, _) = beat_fixture();
-    let output = app.session.project.beat(parent).unwrap().output.id;
     for id in [parent, ids[1]] {
         let mute = app.track_browser.bounds.mix[&id][0].center();
         click(&mut app, &ctx, mute);
@@ -538,7 +537,7 @@ fn row_controls_edit_the_canonical_bus_without_changing_navigation_or_starting_d
             assert!(app.session.project.beat_subtrack(id).unwrap().1.muted);
         }
         assert_eq!(app.selected_track, Some(parent));
-        assert_eq!(app.selected_instrument_owner(), Some(output));
+        assert_eq!(app.selected_instrument_owner(), None);
         assert!(app.track_drag.is_none() && !app.beat_dragging());
         let solo = app.track_browser.bounds.mix[&id][1].center();
         click(&mut app, &ctx, solo);
@@ -564,11 +563,10 @@ fn row_controls_edit_the_canonical_bus_without_changing_navigation_or_starting_d
 }
 
 #[test]
-fn selecting_subtrack_opens_shared_layers_and_parent_opens_only_final_output() {
+fn selecting_subtrack_opens_shared_layers_and_parent_uses_the_effects_lane() {
     let (mut app, ctx, parent, ids, _, _) = beat_fixture();
-    let output = app.session.project.beat(parent).unwrap().output.id;
     let original = app.session.project.clone();
-    assert_eq!(app.selected_instrument_owner(), Some(output));
+    assert_eq!(app.selected_instrument_owner(), None);
     assert!(app.midi_editor.layer_bounds.is_empty());
     let point = row(&app, ids[1]);
     click(&mut app, &ctx, point);
@@ -585,7 +583,7 @@ fn selecting_subtrack_opens_shared_layers_and_parent_opens_only_final_output() {
     assert!(app.midi_editor.layer_bounds.contains_key(&layer));
     let point = row(&app, parent);
     click(&mut app, &ctx, point);
-    assert_eq!(app.selected_instrument_owner(), Some(output));
+    assert_eq!(app.selected_instrument_owner(), None);
     assert!(app.midi_editor.layer_bounds.is_empty());
     assert_eq!(app.session.project, original);
     assert!(!app.dirty);
@@ -1410,7 +1408,7 @@ fn group_context_creates_audio_midi_beat_and_nested_groups_inside_the_clicked_pa
 }
 
 #[test]
-fn beat_parent_navigation_targets_final_output_catalog_effects() {
+fn beat_navigation_targets_separate_parent_and_subtrack_effects_lanes() {
     use crate::effects_panel::EffectTarget;
     let (mut app, ctx, parent, rows, _, _) = beat_fixture();
     app.set_instrument_subview(
@@ -1430,65 +1428,39 @@ fn beat_parent_navigation_targets_final_output_catalog_effects() {
         .output
         .macro_module
         .add();
-    let original_parent = app
-        .session
-        .project
-        .tracks
-        .iter()
-        .find(|t| t.id == parent)
-        .unwrap()
-        .effects
-        .clone();
-    for _ in 0..2 {
-        let point = rect(&app, rows[0]).left_center() + Vec2::new(50.0, 0.0);
+    for (owner, expected) in [(rows[0], rows[0]), (parent, parent)] {
+        let point = rect(&app, owner).left_center() + Vec2::new(50.0, 0.0);
         click(&mut app, &ctx, point);
-        let point = rect(&app, parent).left_center() + Vec2::new(50.0, 0.0);
-        click(&mut app, &ctx, point);
-        assert_eq!(
-            app.effect_catalog_target(),
-            Some(EffectTarget::Layer {
-                track: output,
-                layer: output
-            })
-        );
-        let settings = app.session.project.instrument_snapshot(output).unwrap();
-        assert!(
-            crate::modulation_panel::sources(Some(&settings))
-                .iter()
-                .any(|source| source.id.layer == output)
-        );
+        let target = EffectTarget::Track(expected);
+        assert_eq!(app.effects_target(), Some(target));
+        app.instrument_ui.track_effects_target = true;
+        assert_eq!(app.effect_catalog_target(), Some(target));
         let effect = daw_core::EffectInstance::drive();
         let id = effect.id;
-        let mut parent_effects = original_parent.clone();
-        app.add_catalog_effects(&mut parent_effects, [effect]);
-        assert_eq!(parent_effects, original_parent);
-        assert!(
-            app.session
-                .project
-                .beat(parent)
-                .unwrap()
-                .output
-                .effects
-                .iter()
-                .any(|e| e.id == id)
-        );
-        assert_eq!(
-            app.session
-                .project
-                .tracks
-                .iter()
-                .find(|t| t.id == parent)
-                .unwrap()
-                .effects,
-            original_parent
-        );
+        let mut effects = Vec::new();
+        app.add_catalog_effects(&mut effects, [effect]);
+        app.edit(target.edit(effects, false));
         frame(&mut app, &ctx, vec![]);
-        app.instrument_ui.track_effects_target = true;
         assert_eq!(
-            app.effect_catalog_target(),
-            Some(EffectTarget::Track(parent))
+            app.session.project.effect_chain(target).unwrap().0[0].id,
+            id
+        );
+        assert!(
+            app.effects_bounds
+                .chain
+                .iter()
+                .any(|(effect, _)| *effect == id)
         );
     }
+    let beat = app.session.project.beat(parent).unwrap();
+    assert!(beat.output.effects.is_empty());
+    assert!(beat.subtracks[0].instrument.main.effects.is_empty());
+    let settings = app.session.project.instrument_snapshot(output).unwrap();
+    assert!(
+        crate::modulation_panel::sources(Some(&settings))
+            .iter()
+            .any(|source| source.id.layer == output)
+    );
 }
 
 #[test]

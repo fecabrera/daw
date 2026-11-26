@@ -256,17 +256,14 @@ fn beat_grid_click_edits_only_active_source_and_survives_view_switch() {
     app.view_mode = ViewMode::Instrument;
     frame(&mut app, &ctx, vec![]);
     assert_eq!(app.selected_track, Some(track));
-    assert_eq!(
-        app.selected_instrument_owner(),
-        Some(app.session.project.beat(track).unwrap().output.id)
-    );
+    assert_eq!(app.selected_instrument_owner(), None);
     assert!(app.error.is_none(), "{:?}", app.error);
     app.view_mode = ViewMode::Edit;
     frame(&mut app, &ctx, vec![]);
     assert_eq!(app.beat_ui.primary, Some(row));
 }
 #[test]
-fn selected_subtrack_reuses_the_midi_layers_body_and_parent_has_only_final_output() {
+fn selected_subtrack_reuses_the_midi_layers_body_and_parent_uses_empty_panel() {
     use crate::instrument_workspace::InstrumentSubview;
 
     let (mut app, ctx, track, row, _) = setup();
@@ -288,7 +285,7 @@ fn selected_subtrack_reuses_the_midi_layers_body_and_parent_has_only_final_outpu
             && !text.contains(&"LFO")
             && !text.contains(&"Envelope")
     );
-    assert_eq!(text.iter().filter(|text| **text == "Output").count(), 1);
+    assert_eq!(text.iter().filter(|text| **text == "Output").count(), 0);
     let settings = app
         .session
         .project
@@ -297,7 +294,6 @@ fn selected_subtrack_reuses_the_midi_layers_body_and_parent_has_only_final_outpu
         .clone();
     let layer = settings.layers[0].id;
     let bounds = app.midi_editor.layer_bounds[&layer].row;
-    let output_bounds = app.instrument_ui.main_bounds.row;
     let mut midi = DawUi::default();
     let midi_track = midi.session.project.add_midi_track().unwrap();
     midi.session.project.tracks[0].instrument = Some(settings);
@@ -309,15 +305,11 @@ fn selected_subtrack_reuses_the_midi_layers_body_and_parent_has_only_final_outpu
     );
     frame_shapes(&mut midi, &ctx, vec![], size);
     assert_eq!(midi.midi_editor.layer_bounds[&layer].row, bounds);
-    assert_eq!(midi.instrument_ui.main_bounds.row, output_bounds);
     app.navigate_beat_owner(track, None, false);
     let shapes = frame_shapes(&mut app, &ctx, vec![], size);
     assert!(app.midi_editor.layer_bounds.is_empty());
-    assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if matches!(text.galley.text(), "Layers" | "Layer 1" | "LFO" | "Envelope" | "Subtracks"))));
-    assert_eq!(
-        app.selected_instrument_owner(),
-        Some(app.session.project.beat(track).unwrap().output.id)
-    );
+    assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if matches!(text.galley.text(), "Output" | "Layer 1" | "LFO" | "Envelope" | "Subtracks"))));
+    assert_eq!(app.selected_instrument_owner(), None);
     let [sources, _, modulation] = app.instrument_catalog_bounds.subviews;
     for tab in [sources, modulation] {
         click(&mut app, &ctx, tab.center());
@@ -563,7 +555,7 @@ fn beat_editor_clip_header_restores_clip_delete_after_step_editing() {
 }
 
 #[test]
-fn component_catalog_targets_local_provider_lanes_and_fixed_output_across_frames() {
+fn component_catalog_targets_local_provider_lanes_only_on_subtracks() {
     let (mut app, ctx, track, row, _) = setup();
     app.navigate_beat_owner(app.track_context().unwrap(), app.beat_ui.primary, false);
     app.view_mode = ViewMode::Instrument;
@@ -640,42 +632,12 @@ fn component_catalog_targets_local_provider_lanes_and_fixed_output_across_frames
     );
     app.navigate_beat_owner(track, None, false);
     frame(&mut app, &ctx, vec![]);
-    let root = app.session.project.beat(track).unwrap().output.id;
-    assert_eq!(app.selected_instrument_owner(), Some(root));
-    app.instrument_ui.select_layer(root);
-    let entry = crate::instrument_catalog::ENTRIES
-        .iter()
-        .position(|e| e.type_id == "daw.macro")
-        .unwrap();
-    assert_eq!(app.instrument_catalog_target(), Some((root, root)));
-    for _ in 0..40 {
-        frame(&mut app, &ctx, vec![]);
-    }
-    let point = app.instrument_catalog_bounds.entries[entry].center();
-    super::instrument_catalog::click(&mut app, &ctx, point, false);
-    assert!(
-        app.instrument_catalog
-            .selected_types()
-            .contains(&"daw.macro")
-    );
-    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Enter, false, false);
-    assert!(app.error.is_none(), "{:?}", app.error);
-    assert!(
-        app.job.is_none(),
-        "Macro addition should apply synchronously"
-    );
-    assert_eq!(
-        app.session
-            .project
-            .beat(track)
-            .unwrap()
-            .output
-            .macro_module
-            .controls
-            .len(),
-        1
-    );
+    let before = app.session.project.clone();
+    assert_eq!(app.selected_instrument_owner(), None);
+    assert_eq!(app.instrument_catalog_target(), None);
     assert_eq!(app.selected_track, Some(track));
+    super::instrument_catalog::key(&mut app, &ctx, egui::Key::Enter, false, false);
+    assert_eq!(app.session.project, before);
     assert!(app.error.is_none(), "{:?}", app.error);
 }
 
@@ -754,7 +716,7 @@ fn catalog_drag_into_expanded_subtrack_reuses_release_only_component_placement()
 }
 
 #[test]
-fn empty_beat_parent_has_a_fixed_output_without_source_or_group_rows() {
+fn empty_beat_parent_uses_the_instrument_placeholder() {
     for color in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
@@ -778,13 +740,10 @@ fn empty_beat_parent_has_a_fixed_output_without_source_or_group_rows() {
         );
         let original = app.session.project.clone();
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        assert_eq!(
-            app.selected_instrument_owner(),
-            Some(app.session.project.beat(track).unwrap().output.id)
-        );
+        assert_eq!(app.selected_instrument_owner(), None);
         assert!(app.midi_editor.layer_bounds.is_empty());
-        assert!(app.beat_ui.final_output.unwrap().is_positive());
-        assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if matches!(text.galley.text(), "Layers" | "Subtracks" | "LFO" | "Envelope"))));
+        assert!(app.instrument_ui.component_viewports.is_empty());
+        assert!(!shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if matches!(text.galley.text(), "Output" | "Subtracks" | "LFO" | "Envelope"))));
         assert_eq!(app.session.project, original);
         assert!(!app.dirty);
     }
@@ -959,7 +918,7 @@ fn subtrack_meters_share_track_rails_and_keep_editor_rows_and_instrument_control
             app.navigate_beat_owner(app.track_context().unwrap(), app.beat_ui.primary, false);
             app.view_mode = ViewMode::Instrument;
             app.set_instrument_subview(
-                crate::instrument_workspace::InstrumentSubview::Effects,
+                crate::instrument_workspace::InstrumentSubview::Modulation,
                 &ctx,
             );
             frame_shapes(&mut app, &ctx, vec![], size);
@@ -968,7 +927,7 @@ fn subtrack_meters_share_track_rails_and_keep_editor_rows_and_instrument_control
             super::track_header::assert_header_meter_insets(
                 &shapes,
                 Rect::from_min_size(
-                    app.instrument_ui.main_bounds.label.min,
+                    app.instrument_ui.macro_bounds.label.min,
                     Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
                 ),
                 &ctx,
@@ -2289,19 +2248,16 @@ fn preview_steps_share_compact_tile_geometry_with_a_fixed_grid_separator() {
 }
 
 #[test]
-fn editor_subtrack_selection_replaces_final_output_target() {
+fn editor_subtrack_selection_opens_layers_from_the_beat_parent() {
     for target in ["name", "control", "blank"] {
-        let (mut app, ctx, track, row, _) = setup();
+        let (mut app, ctx, _, row, _) = setup();
         app.view_mode = ViewMode::Instrument;
         app.set_instrument_subview(
             crate::instrument_workspace::InstrumentSubview::Effects,
             &ctx,
         );
         frame(&mut app, &ctx, vec![]);
-        let output = app.session.project.beat(track).unwrap().output.id;
-        let point = app.beat_ui.final_output.unwrap().left_top() + egui::vec2(100.0, 25.0);
-        click(&mut app, &ctx, point);
-        assert_eq!(app.selected_instrument_owner(), Some(output));
+        assert_eq!(app.selected_instrument_owner(), None);
         app.view_mode = ViewMode::Edit;
         frame(&mut app, &ctx, vec![]);
         let header = app.beat_ui.headers[&row];
@@ -2747,21 +2703,22 @@ fn subtrack_context_menu_opens_across_headers_without_changing_controls() {
 }
 
 #[test]
-fn output_and_subtrack_pages_keep_owner_local_layer_selection() {
+fn beat_parent_clears_hidden_subtrack_layer_selection() {
     let (mut app, ctx, track, row, _) = setup();
     app.view_mode = ViewMode::Instrument;
-    app.navigate_beat_owner(track, None, false);
-    frame(&mut app, &ctx, vec![]);
-    let output = app.session.project.beat(track).unwrap().output.id;
-    app.instrument_ui.select_layer(output);
     app.navigate_beat_owner(track, Some(row), false);
     frame(&mut app, &ctx, vec![]);
-    assert_eq!(app.instrument_ui.track, Some(row));
-    assert!(!app.instrument_ui.selected_layers.contains(&output));
+    let layer = app.session.project.instrument_settings(row).unwrap().layers[0].id;
+    app.instrument_ui.select_layer(layer);
     app.navigate_beat_owner(track, None, false);
     frame(&mut app, &ctx, vec![]);
-    assert_eq!(app.instrument_ui.track, Some(output));
+    assert_eq!(app.instrument_ui.track, None);
     assert!(app.midi_editor.layer_bounds.is_empty());
+    assert!(!app.cached_beat_layer_selected(row, layer));
+    assert_eq!(
+        app.effects_target(),
+        Some(daw_core::EffectChainTarget::Track(track))
+    );
     assert!(!app.dirty);
 }
 
@@ -3382,8 +3339,9 @@ fn timeline_beat_child_controls_edit_only_the_shared_subtrack_bus() {
     assert!(!app.track_action_enabled(TrackAction::Duplicate, &ctx));
     assert!(app.timeline_beat_child_selected(child));
     assert_eq!(app.instrument_ui.track, Some(child));
-    assert!(
-        matches!(app.timeline_beat_effect_target(child), daw_core::EffectChainTarget::Layer { track, .. } if track == child)
+    assert_eq!(
+        app.effects_target(),
+        Some(daw_core::EffectChainTarget::Track(child))
     );
     let other_header = app.timeline_beats.rows[&other_id].1;
     let point = other_header.min + Vec2::new(30.0, 12.0);

@@ -4477,10 +4477,13 @@ fn layer_effects_keep_audio_routes_and_missing_units_through_save_as() {
     );
     opened.save(&f.0.join("copy")).unwrap();
     let copy = Session::open(&f.0.join("copy")).unwrap();
+    let mut instrument = session.project.tracks[0].instrument.clone().unwrap();
+    let output_effects = std::mem::take(&mut instrument.main.effects);
     assert_eq!(
-        session.project.tracks[0].instrument,
-        copy.project.tracks[0].instrument
+        copy.project.tracks[0].instrument.as_ref(),
+        Some(&instrument)
     );
+    assert_eq!(copy.project.tracks[0].effects, output_effects);
     let mut restored = expected.clone();
     daw_engine::Renderer::new(copy.plan()).render_offline(&mut restored);
     assert_eq!(expected, restored);
@@ -4989,15 +4992,18 @@ fn filter_effects_survive_save_reopen_rate_changes_duplication_and_export() {
         daw_core::EffectSettings::Filter(_)
     ));
     assert!(matches!(
+        loaded.project.tracks[1].effects[0].unit,
+        daw_core::EffectSettings::Filter(_)
+    ));
+    assert!(
         loaded.project.tracks[1]
             .instrument
             .as_ref()
             .unwrap()
             .main
-            .effects[0]
-            .unit,
-        daw_core::EffectSettings::Filter(_)
-    ));
+            .effects
+            .is_empty()
+    );
     let output = fixture.0.join("filter-mix.wav");
     let settings = daw_media::ExportSettings {
         wav_codec: daw_media::WavCodec::Float32,

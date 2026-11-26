@@ -270,8 +270,8 @@ fn eq_band_reorder_scrolls_the_lane_without_committing_its_preview() {
 }
 
 #[test]
-fn eq_band_reorder_works_in_regular_layer_and_output_lanes() {
-    for main in [false, true] {
+fn eq_band_reorder_works_in_regular_layer_and_track_lanes() {
+    for track_lane in [false, true] {
         for compact in [false, true] {
             let (mut app, ctx) = fixture(compact, false);
             let effect = app.session.project.tracks[0].effects.pop().unwrap();
@@ -281,9 +281,8 @@ fn eq_band_reorder_works_in_regular_layer_and_output_lanes() {
             let original = original.clone();
             let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
             instrument.layers[0].collapsed = compact;
-            instrument.main.collapsed = compact;
-            if main {
-                instrument.main.effects.push(effect);
+            if track_lane {
+                app.session.project.tracks[0].effects.push(effect);
             } else {
                 instrument.layers[0].effects.push(effect);
             }
@@ -303,7 +302,7 @@ fn eq_band_reorder_works_in_regular_layer_and_output_lanes() {
             );
             assert!(
                 crate::strip_reorder::dragging(&ctx),
-                "main={main}, compact={compact}, start={start:?}"
+                "track_lane={track_lane}, compact={compact}, start={start:?}"
             );
             frame_sized(
                 &mut app,
@@ -319,8 +318,8 @@ fn eq_band_reorder_works_in_regular_layer_and_output_lanes() {
                 Vec2::new(1600.0, 1200.0),
             );
             let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
-            let effects = if main {
-                &instrument.main.effects
+            let effects = if track_lane {
+                &app.session.project.tracks[0].effects
             } else {
                 &instrument.layers[0].effects
             };

@@ -27,13 +27,18 @@ fn output_header_uses_merge_icon_and_keeps_layer_spacing_and_fixed_bus_identity(
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for compact in [false, true] {
             let (mut app, ctx, _) = setup(theme);
+            app.set_instrument_subview(
+                crate::instrument_workspace::InstrumentSubview::Modulation,
+                &ctx,
+            );
+            frame(&mut app, &ctx, vec![]);
             let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
             instrument.main.collapsed = compact;
             instrument.main.pan = 0.35;
             let id = instrument.main.id;
             let before = instrument.clone();
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            let bounds = &app.instrument_ui.main_bounds;
+            let bounds = &app.instrument_ui.macro_bounds;
             let former_pan = bounds.label.min + Vec2::new(53.0, 47.0);
             assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
                 egui::Shape::Circle(circle) if circle.center.distance(former_pan) < 1.0)));
@@ -73,7 +78,7 @@ fn output_header_uses_merge_icon_and_keeps_layer_spacing_and_fixed_bus_identity(
             )), "Output must render Merge rotated clockwise with its arrow pointing right");
             assert!(
                 shapes.iter().any(
-                    |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Output")
+                    |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Macros")
                 )
             );
             assert!(
@@ -95,20 +100,25 @@ fn output_header_uses_merge_icon_and_keeps_layer_spacing_and_fixed_bus_identity(
     }
 }
 #[test]
-fn output_scrolls_with_layers_and_reuses_mix_controls_in_both_themes() {
+fn output_mix_controls_remain_editable_in_modulation_in_both_themes() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, _) = setup(theme);
-        let main = app.instrument_ui.main_bounds.row;
-        let label = app.instrument_ui.main_bounds.label;
+        app.set_instrument_subview(
+            crate::instrument_workspace::InstrumentSubview::Modulation,
+            &ctx,
+        );
+        frame(&mut app, &ctx, vec![]);
+        let main = app.instrument_ui.macro_bounds.row;
+        let label = app.instrument_ui.macro_bounds.label;
         assert_eq!(main.height(), ROW_HEIGHT);
         assert_eq!(label.width(), TRACK_WIDTH);
-        let [gain] = app.instrument_ui.main_bounds.mix;
+        let [gain] = app.instrument_ui.macro_bounds.mix;
         assert_eq!(gain.size(), Vec2::splat(knobs::HEADER_SIZE));
         assert_eq!(
             gain.center(),
             Pos2::new(label.right() - 47.0, label.top() + 47.0)
         );
-        let bounds = &app.instrument_ui.main_bounds;
+        let bounds = &app.instrument_ui.macro_bounds;
         super::instrument_lane_toolbar::assert_toolbar(
             bounds.row,
             bounds.label,
@@ -117,7 +127,7 @@ fn output_scrolls_with_layers_and_reuses_mix_controls_in_both_themes() {
         );
         assert!(
             app.instrument_ui
-                .main_bounds
+                .macro_bounds
                 .mix
                 .iter()
                 .all(|r| label.contains_rect(*r)),
@@ -125,40 +135,12 @@ fn output_scrolls_with_layers_and_reuses_mix_controls_in_both_themes() {
         );
         assert!(
             app.instrument_ui
-                .main_bounds
+                .macro_bounds
                 .mix
                 .iter()
-                .all(|r| r.top() >= app.instrument_ui.main_bounds.collapse.bottom() + 4.0)
+                .all(|r| r.top() >= app.instrument_ui.macro_bounds.collapse.bottom() + 4.0)
         );
-        let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
-        instrument
-            .layers
-            .extend((0..8).map(|_| daw_core::InstrumentLayerSettings::default()));
-        frame(&mut app, &ctx, vec![]);
-        let viewport = app.instrument_catalog_bounds.layer_viewport;
-        let main = app.instrument_ui.main_bounds.row;
-        assert!(viewport.bottom() <= main.top());
-        frame(
-            &mut app,
-            &ctx,
-            vec![
-                egui::Event::PointerMoved(viewport.center()),
-                egui::Event::MouseWheel {
-                    phase: egui::TouchPhase::Move,
-                    unit: egui::MouseWheelUnit::Point,
-                    delta: Vec2::new(0.0, -10000.0),
-                    modifiers: Default::default(),
-                },
-            ],
-        );
-        for _ in 0..10 {
-            frame(&mut app, &ctx, vec![]);
-        }
-        assert!(app.instrument_catalog_bounds.layer_scroll > 0.0);
-        let scrolled_output = app.instrument_ui.main_bounds.row;
-        assert!(viewport.contains_rect(scrolled_output));
-        assert!(scrolled_output.top() < main.top());
-        let gain = app.instrument_ui.main_bounds.mix[0].center();
+        let gain = app.instrument_ui.macro_bounds.mix[0].center();
         click(&mut app, &ctx, gain, false);
         key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
         assert!(
@@ -179,7 +161,7 @@ fn output_scrolls_with_layers_and_reuses_mix_controls_in_both_themes() {
             .iter()
             .map(|l| l.id)
             .collect();
-        let collapse = app.instrument_ui.main_bounds.collapse.center();
+        let collapse = app.instrument_ui.macro_bounds.collapse.center();
         click(&mut app, &ctx, collapse, false);
         assert!(
             !app.session.project.tracks[0]
@@ -189,15 +171,12 @@ fn output_scrolls_with_layers_and_reuses_mix_controls_in_both_themes() {
                 .main
                 .collapsed
         );
+        assert_eq!(app.instrument_ui.macro_bounds.row.top(), main.top());
         assert_eq!(
-            app.instrument_ui.main_bounds.row.top(),
-            scrolled_output.top()
-        );
-        assert_eq!(
-            app.instrument_ui.main_bounds.row.height(),
+            app.instrument_ui.macro_bounds.row.height(),
             panels::unit_height(false)
         );
-        let bounds = &app.instrument_ui.main_bounds;
+        let bounds = &app.instrument_ui.macro_bounds;
         assert!(bounds.mix.iter().all(|r| bounds.label.contains_rect(*r)));
         assert!(
             bounds
@@ -338,9 +317,15 @@ fn layer_and_main_selection_uses_backgrounds_without_outlines() {
                 i.main.collapsed = compact;
                 let layer = i.layers[0].id;
                 app.instrument_ui.selected_layer = Some(if main { i.main.id } else { layer });
+                if main {
+                    app.set_instrument_subview(
+                        crate::instrument_workspace::InstrumentSubview::Modulation,
+                        &ctx,
+                    );
+                }
                 let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
                 let label = if main {
-                    app.instrument_ui.main_bounds.label
+                    app.instrument_ui.macro_bounds.label
                 } else {
                     app.midi_editor.layer_bounds[&layer].label
                 };
@@ -483,27 +468,33 @@ fn assert_final_divider(shapes: &[egui::epaint::ClippedShape], row: Rect, ctx: &
 }
 
 #[test]
-fn output_row_draws_one_bottom_divider_across_the_canvas() {
+fn last_layer_effects_row_draws_one_bottom_divider_across_the_canvas() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for compact in [false, true] {
             for collapsed in [false, true] {
                 for effects_visible in [false, true] {
                     let (mut app, ctx, _) = setup(theme);
-                    let bus = &mut app.session.project.tracks[0]
+                    let layer = &mut app.session.project.tracks[0]
                         .instrument
                         .as_mut()
                         .unwrap()
-                        .main;
-                    bus.collapsed = compact;
+                        .layers[0];
+                    layer.collapsed = compact;
                     let mut effect = daw_core::EffectInstance::drive();
                     if let daw_core::EffectSettings::Drive(settings) = &mut effect.unit {
                         settings.collapsed = collapsed;
                     }
-                    bus.effects.push(effect);
+                    layer.effects.push(effect);
                     app.effects_lane_open = effects_visible;
                     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 1100.0));
+                    let owner = app.session.project.tracks[0]
+                        .instrument
+                        .as_ref()
+                        .unwrap()
+                        .layers[0]
+                        .id;
                     let x = app.instrument_ui.effect_slots[0].2.center().x;
-                    let main = app.instrument_ui.main_bounds.row;
+                    let main = app.midi_editor.layer_bounds[&owner].row;
                     let y = main.bottom() - 0.5;
                     assert_final_divider(&shapes, main, &ctx);
                     assert!(
@@ -526,7 +517,7 @@ fn output_row_draws_one_bottom_divider_across_the_canvas() {
                     );
                     // The left panel remains the same height as its components.
                     assert_eq!(
-                        app.instrument_ui.main_bounds.label.height(),
+                        app.midi_editor.layer_bounds[&owner].label.height(),
                         panels::unit_height(compact)
                     );
                     assert!(!app.dirty);
@@ -559,29 +550,6 @@ fn modulation_divider_follows_the_last_visible_row() {
         };
         assert_final_divider(&shapes, last, &ctx);
         assert!(!app.dirty);
-    }
-}
-
-#[test]
-fn beat_parent_output_and_macros_have_a_bottom_divider() {
-    use crate::instrument_workspace::InstrumentSubview;
-
-    let mut app = DawUi::default();
-    let track = app.session.project.add_beat_track().unwrap();
-    let ctx = context();
-    app.select_track(track, false);
-    app.set_view_mode(ViewMode::Instrument, &ctx);
-    app.effects_lane_open = false;
-    for subview in [InstrumentSubview::Effects, InstrumentSubview::Modulation] {
-        app.set_instrument_subview(subview, &ctx);
-        let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 900.0));
-        let row = if subview == InstrumentSubview::Effects {
-            app.instrument_ui.main_bounds.row
-        } else {
-            app.instrument_ui.macro_bounds.row
-        };
-        assert_eq!(row.height(), panels::unit_height(false));
-        assert_final_divider(&shapes, row, &ctx);
     }
 }
 
@@ -688,154 +656,4 @@ fn expanded_modulation_lanes_share_the_regular_layer_scroll_viewport() {
     assert!(viewport.contains_rect(after[2]));
     assert_eq!(app.instrument_catalog_bounds.layer_viewport, viewport);
     assert!(!app.dirty);
-}
-
-#[test]
-fn main_top_separator_shares_the_last_layers_bottom_pixel() {
-    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        for compact in [false, true] {
-            for collapsed in [false, true] {
-                let (mut app, ctx, _) = setup(color_theme);
-                app.effects_lane_open = false;
-                let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
-                i.layers
-                    .extend((0..4).map(|_| daw_core::InstrumentLayerSettings::default()));
-                i.main.collapsed = compact;
-                i.main.envelopes.push(daw_core::EnvelopeInstance {
-                    collapsed,
-                    mode: daw_core::EnvelopeMode::Legato,
-                    ..Default::default()
-                });
-                frame(&mut app, &ctx, vec![]);
-                let viewport = app.instrument_catalog_bounds.layer_viewport;
-                frame(
-                    &mut app,
-                    &ctx,
-                    vec![
-                        egui::Event::PointerMoved(viewport.center()),
-                        egui::Event::MouseWheel {
-                            phase: egui::TouchPhase::Move,
-                            unit: egui::MouseWheelUnit::Point,
-                            delta: Vec2::new(0.0, -10000.0),
-                            modifiers: Default::default(),
-                        },
-                    ],
-                );
-                for _ in 0..12 {
-                    frame(&mut app, &ctx, vec![]);
-                }
-                let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-                let main = app.instrument_ui.main_bounds.row;
-                let x = app.instrument_ui.main_bounds.label.center().x;
-                let ys = shapes
-                    .iter()
-                    .filter_map(|s| match &s.shape {
-                        egui::Shape::LineSegment { points, stroke }
-                            if *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
-                                && points[0].x < x
-                                && points[1].x > x
-                                && points[0].y == points[1].y
-                                && (points[0].y - main.top()).abs() <= 2.0 =>
-                        {
-                            Some(points[0].y)
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-                assert!(!ys.is_empty());
-                assert!(
-                    ys.iter().all(|y| *y == main.top() + 0.5),
-                    "one shared pixel, got {ys:?}"
-                );
-                let cx = app.instrument_ui.main_bounds.label.right() + 12.0;
-                assert!(!shapes.iter().any(|s| {
-                    match &s.shape {
-                        egui::Shape::LineSegment { points, stroke } => {
-                            *stroke == Stroke::new(1.0, theme::palette(&ctx).border)
-                                && points[0].x < cx
-                                && points[1].x > cx
-                                && points
-                                    .iter()
-                                    .all(|p| (p.y - (main.top() - 0.5)).abs() < 0.1)
-                        }
-                        egui::Shape::Rect(r) => {
-                            r.stroke.width > 0.0
-                                && r.stroke.color != egui::Color32::TRANSPARENT
-                                && r.rect.left() < cx
-                                && r.rect.right() > cx
-                                && (r.rect.top() - main.top()).abs() < 1.0
-                        }
-                        _ => false,
-                    }
-                }));
-                assert!(!app.dirty);
-            }
-        }
-    }
-}
-
-#[test]
-fn main_unit_header_fills_reach_the_shared_top_edge_without_moving_controls() {
-    for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        for compact in [false, true] {
-            for collapsed in [false, true] {
-                for enabled in [false, true] {
-                    let (mut app, ctx, _) = setup(color_theme);
-                    app.effects_lane_open = false;
-                    let bus = &mut app.session.project.tracks[0]
-                        .instrument
-                        .as_mut()
-                        .unwrap()
-                        .main;
-                    bus.collapsed = compact;
-                    bus.envelopes.push(daw_core::EnvelopeInstance {
-                        enabled,
-                        collapsed,
-                        mode: daw_core::EnvelopeMode::Legato,
-                        ..Default::default()
-                    });
-                    bus.lfos.push(daw_core::LfoInstance {
-                        enabled,
-                        collapsed,
-                        ..Default::default()
-                    });
-                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-                    let main = &app.instrument_ui.main_bounds;
-                    let fill = theme::unit_header_fill(&ctx, enabled);
-                    for header in main.envelopes.iter().chain(&main.lfos) {
-                        let point = Pos2::new(
-                            header.center().x,
-                            header.top() + panels::HEADER_HEIGHT * 0.5,
-                        );
-                        let cap = shapes
-                            .iter()
-                            .find_map(|s| match &s.shape {
-                                egui::Shape::Rect(r)
-                                    if r.fill == fill
-                                        && r.rect == *header
-                                        && r.rect.contains(point) =>
-                                {
-                                    Some(r.rect)
-                                }
-                                _ => None,
-                            })
-                            .expect("unit header fill");
-                        assert_eq!(
-                            cap.top(),
-                            main.row.top() + panels::UNIT_VERTICAL_MARGIN,
-                            "Main header must not expose the omitted frame edge"
-                        );
-                        assert_eq!(
-                            header.top(),
-                            main.row.top() + panels::UNIT_VERTICAL_MARGIN,
-                            "retain frame and control geometry"
-                        );
-                        assert_eq!(cap, *header);
-                    }
-                    assert_eq!(main.label.height(), panels::unit_height(compact));
-                    assert!(!app.dirty);
-                }
-            }
-        }
-    }
 }

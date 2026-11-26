@@ -55,22 +55,41 @@ fn chain(project: &Project, text: &str) -> Result<Chain> {
     let elements = text.split(':').collect::<Vec<_>>();
     let target = match elements.as_slice() {
         ["track", id] => Chain::Track(uuid(id)?),
-        ["layer", id, layer] => Chain::Layer {
-            track: uuid(id)?,
-            layer: uuid(layer)?,
-        },
+        ["subtrack", id] => {
+            let id = uuid(id)?;
+            project
+                .beat_subtrack(id)
+                .ok_or_else(|| error("Beat subtrack not found"))?;
+            Chain::Track(id)
+        }
+        ["layer", id, layer] => {
+            let track = uuid(id)?;
+            let layer = uuid(layer)?;
+            if project
+                .instrument_settings(track)
+                .is_some_and(|instrument| instrument.main.id == layer)
+            {
+                Chain::Track(track)
+            } else if let Some(parent) = project.tracks.iter().find(|parent| {
+                parent.beat.as_ref().is_some_and(|beat| {
+                    beat.output.id == layer && (parent.id == track || beat.output.id == track)
+                })
+            }) {
+                Chain::Track(parent.id)
+            } else {
+                Chain::Layer { track, layer }
+            }
+        }
         ["output", id] => {
             let track = uuid(id)?;
-            let layer = project
+            project
                 .beat(track)
-                .ok_or_else(|| error("Beat Output not found"))?
-                .output
-                .id;
-            Chain::Layer { track, layer }
+                .ok_or_else(|| error("Beat Output not found"))?;
+            Chain::Track(track)
         }
         _ => {
             return Err(error(
-                "Use master, track:UUID, layer:OWNER_UUID:LAYER_UUID or output:BEAT_TRACK_UUID",
+                "Use master, track:UUID, subtrack:UUID or layer:OWNER_UUID:LAYER_UUID",
             ));
         }
     };

@@ -29,11 +29,13 @@ impl Project {
                 routes.extend(
                     beat.output
                         .modulation_routes()
-                        .chain(
-                            beat.subtracks
-                                .iter()
-                                .flat_map(|s| s.instrument.modulation_routes()),
-                        )
+                        .chain(beat.subtracks.iter().flat_map(|s| {
+                            s.instrument.modulation_routes().chain(
+                                s.effects
+                                    .iter()
+                                    .flat_map(|effect| effect.unit.modulations()),
+                            )
+                        }))
                         .filter(|r| r.sidechain.is_some())
                         .map(|r| (t.id, *r)),
                 );

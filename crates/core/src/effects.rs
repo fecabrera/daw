@@ -1004,3 +1004,117 @@ mod filter_tests {
         assert_eq!(serde_json::to_value(missing).unwrap(), future);
     }
 }
+#[cfg(test)]
+#[test]
+fn project_load_moves_output_effects_in_order_and_retains_their_provider_ids() {
+    use crate::*;
+    let mut project = Project::default();
+    let midi = project.add_midi_track().unwrap();
+    let beat_id = project.add_beat_track().unwrap();
+    let moved = EffectInstance::drive();
+    let track_effect = EffectInstance::filter();
+    let layer_effect = EffectInstance::chorus();
+    let preset_subtrack_effect = EffectInstance::compressor();
+    let track = &mut project.tracks[0];
+    track.effects.push(track_effect.clone());
+    let instrument = track.instrument.as_mut().unwrap();
+    instrument.layers[0].effects.push(layer_effect.clone());
+    instrument.main.set_effects(vec![moved.clone()], true);
+    instrument.main.gain_db = -4.0;
+    let beat_track = &mut project.tracks[1];
+    let beat = beat_track.beat.as_mut().unwrap();
+    let subtrack = beat.add_subtrack().unwrap();
+    let row = &mut beat.subtracks[0];
+    let mut child_effect = EffectInstance::auto_filter();
+    row.instrument.main.macro_module.add();
+    let EffectSettings::AutoFilter(settings) = &mut child_effect.unit else {
+        unreachable!()
+    };
+    let mut route = Modulation::new(ModulationParameter::Level);
+    route.source = Some(ModulationSourceId {
+        layer: row.instrument.main.id,
+        unit: row.instrument.main.macro_module.controls[0].id,
+    });
+    settings.modulations.push(route);
+    row.instrument
+        .main
+        .set_effects(vec![child_effect.clone()], false);
+    row.effects.push(preset_subtrack_effect.clone());
+    beat.output.macro_module.add();
+    let mut macro_effect = EffectInstance::auto_filter();
+    let EffectSettings::AutoFilter(settings) = &mut macro_effect.unit else {
+        unreachable!()
+    };
+    let mut route = Modulation::new(ModulationParameter::Level);
+    route.source = Some(ModulationSourceId {
+        layer: beat.output.id,
+        unit: beat.output.macro_module.controls[0].id,
+    });
+    settings.modulations.push(route);
+    beat.output.set_effects(vec![macro_effect.clone()], false);
+    let load = |project: &Project| -> Project {
+        serde_json::from_value(serde_json::to_value(project).unwrap()).unwrap()
+    };
+    let migrated = load(&project);
+    migrated.validate().unwrap();
+    assert_eq!(
+        migrated
+            .effect_chain(EffectChainTarget::Track(midi))
+            .unwrap()
+            .0,
+        [moved, track_effect]
+    );
+    let instrument = migrated.instrument_settings(midi).unwrap();
+    assert!(instrument.main.effects.is_empty());
+    assert_eq!(instrument.main.gain_db, -4.0);
+    assert_eq!(instrument.layers[0].effects, [layer_effect]);
+    let beat = migrated.beat(beat_id).unwrap();
+    assert!(beat.output.effects.is_empty());
+    assert!(beat.subtracks[0].instrument.main.effects.is_empty());
+    assert_eq!(
+        migrated
+            .effect_chain(EffectChainTarget::Track(subtrack))
+            .unwrap()
+            .0,
+        [child_effect.clone(), preset_subtrack_effect]
+    );
+    assert_eq!(
+        migrated
+            .effect_chain(EffectChainTarget::Track(beat_id))
+            .unwrap()
+            .0,
+        std::slice::from_ref(&macro_effect)
+    );
+    assert_eq!(load(&migrated), migrated);
+
+    let copy_id = Id::new_v4();
+    let copy = migrated
+        .edited(Edit::DuplicateTrack {
+            track_id: beat_id,
+            new_track_id: copy_id,
+        })
+        .unwrap();
+    let beat = copy.beat(copy_id).unwrap();
+    let row = &beat.subtracks[0];
+    assert_ne!(row.id, subtrack);
+    for (effect, original, bus) in [
+        (&row.effects[0], &child_effect, &row.instrument.main),
+        (
+            &copy
+                .effect_chain(EffectChainTarget::Track(copy_id))
+                .unwrap()
+                .0[0],
+            &macro_effect,
+            &beat.output,
+        ),
+    ] {
+        assert_ne!(effect.id, original.id);
+        assert_eq!(
+            effect.unit.modulations()[0].source,
+            Some(ModulationSourceId {
+                layer: bus.id,
+                unit: bus.macro_module.controls[0].id,
+            })
+        );
+    }
+}

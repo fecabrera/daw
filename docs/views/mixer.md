@@ -46,7 +46,7 @@ fader, numeric fields and stereo meters as other strips. Solo stays within the
 beat instrument. The output label names the parent beat track. Use the parent
 strip for whole-beat controls and sends.
 
-Select a child to edit its instrument Output effects. Shift-click or Command/Ctrl-click
+Select a child to edit its Effects Lane. Shift-click or Command/Ctrl-click
 selects several subtracks within the same beat track. M and S toggle the selected
 subtracks together. Rename and Delete operate on the selected subtrack; removing
 subtracks uses one Undo step. Click the parent strip to return to whole-track
@@ -76,7 +76,7 @@ Use the left **Effects** button to open Mixer’s effects catalog. Use the botto
 **Effects lane** button to show the selected track’s or Master’s effect chain.
 The lane starts open and its visibility carries across all views.
 
-Select a track, group, beat subtrack or Master to change the effect target. A beat subtrack targets its instrument Output effects; its parent targets the beat-track effects. Add effects from the catalog and use the same unit controls, reordering and compact mode as Timeline. The lane sits below the mixer. Toggling panels changes only the workspace layout.
+Select a track, group, beat subtrack or Master to change the effect target. A beat subtrack and its parent each have their own effects chain. Add effects from the catalog and use the same unit controls, reordering and compact mode as Timeline. The lane sits below the mixer. Toggling panels changes only the workspace layout.
 
 ## Bounce to audio
 

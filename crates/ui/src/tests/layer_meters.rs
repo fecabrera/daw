@@ -35,10 +35,22 @@ fn layers_and_output_reuse_track_meter_geometry_in_every_presentation() {
                     frame_shapes(&mut app, &ctx, vec![], size);
                 }
                 let before = app.session.project.clone();
-                let shapes = frame_shapes(&mut app, &ctx, vec![], size);
                 let label = app.midi_editor.layer_bounds[&layer].label;
-                let output = app.instrument_ui.main_bounds.label;
-                for label in [label, output] {
+                for subview in [
+                    crate::instrument_workspace::InstrumentSubview::Effects,
+                    crate::instrument_workspace::InstrumentSubview::Modulation,
+                ] {
+                    app.set_instrument_subview(subview, &ctx);
+                    let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+                    let label =
+                        if subview == crate::instrument_workspace::InstrumentSubview::Effects {
+                            let controls = app.midi_editor.layer_bounds[&layer].mix_controls;
+                            assert!(controls[3].right() < controls[2].left());
+                            assert!((controls[2].center().x - (label.right() - 47.0)).abs() < 0.75);
+                            label
+                        } else {
+                            app.instrument_ui.macro_bounds.label
+                        };
                     let header = Rect::from_min_size(label.min, Vec2::new(TRACK_WIDTH, ROW_HEIGHT));
                     super::track_header::assert_header_meter_insets(&shapes, header, &ctx);
                     let point = Pos2::new(header.right() - 23.0, header.top() + 20.0);
@@ -62,11 +74,9 @@ fn layers_and_output_reuse_track_meter_geometry_in_every_presentation() {
                     assert_eq!(app.session.project, before);
                     assert!(!app.dirty);
                 }
-                let controls = app.midi_editor.layer_bounds[&layer].mix_controls;
-                assert!(controls[3].right() < controls[2].left());
-                assert!((controls[2].center().x - (label.right() - 47.0)).abs() < 0.75);
                 assert!(
-                    (app.instrument_ui.main_bounds.mix[0].center().x - (output.right() - 47.0))
+                    (app.instrument_ui.macro_bounds.mix[0].center().x
+                        - (app.instrument_ui.macro_bounds.label.right() - 47.0))
                         .abs()
                         < 0.75
                 );

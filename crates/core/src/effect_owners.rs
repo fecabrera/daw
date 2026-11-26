@@ -47,11 +47,13 @@ impl Project {
                             },
                             beat.output.effects.as_slice(),
                         ))
-                        .chain(
-                            beat.subtracks
-                                .iter()
-                                .flat_map(|row| instrument_chains(row.id, &row.instrument)),
-                        )
+                        .chain(beat.subtracks.iter().flat_map(|row| {
+                            std::iter::once((
+                                EffectChainTarget::Track(row.id),
+                                row.effects.as_slice(),
+                            ))
+                            .chain(instrument_chains(row.id, &row.instrument))
+                        }))
                     }))
             })
             .chain(std::iter::once((

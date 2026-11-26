@@ -65,7 +65,11 @@ impl Project {
                 .tracks
                 .iter()
                 .find(|t| t.id == id)
-                .map(|t| (t.effects.as_slice(), t.effects_compact)),
+                .map(|t| (t.effects.as_slice(), t.effects_compact))
+                .or_else(|| {
+                    self.beat_subtrack(id)
+                        .map(|(_, row)| (row.effects.as_slice(), row.effects_compact))
+                }),
             EffectChainTarget::Layer { track, layer } => {
                 if let Some(beat) = self.beat(track).filter(|b| b.output.id == layer) {
                     return Some((&beat.output.effects, beat.output.collapsed));
@@ -214,9 +218,10 @@ impl Project {
         };
         let instrument = owner.and_then(|owner| self.instrument_settings(owner));
         let output_settings = match destination {
-            EffectChainTarget::Layer { .. } if instrument.is_none() => {
-                owner.and_then(|owner| self.instrument_snapshot(owner))
-            }
+            _ if instrument.is_none() => owner.and_then(|owner| {
+                self.instrument_snapshot(owner)
+                    .or_else(|| self.beat(owner).map(|beat| beat.output_settings()))
+            }),
             _ => None,
         };
         let instrument = instrument.or(output_settings.as_ref());

@@ -24,13 +24,27 @@ pub(super) fn check<T>(
         _ => p.project.tracks[0].effects.push(effect),
     }
     p.project.validate().unwrap();
-    if roundtrip {
+    let reopened = if roundtrip {
         let reopened: Project =
             serde_json::from_value(serde_json::to_value(&p.project).unwrap()).unwrap();
-        assert_eq!(reopened, p.project);
-    }
+        if owner == "main" {
+            let original = p.project.tracks[0].instrument.as_ref().unwrap();
+            let track = &reopened.tracks[0];
+            assert_eq!(track.effects, original.main.effects);
+            assert!(track.instrument.as_ref().unwrap().main.effects.is_empty());
+        } else {
+            assert_eq!(reopened, p.project);
+        }
+        reopened.validate().unwrap();
+        Some(reopened)
+    } else {
+        None
+    };
     let mut expected = vec![[0.0; 2]; (rate / 10) as usize];
     Renderer::new(p.clone()).render_offline(&mut expected);
+    if let Some(project) = reopened {
+        p.project = project;
+    }
     let mut live = Renderer::new(p);
     live.play();
     ALLOCATIONS.with(|v| v.set(0));

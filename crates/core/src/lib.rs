@@ -250,9 +250,26 @@ fn deserialize_tracks<'de, D: serde::Deserializer<'de>>(
                     track.collect_modulation_lanes();
                 }
             }
+            if let Some(instrument) = &mut track.instrument {
+                migrate_output_effects(&mut instrument.main, &mut track.effects);
+            }
+            if let Some(beat) = &mut track.beat {
+                migrate_output_effects(&mut beat.output, &mut track.effects);
+                for row in &mut beat.subtracks {
+                    migrate_output_effects(&mut row.instrument.main, &mut row.effects);
+                }
+            }
             Ok(track)
         })
         .collect()
+}
+
+fn migrate_output_effects(bus: &mut InstrumentBusSettings, destination: &mut Vec<EffectInstance>) {
+    if bus.effects.is_empty() {
+        return;
+    }
+    destination.splice(..0, std::mem::take(&mut bus.effects));
+    bus.prune_component_order();
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -833,7 +850,11 @@ impl Project {
             }
             self.validate_samplers(t)?;
             self.validate_noises(t)?;
-            instrument_validation::validate_routes(t.instrument.as_ref(), &t.effects)?;
+            let beat_output = t.beat.as_ref().map(|b| b.output_settings());
+            instrument_validation::validate_routes(
+                t.instrument.as_ref().or(beat_output.as_ref()),
+                &t.effects,
+            )?;
             for clip in &t.clips {
                 self.validate_beat_destination(t.id, clip.asset_id)?;
             }
@@ -1092,14 +1113,15 @@ impl Project {
                 effects,
                 compact,
             } => {
-                if self.instrument_snapshot(track_id).is_some()
-                    && !self.tracks.iter().any(|t| t.id == track_id)
+                if let Some(row) = self
+                    .tracks
+                    .iter_mut()
+                    .filter_map(|track| track.beat.as_mut())
+                    .flat_map(|beat| &mut beat.subtracks)
+                    .find(|row| row.id == track_id)
                 {
-                    if !effects.is_empty() {
-                        return Err(Error(
-                            "Beat subtrack effects belong to its output bus".into(),
-                        ));
-                    }
+                    row.effects = effects;
+                    row.effects_compact = compact;
                     return Ok(());
                 }
                 let track = self

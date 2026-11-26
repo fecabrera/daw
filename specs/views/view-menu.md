@@ -126,20 +126,19 @@ has no project data or history entry and is guarded during active edits.
 
 - Sources shows regular layers with audio sources and processors. The
   Instrument components catalog shows source and processor folders.
-- Effects shows regular layers and Output with their serial effect chains.
-  Output follows the layers in the same scroll area. The separate track Effects
-  Lane retains the shared visibility setting.
+- Effects shows regular layers with their serial effect chains. The bottom
+  Effects Lane retains the shared visibility setting.
 - Modulation shows LFO, Envelope, an instrument-wide Macros row, and the
   regular layers that own modulation controls. It shows the Modulators folder.
-  Beat parent Output has a Macros row here. Its subtracks expose their own
-  instrument-wide provider lanes.
+  Beat subtracks expose their own instrument-wide provider lanes. A beat parent
+  uses the same empty Layers pane as audio tracks and groups in every tab.
 
 Only geometry in the active tab participates in selection and drops. Reuse the
 existing lane editors, collapse state, owner IDs and edit transactions. Keep
 audio rendering, saved component order and modulation discovery independent of
 the active subview.
 
-Draw one full-width bottom divider on the last displayed row in each subview,
-including beat parent Output and Macros. Adjacent rows share a single divider.
+Draw one full-width bottom divider on the last displayed row in each instrument subview,
+including Macros. Adjacent rows share a single divider.
 Clip the dividers to the lane scroll area. New rows start expanded. Loading a
 project restores its saved row heights.

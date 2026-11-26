@@ -2,6 +2,55 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Beat parent Instrument layout — 2026-11-26
+
+Automated UI checks compared the beat parent, audio track, and group layouts
+in Sources, Effects, and Modulation. Each showed the same Layers placeholder
+and its selected track effects. Subtrack navigation still opened the MIDI
+Layers body. Selecting the parent cleared hidden layer selection and kept the
+saved project intact, including preset beat Output controls. Formatting and
+strict workspace Clippy passed.
+
+The debug and release workspace suites each passed 3,856 tests. Both profiles
+had 25 ignored tests and excluded 22 native Audio Unit registration cases.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+The local macOS debug app built and passed signature verification. Interactive
+native UI and device playback remain unverified.
+
+## Instrument and beat subtrack Effects Lanes — 2026-11-26
+
+Core tests verified migration order, round trips, hidden Macro controls, and
+modulation source remapping when a beat track is duplicated. Engine tests
+verified migrated MIDI effects against their legacy playback with neutral
+Output controls. They also checked beat parent Macro modulation and subtrack
+latency alignment. CLI checks saved and reopened separate beat parent and
+subtrack chains, verified legacy owner selectors, and edited local Macro routes.
+The CLI smoke check passed.
+
+Automated UI checks covered the regular layer chains, retained Output controls,
+and separate track and subtrack Effects Lane targets. Formatting and strict
+workspace Clippy passed.
+
+The debug workspace run with the updated project workflow and CLI target
+reruns passed 3,857 tests. The release workspace run passed 3,857 tests.
+Both profiles had 25 ignored tests and excluded 22 native Audio Unit
+registration cases.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked -p daw-project --test workflow
+cargo test --offline --locked -p daw-cli --no-fail-fast
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+The local macOS debug app built and passed signature verification. Interactive
+native UI and device playback were outside these checks.
+
 ## Delete selected beat subtracks shortcut — 2026-11-26
 
 Input tests verified Command+Delete on Timeline subtrack headers and

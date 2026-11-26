@@ -114,11 +114,11 @@ fn each_lane_keeps_its_toolbar_fixed_outside_scrolling_components() {
             assert_toolbar(bounds.row, bounds.label, bounds.toolbar, bounds.collapse);
             assert_eq!(bounds.row.height(), ROW_HEIGHT);
             app.set_instrument_subview(
-                crate::instrument_workspace::InstrumentSubview::Effects,
+                crate::instrument_workspace::InstrumentSubview::Modulation,
                 &ctx,
             );
             frame_shapes(&mut app, &ctx, vec![], size);
-            let output = &app.instrument_ui.main_bounds;
+            let output = &app.instrument_ui.macro_bounds;
             assert_toolbar(output.row, output.label, output.toolbar, output.collapse);
             for (id, viewport) in &app.instrument_ui.component_viewports {
                 let toolbar = if *id == main.id {
@@ -201,54 +201,48 @@ fn lane_toolbars_reject_catalog_drops_and_dialog_blocked_toggles() {
 
 #[test]
 fn selected_effect_outlines_stop_at_their_lane_toolbar() {
-    for output in [false, true] {
-        let mut app = DawUi::default();
-        let track = app.session.project.add_midi_track().unwrap();
-        let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
-        let (owner, effects) = if output {
-            (instrument.main.id, &mut instrument.main.effects)
-        } else {
-            (instrument.layers[0].id, &mut instrument.layers[0].effects)
-        };
-        effects.extend((0..8).map(|_| daw_core::EffectInstance::drive()));
-        app.select_track(track, false);
-        let ctx = context();
-        let size = Vec2::new(1280.0, 1100.0);
-        ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
-        app.set_view_mode(ViewMode::Instrument, &ctx);
-        app.set_instrument_subview(
-            crate::instrument_workspace::InstrumentSubview::Effects,
-            &ctx,
-        );
-        frame(&mut app, &ctx, vec![]);
-        let viewport = app
-            .instrument_ui
-            .component_viewports
+    let mut app = DawUi::default();
+    let track = app.session.project.add_midi_track().unwrap();
+    let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
+    let (owner, effects) = (instrument.layers[0].id, &mut instrument.layers[0].effects);
+    effects.extend((0..8).map(|_| daw_core::EffectInstance::drive()));
+    app.select_track(track, false);
+    let ctx = context();
+    let size = Vec2::new(1280.0, 1100.0);
+    ctx.data_mut(|data| data.insert_temp(egui::Id::new("test-frame-size"), size));
+    app.set_view_mode(ViewMode::Instrument, &ctx);
+    app.set_instrument_subview(
+        crate::instrument_workspace::InstrumentSubview::Effects,
+        &ctx,
+    );
+    frame(&mut app, &ctx, vec![]);
+    let viewport = app
+        .instrument_ui
+        .component_viewports
+        .iter()
+        .find(|(id, _)| *id == owner)
+        .unwrap()
+        .1;
+    let (_, effect, rect) = app
+        .instrument_ui
+        .effect_slots
+        .iter()
+        .find(|(id, _, r)| {
+            *id == owner && r.left() < viewport.right() && r.right() > viewport.right()
+        })
+        .copied()
+        .expect("partly visible effect at the toolbar edge");
+    let point = unit_slot_point(rect);
+    super::instrument_catalog::click(&mut app, &ctx, point, false);
+    assert!(app.selected_effects.contains(&effect));
+    let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+    let outlines: Vec<_> = shapes.iter().filter(|shape| matches!(&shape.shape, egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))).collect();
+    assert!(outlines.is_empty());
+    assert!(
+        outlines
             .iter()
-            .find(|(id, _)| *id == owner)
-            .unwrap()
-            .1;
-        let (_, effect, rect) = app
-            .instrument_ui
-            .effect_slots
-            .iter()
-            .find(|(id, _, r)| {
-                *id == owner && r.left() < viewport.right() && r.right() > viewport.right()
-            })
-            .copied()
-            .expect("partly visible effect at the toolbar edge");
-        let point = unit_slot_point(rect);
-        super::instrument_catalog::click(&mut app, &ctx, point, false);
-        assert!(app.selected_effects.contains(&effect));
-        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
-        let outlines: Vec<_> = shapes.iter().filter(|shape| matches!(&shape.shape, egui::Shape::Rect(r) if r.rect == rect && r.stroke == theme::selection_outline(&ctx))).collect();
-        assert!(outlines.is_empty());
-        assert!(
-            outlines
-                .iter()
-                .all(|shape| shape.clip_rect.right() <= viewport.right())
-        );
-    }
+            .all(|shape| shape.clip_rect.right() <= viewport.right())
+    );
 }
 
 #[test]
@@ -286,7 +280,7 @@ fn output_toolbar_shares_one_top_separator_with_the_whole_row() {
                     ctx.set_pixels_per_point(scale);
                     app.set_view_mode(ViewMode::Instrument, &ctx);
                     app.set_instrument_subview(
-                        crate::instrument_workspace::InstrumentSubview::Effects,
+                        crate::instrument_workspace::InstrumentSubview::Modulation,
                         &ctx,
                     );
                     let size = Vec2::new(1280.0, 1000.0);
@@ -294,7 +288,7 @@ fn output_toolbar_shares_one_top_separator_with_the_whole_row() {
                         frame_shapes(&mut app, &ctx, vec![], size);
                     }
                     let shapes = frame_shapes(&mut app, &ctx, vec![], size);
-                    let bounds = &app.instrument_ui.main_bounds;
+                    let bounds = &app.instrument_ui.macro_bounds;
                     for x in [
                         bounds.label.center().x,
                         bounds.label.right() + 18.0,
