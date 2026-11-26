@@ -1322,7 +1322,7 @@ fn component_delete_respects_focus_text_modifiers_modal_and_drag_guards() {
         "repeat",
         "ctrl",
         "alt",
-        "command",
+        "command_shift",
         "outside",
         "surrender",
         "window",
@@ -1349,7 +1349,7 @@ fn component_delete_respects_focus_text_modifiers_modal_and_drag_guards() {
             }),
             "ctrl" => modifiers = egui::Modifiers::CTRL,
             "alt" => modifiers = egui::Modifiers::ALT,
-            "command" => modifiers = egui::Modifiers::COMMAND,
+            "command_shift" => modifiers = egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
             "outside" => {
                 let point = app.midi_editor.layer_bounds[&owner].label.center();
                 frame(

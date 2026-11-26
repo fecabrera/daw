@@ -610,8 +610,7 @@ impl TrackAction {
             | Self::AddGroup
             | Self::AddReturn
             | Self::AddSubtrack
-            | Self::Duplicate
-            | Self::Delete => {
+            | Self::Duplicate => {
                 return None;
             }
             Self::Bounce => (
@@ -626,13 +625,16 @@ impl TrackAction {
             Self::Mute => (egui::Modifiers::NONE, egui::Key::M),
             Self::Solo => (egui::Modifiers::NONE, egui::Key::S),
             Self::Rename => (egui::Modifiers::COMMAND, egui::Key::R),
+            Self::Delete => (egui::Modifiers::COMMAND, egui::Key::Delete),
         };
         Some(egui::KeyboardShortcut::new(modifiers, key))
     }
     /// Native menus and egui must consume the same key press exactly once.
     pub fn matches_shortcut(self, key: egui::Key, modifiers: egui::Modifiers) -> bool {
         self.shortcut().is_some_and(|shortcut| {
-            shortcut.logical_key == key && {
+            let key_matches = shortcut.logical_key == key
+                || (self == Self::Delete && key == egui::Key::Backspace);
+            key_matches && {
                 if matches!(self, Self::Mute | Self::Solo) {
                     !modifiers.command && !modifiers.ctrl && !modifiers.alt && !modifiers.mac_cmd
                 } else {

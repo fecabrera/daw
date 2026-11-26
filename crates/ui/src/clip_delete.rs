@@ -1,8 +1,9 @@
 //! Delete routing shared by Timeline and Editor, with note and text precedence.
 use super::*;
 
-/// Consume pressed Delete/Backspace events, including repeats. A held key must
-/// not fall through from deleting notes/units to deleting their containing clip.
+/// Consume pressed Delete/Backspace events, including repeats, while reserving
+/// Command/Ctrl for track deletion. A held key must not fall through from
+/// deleting notes/units to deleting their containing clip.
 pub(super) fn take_delete(ctx: &egui::Context) -> bool {
     ctx.input_mut(|input| {
         let mut pressed = false;
@@ -11,8 +12,10 @@ pub(super) fn take_delete(ctx: &egui::Context) -> bool {
                 key: egui::Key::Delete | egui::Key::Backspace,
                 pressed: true,
                 repeat,
+                modifiers,
                 ..
             } = event
+                && !modifiers.command
             {
                 pressed |= !repeat;
                 false

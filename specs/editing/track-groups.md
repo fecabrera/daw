@@ -36,6 +36,12 @@ the same shared eight-point step as the painted hierarchy.
 
 Delete and Duplicate use subtree roots to avoid editing selected descendants twice. Duplicate follows existing empty-track-copy behavior: clips are empty, track/effect/sampler identities are fresh, internal parent IDs are remapped, and instrument-local and route identities retain their existing owner scope. Ungroup promotes direct children to the removed bus's parent and discards only the bus settings and chain.
 
+Command+Delete on macOS and Ctrl+Delete or Ctrl+Backspace on Windows/Linux run
+the guarded Track menu Delete action. Accept both backspace and forward delete
+keys on macOS. Leave the shortcut available to the track action when another
+editing pane has non-text keyboard focus. Keep text editing, active gestures
+and blocking dialogs protected. Ignore key repeats.
+
 `visible_tracks` hides descendants of collapsed groups without affecting processing. `track_mix_audible` prepares local sibling gates: descendant solos, including beat subtrack solos, open the ancestor path; each sibling set applies shared `mix_audible` precedence. Effective `Project::audible` also checks ancestors. The renderer uses local gates so each bus applies its own mix stage exactly once.
 
 ## Shared rendering and clocks

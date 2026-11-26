@@ -113,7 +113,9 @@ pub(super) fn shortcuts(
             } = event
             {
                 match key {
-                    egui::Key::Delete | egui::Key::Backspace => {
+                    egui::Key::Delete | egui::Key::Backspace
+                        if !crate::TrackAction::Delete.matches_shortcut(*key, *modifiers) =>
+                    {
                         actions.delete |= active
                             && !repeat
                             && !modifiers.alt

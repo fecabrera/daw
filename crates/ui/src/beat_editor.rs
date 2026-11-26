@@ -666,13 +666,8 @@ impl DawUi {
             && self.beat_ui.rename.is_none()
             && !ui.ctx().text_edit_focused()
             && self.edit_environment_available()
-            && ui
-                .input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace));
+            && clip_delete::take_delete(ui.ctx());
         if delete {
-            ui.input_mut(|i| {
-                i.consume_key(egui::Modifiers::NONE, egui::Key::Delete);
-                i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace);
-            });
             self.edit_beat(
                 track,
                 BeatEdit::Remove {

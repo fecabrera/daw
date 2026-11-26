@@ -2,6 +2,25 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Delete selected tracks shortcut — 2026-11-26
+
+Input tests verified that Command/Ctrl+Delete removes the selected tracks in
+one undo step for both Delete key variants. Tests also covered a selected clip
+on a surviving track, focus in an effects lane, key repeat, extra modifiers,
+and blocked editing. Formatting and strict workspace Clippy passed.
+
+The debug workspace suite passed 3,853 tests. The release workspace suite
+also passed 3,853 tests. Each had 25 ignored tests and excluded 22 native
+Audio Unit registration cases.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+The local macOS debug app built and passed strict code-signature verification.
+An interactive native keyboard check remains open.
+
 ## Upstream CLAP and Steinberg binding notices — 2026-11-26
 
 The desktop notice staging script copied both exact upstream MIT texts.

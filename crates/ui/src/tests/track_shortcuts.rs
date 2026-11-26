@@ -461,6 +461,7 @@ fn track_keys_do_not_change_the_project_during_text_editing_or_blocked_interacti
             key_event(egui::Key::M, Default::default(), false, true),
             key_event(egui::Key::S, Default::default(), false, true),
             key_event(egui::Key::R, egui::Modifiers::COMMAND, false, true),
+            key_event(egui::Key::Backspace, egui::Modifiers::COMMAND, false, true),
         ];
         if blocked == "drag" {
             let point = app.lane_bounds[&tracks[0]].center();
@@ -1031,6 +1032,52 @@ fn deleting_all_selected_tracks_clears_selection_and_requests_playback_sync() {
 }
 
 #[test]
+fn command_delete_removes_selected_tracks_in_one_undo_step() {
+    for key in [egui::Key::Delete, egui::Key::Backspace] {
+        let (mut app, tracks, clips) = multi_clip_fixture();
+        let ctx = context();
+        app.select_clip(clips[2], tracks[1], false);
+        app.select_track(tracks[0], false);
+        app.select_track(tracks[2], true);
+        frame(&mut app, &ctx, vec![]);
+        let before = app.session.project.clone();
+        for modifiers in [
+            egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+            egui::Modifiers::COMMAND,
+        ] {
+            let repeat = modifiers == egui::Modifiers::COMMAND;
+            if repeat {
+                ctx.input_mut(|input| {
+                    input.keys_down.insert(key);
+                });
+            }
+            frame(
+                &mut app,
+                &ctx,
+                vec![
+                    key_event(key, modifiers, repeat, true),
+                    key_event(key, modifiers, false, false),
+                ],
+            );
+            assert_eq!(app.session.project, before);
+        }
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                key_event(key, egui::Modifiers::COMMAND, false, true),
+                key_event(key, egui::Modifiers::COMMAND, false, false),
+            ],
+        );
+        assert_eq!(app.session.project.tracks, vec![before.tracks[1].clone()]);
+        assert_eq!(app.selected_clip, Some(clips[2]));
+        assert_eq!(app.session.project.assets, before.assets);
+        app.perform_history_action(HistoryAction::Undo, &ctx);
+        assert_eq!(app.session.project, before);
+    }
+}
+
+#[test]
 fn track_menu_deletes_single_or_multiple_tracks_through_the_shared_action() {
     for group in [false, true] {
         let (mut app, tracks, clips) = multi_clip_fixture();
@@ -1044,7 +1091,13 @@ fn track_menu_deletes_single_or_multiple_tracks_through_the_shared_action() {
         let survivor = format!("{:?}", app.session.project.tracks.last().unwrap());
         let output = menu_frame(&mut app, &ctx, vec![], true);
         assert!(app.track_action_enabled(TrackAction::Delete, &ctx));
-        assert!(TrackAction::Delete.shortcut().is_none());
+        assert_eq!(
+            TrackAction::Delete.shortcut(),
+            Some(egui::KeyboardShortcut::new(
+                egui::Modifiers::COMMAND,
+                egui::Key::Delete,
+            ))
+        );
         let label = if group {
             "Delete selected tracks"
         } else {

@@ -389,7 +389,11 @@ impl NativeMenu {
             }
             let key = action
                 .shortcut()
-                .map(|shortcut| shortcut.logical_key.name().to_lowercase())
+                .map(|shortcut| match shortcut.logical_key {
+                    // AppKit uses NSBackspaceCharacter for the Mac key labeled Delete.
+                    egui::Key::Delete => "\u{8}".to_owned(),
+                    key => key.name().to_lowercase(),
+                })
                 .unwrap_or_default();
             // SAFETY: The selector is defined above with an NSMenuItem argument.
             let item = unsafe {

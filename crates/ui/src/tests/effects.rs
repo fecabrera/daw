@@ -3585,6 +3585,28 @@ fn effect_delete_removes_selected_units_and_preserves_survivors_and_clips() {
     }
 }
 #[test]
+fn command_delete_reaches_the_selected_track_from_the_effect_lane() {
+    let (mut app, track, ctx, ids) = chain_fixture(false, false);
+    let point = unit_title_point(app.effects_bounds.units[0].header);
+    click(&mut app, &ctx, point);
+    assert_eq!(app.selected_effects, HashSet::from([ids[0]]));
+    assert_eq!(app.selected_track, Some(track));
+    let before = app.session.project.clone();
+    frame(
+        &mut app,
+        &ctx,
+        vec![effect_delete_key(
+            egui::Key::Backspace,
+            false,
+            egui::Modifiers::COMMAND,
+        )],
+    );
+    assert!(app.session.project.tracks.is_empty());
+    app.perform_history_action(HistoryAction::Undo, &ctx);
+    assert_eq!(app.session.project, before);
+}
+
+#[test]
 fn effect_shortcuts_respect_focus_modifiers_modal_and_drag_guards() {
     for select_all in [false, true] {
         let key = if select_all {

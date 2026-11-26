@@ -63,6 +63,7 @@ Space works from any DAW view when playback controls are available. Use
 | Rename the selected track or regular instrument layer | Cmd+R | Ctrl+R |
 | Group selected tracks | Cmd+G | Ctrl+G |
 | Ungroup the selected group | Cmd+Shift+G | Ctrl+Shift+G |
+| Delete selected tracks | Cmd+Delete | Ctrl+Delete or Ctrl+Backspace |
 | Toggle Mute | M | M |
 | Toggle Solo | S | S |
 | Undo a project edit | Cmd+Z | Ctrl+Z |

@@ -122,7 +122,8 @@ impl DawUi {
             | TrackAction::AddGroup
             | TrackAction::AddReturn
             | TrackAction::AddSubtrack
-            | TrackAction::Duplicate => !ctx.text_edit_focused() && ctx.dragged_id().is_none(),
+            | TrackAction::Duplicate
+            | TrackAction::Delete => !ctx.text_edit_focused() && ctx.dragged_id().is_none(),
             TrackAction::Mute | TrackAction::Solo if self.view_mode == ViewMode::Mixer => {
                 !ctx.text_edit_focused() && ctx.dragged_id().is_none()
             }
@@ -181,10 +182,12 @@ impl DawUi {
 
     pub fn perform_track_action(&mut self, action: TrackAction, ctx: &egui::Context) {
         // Native key equivalents call this entry directly. Keep menu buttons
-        // available on press, but execute mix actions only after pointer release.
+        // available on press, but delay pointer-sensitive actions until release.
         if !self.track_action_enabled(action, ctx)
-            || (matches!(action, TrackAction::Mute | TrackAction::Solo)
-                && ctx.input(|input| input.pointer.any_down()))
+            || (matches!(
+                action,
+                TrackAction::Mute | TrackAction::Solo | TrackAction::Delete
+            ) && ctx.input(|input| input.pointer.any_down()))
         {
             return;
         }
