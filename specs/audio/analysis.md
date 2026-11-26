@@ -1,10 +1,10 @@
 # Audio analysis
 
-`crates/audio-analysis` owns portable offline analysis over host-owned PCM. Its
-first routine detects transients. It has no project, UI, media, device, file,
-thread, stretch-ratio or rendering dependency. Dependency direction is consumer
-→ audio-analysis → RustFFT. Original code is BSD-2-Clause; use only the existing
-independently written detector, subject to the [independent implementation rule](timestretch.md#mandatory-independent-implementation-rule).
+`crates/audio-analysis` owns portable analysis over caller-owned PCM. It has no
+project, UI, media, device, file, thread, stretch-ratio or rendering dependency.
+Its default `detectors` feature links RustFFT for the transient, tempo and beat
+detectors. Original code is BSD-2-Clause. The detectors follow the
+[independent implementation rule](timestretch.md#mandatory-independent-implementation-rule).
 
 ## API, validation and control flow
 
@@ -40,6 +40,66 @@ an audio callback or in UI painting. The caller owns publication and caching.
 Cache analysis by source identity, rate, channels and detector identity, not
 stretch ratio. Identities remain Energy `energy-r4` and Combined
 `energy-spectral-v5`; move-only extraction changes neither thresholds nor output.
+
+## Loudness and peaks
+
+`audio_analysis::loudness::OfflineAnalyzer` measures caller-owned stereo PCM
+at the six project rates. Push one finite `[f32; 2]` frame at a time and
+finish once. The selected mode returns sample peak in dBFS, true peak in
+dBTP or integrated loudness in LUFS. A silent source returns no measurement.
+Integrated loudness requires at least 400 ms of input.
+
+The offline analyzer and live meter share K-weighting, true-peak
+reconstruction and the bounded gated energy distribution.
+`RollingLoudness` prepares its ring before processing and accepts finite
+stereo frames with bounded work per frame. At the six project rates it
+updates maxima on a 10 ms grid and emits observations every 100 ms.
+`IntegratedStatistics` reduces those observations to numeric measurements.
+`daw-loudness` owns transport, reset epochs, incomplete status, worker
+scheduling, display history and publication. The portable crate builds
+its loudness API without the default `detectors` feature, so the standalone meter
+does not need RustFFT. See [Loudness Meter](../effects/loudness-meter.md)
+and [Normalize gain](../editing/normalize-gain.md).
+
+## Streaming spectrum
+
+`audio_analysis::spectrum::SpectrumAnalyzer` prepares its work buffers before
+sampling. It accepts stereo frames and publishes a borrowed frame of 512
+logarithmic cell powers with an exclusive observation-end frame. Collection
+and analysis are bounded per input frame. A missed capture deadline resets
+the analyzer. This API uses the built-in incremental FFT and is available
+without the `detectors` feature.
+
+`daw-spectrum` binds the analyzer to the live meter, applies display
+release, and publishes the existing plugin telemetry. See the
+[spectrum measurement and publication contract](../effects/multiband-eq.md#spectrum-analysis-and-publication).
+
+## Waveform extrema
+
+`audio_analysis::waveform` computes and combines minimum and maximum pairs
+in sample order with a caller-supplied seed. Source peaks use an empty
+pair of positive and negative infinity. Stretch and display paths retain
+their existing zero seeds where applicable. Media and UI callers own
+window boundaries, cache layout, gain, time mapping and publication.
+
+## Biquad response
+
+`audio_analysis::response::FrequencyResponse` evaluates up to four serial
+biquads from their numerator and denominator coefficients and the sample
+rate. Coefficients use ascending powers of z⁻¹. The result is in dB and
+clamped to −144…+144 dB. The EQ supplies its processing coefficients.
+`daw-unit-core` reexports the type for the existing graph and plugin APIs.
+
+## PCM and power diagnostics
+
+`audio_analysis::signal` owns squared sum and spectral flatness calculations.
+`signal::Pcm` borrows complete interleaved frames at a positive sample
+rate. It measures tone frequency in Hz and linear RMS, stereo residual
+power and phase in radians, and event onset and width in frames.
+Stereo measurements require two channels. Event measurement
+uses fallible scratch allocation and runs offline. The stretch engine
+owns window selection, thresholds, phase resets and rendering. The CLI
+owns input preparation, fixture validation, report formats and exit status.
 
 ## Energy scan and combined spectral evidence
 

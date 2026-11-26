@@ -174,7 +174,7 @@ fn smooth_start(request: crate::Request, input: &[f32]) -> bool {
     }
     let mut envelope = [0.0f64; BLOCKS];
     for (rms, samples) in envelope.iter_mut().zip(input.chunks_exact(block_samples)) {
-        let power = samples.iter().map(|&s| f64::from(s).powi(2)).sum::<f64>();
+        let power = audio_analysis::signal::sum_squared(samples);
         *rms = (power / block_samples as f64).sqrt();
     }
     let peak = envelope.iter().copied().fold(0.0, f64::max);

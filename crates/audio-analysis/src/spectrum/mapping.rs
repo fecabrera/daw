@@ -1,5 +1,5 @@
 //! Fixed, peak-preserving log cells. Preparation validates every scan bound.
-use daw_unit_core::{SPECTRUM_BINS, spectrum_frequency};
+use super::{SPECTRUM_BINS, spectrum_frequency};
 #[derive(Clone, Copy, Default)]
 pub(super) struct Cell {
     pub first: u16,

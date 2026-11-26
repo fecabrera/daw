@@ -1,7 +1,8 @@
 //! Worker analysis of arranged dry clip sections. Publication remains one core edit.
 use crate::{Result, Session, error};
+pub use audio_analysis::loudness::MeasureMode as NormalizeMode;
+use audio_analysis::loudness::OfflineAnalyzer;
 use daw_core::{Edit, Id};
-pub use daw_loudness::MeasureMode as NormalizeMode;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -96,9 +97,8 @@ impl Session {
                 let audio =
                     self.render_clip_source(clip, &|| progress.cancel.load(Ordering::Relaxed))?;
                 let mut reader = daw_media::FrameReader::new(&audio);
-                let mut analyzer =
-                    daw_loudness::OfflineAnalyzer::new(self.project.sample_rate_hz, options.mode)
-                        .map_err(error)?;
+                let mut analyzer = OfflineAnalyzer::new(self.project.sample_rate_hz, options.mode)
+                    .map_err(error)?;
                 for local in 0..clip.length_frames {
                     if local.is_multiple_of(4096) {
                         progress.check()?;

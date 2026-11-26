@@ -1,6 +1,9 @@
 //! Incremental overlapped FFT. Capture copies precede ring overwrite.
-use super::{Complex, mapping};
-use daw_unit_core::SPECTRUM_BINS;
+use super::{Complex, SPECTRUM_BINS, mapping};
+
+fn vec_bytes<T>(values: &Vec<T>) -> u64 {
+    (values.capacity() as u64).saturating_mul(std::mem::size_of::<T>() as u64)
+}
 #[derive(Clone)]
 pub(super) struct Branch {
     ring: Vec<Complex>,
@@ -73,11 +76,11 @@ impl Branch {
         }
     }
     pub fn heap_bytes(&self) -> u64 {
-        daw_unit_core::memory::vec_bytes(&self.ring)
-            + daw_unit_core::memory::vec_bytes(&self.work)
-            + daw_unit_core::memory::vec_bytes(&self.window)
-            + daw_unit_core::memory::vec_bytes(&self.reverse)
-            + daw_unit_core::memory::vec_bytes(&self.twiddles)
+        vec_bytes(&self.ring)
+            + vec_bytes(&self.work)
+            + vec_bytes(&self.window)
+            + vec_bytes(&self.reverse)
+            + vec_bytes(&self.twiddles)
     }
     pub fn reset(&mut self) {
         self.pending = false;

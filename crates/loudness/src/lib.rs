@@ -1,8 +1,9 @@
 //! Transparent stereo loudness analysis. Prepare and retire workers outside audio.
-mod filter;
-mod offline;
-pub use offline::{MeasureMode, OfflineAnalyzer};
 mod statistics;
+use audio_analysis::loudness::RollingLoudness;
+#[cfg(test)]
+use audio_analysis::loudness::TruePeak;
+pub use audio_analysis::loudness::{MeasureMode, OfflineAnalyzer};
 use daw_unit_core::{
     BandMeter, EffectUnit, LevelMonitor, LoudnessMeter, LoudnessReading, LoudnessSettings,
     PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
@@ -25,7 +26,6 @@ impl daw_unit_core::MeterStorage for WorkerMeter {
         self.0.reset();
     }
 }
-use filter::{Biquad, TruePeak};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -33,13 +33,7 @@ use std::sync::{
 #[derive(Clone, Copy)]
 struct Observation {
     epoch: u64,
-    m: f64,
-    s: f64,
-    peak: f64,
-    max_m: f64,
-    max_s: f64,
-    seconds: f64,
-    ticks: u64,
+    measurement: audio_analysis::loudness::Observation,
     incomplete: bool,
 }
 const WORKER_STACK: usize = 256 * 1024;
@@ -110,20 +104,10 @@ pub struct Loudness {
     settings: LoudnessSettings,
     meter: Arc<LoudnessMeter>,
     worker: Option<Worker>,
-    shelf: [Biquad; 2],
-    highpass: [Biquad; 2],
-    tp: TruePeak,
-    powers: Box<[f64]>,
-    index: usize,
-    count: u64,
-    sum_m: f64,
-    sum_s: f64,
+    rolling: RollingLoudness,
     epoch: u64,
     previous_frame: Option<u64>,
     pending_reset: bool,
-    peak: f64,
-    max_m: f64,
-    max_s: f64,
     incomplete: bool,
     suspended: bool,
     output: LevelMonitor<3>,
@@ -140,7 +124,6 @@ impl Loudness {
     // Host snapshots detach publication. Cache checkpoints need no analysis thread.
     fn prepared(context: ProcessingContext, s: &LoudnessSettings, start_worker: bool) -> Self {
         let meter = Arc::new(LoudnessMeter::default());
-        let rate = context.sample_rate_hz as f64;
         meter.set_enabled(s.enabled);
         Self {
             context,
@@ -148,19 +131,9 @@ impl Loudness {
             worker: start_worker.then(|| Worker::new(meter.clone())),
             epoch: meter.epoch(),
             meter,
-            shelf: [Biquad::shelf(rate); 2],
-            highpass: [Biquad::highpass(rate); 2],
-            tp: TruePeak::new(),
-            powers: vec![0.0; context.sample_rate_hz as usize * 3].into_boxed_slice(),
-            index: 0,
-            count: 0,
-            sum_m: 0.0,
-            sum_s: 0.0,
+            rolling: RollingLoudness::new(context.sample_rate_hz),
             previous_frame: None,
             pending_reset: false,
-            peak: 0.0,
-            max_m: 0.0,
-            max_s: 0.0,
             incomplete: false,
             suspended: false,
             output: LevelMonitor::new(context.sample_rate_hz, s.enabled),
@@ -207,18 +180,8 @@ impl Loudness {
     }
     fn clear_front(&mut self) {
         self.epoch = self.meter.epoch();
-        self.count = 0;
-        self.index = 0;
-        self.sum_m = 0.0;
-        self.sum_s = 0.0;
-        self.peak = 0.0;
-        self.max_m = 0.0;
-        self.max_s = 0.0;
+        self.rolling.reset();
         self.incomplete = false;
-        for f in self.shelf.iter_mut().chain(self.highpass.iter_mut()) {
-            f.reset();
-        }
-        self.tp.reset();
         self.pending_reset = false;
     }
     pub fn process_at(&mut self, input: [f32; 2], frame: u64) -> [f32; 2] {
@@ -250,44 +213,15 @@ impl Loudness {
                 0.0
             }
         });
-        let mut power = 0.0;
         if self.incomplete {
             self.meter.mark_incomplete(self.epoch);
         }
-        for (c, sample) in x.into_iter().enumerate() {
-            let y = self.highpass[c].tick(self.shelf[c].tick(sample));
-            power += y * y;
-        }
-        let rate = self.context.sample_rate_hz as usize;
-        let m = rate * 2 / 5;
-        let n = self.powers.len();
-        if self.count >= m as u64 {
-            self.sum_m -= self.powers[(self.index + n - m) % n];
-        }
-        if self.count >= n as u64 {
-            self.sum_s -= self.powers[self.index];
-        }
-        self.powers[self.index] = power;
-        self.index = (self.index + 1) % n;
-        self.sum_m += power;
-        self.sum_s += power;
-        self.count += 1;
-        self.peak = self.peak.max(self.tp.tick(x, self.settings.hq));
+        let measurement = self.rolling.push(x, self.settings.hq);
         self.output.sample_output(x.map(|v| v as f32));
-        if self.count.is_multiple_of((rate / 100) as u64) {
-            self.max_m = self.max_m.max(self.sum_m.max(0.0) / m as f64);
-            self.max_s = self.max_s.max(self.sum_s.max(0.0) / n as f64);
-        }
-        if self.count.is_multiple_of((rate / 10) as u64) {
+        if let Some(measurement) = measurement {
             let o = Observation {
                 epoch: self.epoch,
-                m: self.sum_m.max(0.0) / m as f64,
-                s: self.sum_s.max(0.0) / n as f64,
-                peak: self.peak,
-                max_m: self.max_m,
-                max_s: self.max_s,
-                seconds: self.count as f64 / rate as f64,
-                ticks: self.count / (rate / 10) as u64,
+                measurement,
                 incomplete: self.incomplete,
             };
             if self
@@ -298,7 +232,6 @@ impl Loudness {
                 self.incomplete = true;
                 self.meter.mark_incomplete(self.epoch);
             }
-            self.peak = 0.0;
         }
         input
     }
@@ -324,7 +257,7 @@ impl EffectUnit for Loudness {
         self.process_at(input, frame)
     }
     fn heap_bytes(&self) -> u64 {
-        self.powers.len() as u64 * 8
+        self.rolling.heap_bytes()
             + 512 * std::mem::size_of::<Observation>() as u64
             + 14001 * 32
             + WORKER_STACK as u64

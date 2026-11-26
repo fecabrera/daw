@@ -1,13 +1,26 @@
-//! Portable offline audio analysis over interleaved f32 PCM.
+//! Portable audio analysis over caller-owned samples and coefficients.
 //! Detection allocates; call it on a worker, never an audio callback.
 #![forbid(unsafe_code)]
+pub mod loudness;
+#[cfg(feature = "detectors")]
 pub mod obtain;
+#[cfg(feature = "detectors")]
 mod percussion;
+pub mod response;
+pub mod signal;
+#[cfg(feature = "detectors")]
 mod spectral_attacks;
+pub mod spectrum;
+#[cfg(feature = "detectors")]
 pub mod tempo;
+#[cfg(feature = "detectors")]
 mod transients;
+pub mod waveform;
 
-use std::{fmt, ops::ControlFlow};
+use std::fmt;
+#[cfg(feature = "detectors")]
+use std::ops::ControlFlow;
+#[cfg(feature = "detectors")]
 pub use transients::TransientDetector;
 
 /// Initially supported processing rates. No project or device is required.
@@ -35,6 +48,7 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 /// Detection settings, independent of stretch ratio and rendered output size.
+#[cfg(feature = "detectors")]
 #[derive(Clone, Copy, Debug)]
 pub struct TransientRequest {
     pub sample_rate: u32,
@@ -44,6 +58,7 @@ pub struct TransientRequest {
     /// FFT planner internals. The returned vector is included in this budget.
     pub memory_limit_bytes: usize,
 }
+#[cfg(feature = "detectors")]
 impl TransientRequest {
     /// Combined detection is the default; use Energy for baseline comparisons.
     pub fn new(sample_rate: u32, channels: usize) -> Self {
@@ -113,12 +128,14 @@ impl TransientRequest {
         Ok(onsets)
     }
 }
+#[cfg(feature = "detectors")]
 fn checkpoint(progress: &mut impl FnMut(f32) -> ControlFlow<()>, value: f32) -> Result<(), Error> {
     match progress(value) {
         ControlFlow::Continue(()) => Ok(()),
         ControlFlow::Break(()) => Err(Error::Cancelled),
     }
 }
+#[cfg(feature = "detectors")]
 fn buffer<T: Clone>(size: usize, value: T) -> Result<Vec<T>, Error> {
     let mut buffer = Vec::new();
     buffer

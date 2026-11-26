@@ -42,9 +42,10 @@ one operation. Do not modify or create source recordings or prepared audio.
 
 ## Measurement and ownership
 
-`loudness::OfflineAnalyzer` is a synchronous bounded-memory worker API. It reuses
-the Loudness Meter's K-weighting, true-peak reconstruction and integrated gated
-energy distribution. No worker thread or telemetry queue is created by this API.
+`audio_analysis::loudness::OfflineAnalyzer` is a synchronous bounded-memory
+API. It shares K-weighting, true-peak reconstruction and integrated gated
+energy distribution with the Loudness Meter. It creates no worker thread or
+telemetry queue.
 Sample peak scans both channel magnitudes. True peak uses eight reconstruction
 phases and flushes 64 zero frames after input to include its delayed tail; padding
 never enters integrated loudness. This is the existing estimate, without a new

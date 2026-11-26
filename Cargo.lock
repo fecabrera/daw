@@ -2320,6 +2320,7 @@ dependencies = [
 name = "daw-loudness"
 version = "0.1.0"
 dependencies = [
+ "audio-analysis",
  "daw-unit-core",
  "rtrb",
 ]
@@ -2817,9 +2818,9 @@ dependencies = [
 name = "daw-project"
 version = "0.1.0"
 dependencies = [
+ "audio-analysis",
  "daw-core",
  "daw-engine",
- "daw-loudness",
  "daw-media",
  "daw-plugin-host",
  "daw-separation",
@@ -3012,6 +3013,7 @@ dependencies = [
 name = "daw-spectrum"
 version = "0.1.0"
 dependencies = [
+ "audio-analysis",
  "daw-unit-core",
 ]
 
@@ -3165,6 +3167,7 @@ dependencies = [
 name = "daw-ui"
 version = "0.1.0"
 dependencies = [
+ "audio-analysis",
  "daw-core",
  "daw-engine",
  "daw-equalizer",
@@ -3188,6 +3191,7 @@ dependencies = [
 name = "daw-unit-core"
 version = "0.1.0"
 dependencies = [
+ "audio-analysis",
  "serde",
  "serde_json",
  "uuid",

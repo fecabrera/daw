@@ -449,7 +449,7 @@ fn stretch_audio_inner(
 pub fn prepared_audio(audio: &AudioData, samples: Vec<[f32; 2]>) -> AudioData {
     let peaks = samples
         .chunks(crate::PEAK_BLOCK_FRAMES)
-        .map(|chunk| crate::peak_for_chunk(chunk, [[0.0; 2]; 2]))
+        .map(|chunk| audio_analysis::waveform::stereo_extrema(chunk, [[0.0; 2]; 2]))
         .collect();
     let prepared = AudioData {
         disk: None,

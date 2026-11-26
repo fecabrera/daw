@@ -2,6 +2,67 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Portable waveform, EQ, stretch and live loudness analysis — 2026-11-26
+
+Generated PCM and coefficient fixtures matched the pre-extraction baseline.
+
+| Area | Before and after comparison |
+| --- | --- |
+| Waveforms | 4,950 buckets matched bit for bit across the empty and zero seeds, signed zero, empty buckets and short final buckets. Resident, disk-backed and prepared stretch peaks also matched on 42 fixtures. The 42 preparation cache payloads matched after accounting for their build-specific keys and checksums. |
+| EQ | 15,390 response points matched bit for bit across the six project rates, unity and cascades of up to four biquads. |
+| Stretch diagnostics | 54 WAV hashes and non-timing report fields matched across the six rates. Eleven failures matched exit codes and messages for invalid windows, a missing event, too few tone cycles and mono inputs to stereo measurements. Reference-free builds also matched. Instrumented builds chose the same timing and synthesis window sizes on 42 cases, including the 2,048-frame synthesis floor for sustained broadband input. |
+| Live loudness | 648 packed snapshots and pass-through sample bits matched across six rates, both quality modes, reset and nonfinite input. The prepared callback made zero allocations or deallocations in the fixture. Heap estimates matched. |
+
+The standalone BSD-2-Clause crate passed tests and doctests outside the
+DAW workspace with and without detectors. A minimal external consumer
+built and ran in both configurations. The base feature graph contains
+no external crate. The verified crate package includes the BSD license
+and the existing optional RustFFT notices.
+
+Focused checks passed for resident and disk peaks, waveform preview
+compaction, the plotted EQ response, meter transport controls and queue
+pressure. Formatting, strict workspace Clippy and the headless CLI smoke
+suite passed.
+
+The debug and release workspace suites each passed 3,851 tests with 25
+ignored and 22 native Audio Unit registration cases filtered. The
+Loudness Meter registration probe returned a null component on both
+the pre-extraction and current builds in this environment.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+On macOS arm64, the local debug app and all six Loudness Meter and Multiband
+EQ plugin bundles passed strict signature checks. Each CLAP, VST3 and AUv2
+package includes the BSD license and excludes RustFFT from its dependency
+graph. Native host sessions, Windows and Linux packages, and hardware
+checks remain open.
+
+## Portable loudness and spectrum extraction — 2026-11-26
+
+The extracted BSD-2-Clause `audio-analysis` crate passed five tests out
+of the DAW workspace with default features disabled and no linked crate
+dependencies. A synthetic baseline comparison matched offline loudness
+results bit for bit in 72 cases spanning all six project rates and all
+three modes. A separate spectrum comparison matched the prior cell powers
+and observation end frames bit for bit in 513 windows across all six rates.
+The focused tests passed for normalization, the live loudness meter and
+spectrum publication.
+
+The inspected standalone Loudness Meter, EQ and multiband compressor
+plugin dependency graphs omitted RustFFT. Formatting and strict workspace
+Clippy passed. Both workspace suites passed 3,850 tests, with 25 ignored
+and 22 native Audio Unit cases filtered. The local macOS debug app passed
+strict signature verification. Native meter interaction and performance
+were not measured in this pass.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
 ## Timeline playhead follow — 2026-11-26
 
 Automated checks advanced the displayed playhead in playback and recording

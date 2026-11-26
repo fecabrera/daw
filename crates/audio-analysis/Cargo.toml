@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
 license = "BSD-2-Clause"
-description = "Portable offline audio analysis over host-owned PCM"
+description = "Portable audio analysis over host-owned PCM"
+
+[features]
+default = ["detectors"]
+detectors = ["dep:rustfft"]
 
 [dependencies]
 # Explicit version keeps this package usable outside the DAW workspace.
-rustfft = "=6.4.1"
+rustfft = { version = "=6.4.1", optional = true }

@@ -42,6 +42,9 @@ The additive `pitch` report object records semitones, frequency factor, and the 
 
 Metrics report their pass/fail flags. Unspecified metrics remain unassessed. Arbitrary files get diagnostics, not invented pitch/transient acceptance. Keep raw outputs for listening. Full corpus performance and listening acceptance remain separate work.
 
+The CLI validates fixtures and maps their event windows. The numeric
+measurements run through the borrowed PCM API in `audio-analysis`.
+
 ## Reuse and licensing
 
 Keep sibling `audio-analysis`, `timestretch` and `timestretch-cli` directories when extracting these packages. Their manifests specify portable dependencies and have no workspace inheritance. Build with `cargo build --manifest-path /path/to/timestretch-cli/Cargo.toml --release`; scripts and the installed binary have no repository-relative runtime paths.

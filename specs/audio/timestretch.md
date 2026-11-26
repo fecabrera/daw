@@ -43,6 +43,11 @@ Live stretching, ratio/pitch automation, formant preservation, tempo detection, 
 
 Dependency direction is consumer → portable engine. The DAW's media layer adapts portable types to project types. Share any common reference-adapter code through a small DAW-independent support library if needed; do not make the engine depend on the CLI or the CLI depend on the DAW. A tiny external Cargo consumer must be able to use the engine with only sample buffers and parameters. Standalone builds, examples, and scripts must work from arbitrary directories without a DAW installation or running window.
 
+The Integrated engine uses the squared sum and spectral flatness helpers in
+[`audio-analysis`](analysis.md#pcm-and-power-diagnostics). The engine owns
+the FFT, windows, classifier thresholds and rendering decisions.
+The CLI uses the portable PCM measurement routines for its diagnostics.
+
 Use narrow concrete types for a validated request, reduced positive integer ratio, processor, and typed errors. Exact Rust signatures remain an implementation choice. A request identifies sample rate, channel count, input frames, and ratio; buffers have an explicit layout. One shared time map and linked analysis decisions govern stereo. Unrelated mono processing of L and R is not sufficient.
 
 Use safe Rust for new engine code and permissively licensed Rust dependencies. Record resolved versions, enabled features, licenses, and notices. The standalone crate must not need Rubber Band for its default build or ordinary tests. The combined DAW retains its existing Rubber Band obligations while that backend remains linked.

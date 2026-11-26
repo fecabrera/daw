@@ -5,5 +5,6 @@ edition.workspace=true
 rust-version.workspace=true
 license="BSD-2-Clause"
 [dependencies]
+audio-analysis.workspace=true
 daw-unit-core.workspace=true
 rtrb.workspace=true

@@ -4,6 +4,7 @@ use crate::{
     phase_tracking::{PhaseFrame, PhaseTracker},
     short_glide::ShortGlide,
 };
+use audio_analysis::signal::{spectral_flatness, sum_squared};
 use rustfft::{FftPlanner, num_complex::Complex};
 use std::{f64::consts::TAU, ops::ControlFlow};
 
@@ -290,13 +291,12 @@ fn sustained_broadband(
     if input.len() / block_samples < MIN_BLOCKS {
         return Ok(false);
     }
-    let power = |block: &[f32]| block.iter().map(|&s| f64::from(s).powi(2)).sum::<f64>();
     let mut peak = 0.0f64;
     for (index, block) in input.chunks_exact(block_samples).enumerate() {
         if index.is_multiple_of(128) {
             checkpoint(progress, 0.10)?;
         }
-        peak = peak.max(power(block));
+        peak = peak.max(sum_squared(block));
     }
     if peak == 0.0 {
         return Ok(false);
@@ -307,7 +307,7 @@ fn sustained_broadband(
         if index.is_multiple_of(128) {
             checkpoint(progress, 0.10)?;
         }
-        if power(block) >= threshold {
+        if sum_squared(block) >= threshold {
             active += 1;
             if active >= MIN_BLOCKS {
                 return Ok(true);
@@ -425,13 +425,4 @@ fn analysis_width(
             width
         },
     )
-}
-
-fn spectral_flatness(power: &[f64], mean: f64) -> f64 {
-    (power
-        .iter()
-        .map(|p| (p / mean).max(1e-30).ln())
-        .sum::<f64>()
-        / power.len() as f64)
-        .exp()
 }

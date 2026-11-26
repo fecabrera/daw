@@ -7,6 +7,12 @@ third-party dependency or source import is required.
 
 ## Measurement contract
 
+`audio-analysis` owns the K-weighting, true-peak reconstruction and gated
+energy distribution shared with [offline normalization](../editing/normalize-gain.md).
+It also owns rolling windows, maxima and measurement reduction.
+`daw-loudness` owns the live meter, its transport and reset behavior, and
+publication to the UI.
+
 - All six project rates are supported. Each channel has independent double-precision
   K-weighting: the BS.1770 pre-filter and RLB high-pass prototypes transformed at
   the processing rate. Sum channel powers after filtering; do not sum channels.
@@ -42,9 +48,9 @@ product is not an acceptance claim.
 
 ## Ownership and callback behavior
 
-`unit-core` owns versioned settings and fixed atomic telemetry. `loudness` owns
-K-weighting, prepared energy windows, true-peak reconstruction and the analysis
-worker. The audio function returns the original samples without multiplication,
+`unit-core` owns versioned settings and fixed atomic telemetry. `daw-loudness`
+prepares the numeric analyzer and owns the analysis worker. The audio
+function returns the original samples without multiplication,
 filtering or delay, including signed zero and nonfinite bit patterns. Nonfinite
 input contributes silence to analysis and marks it incomplete. Format boundaries
 retain their existing nonfinite-buffer rejection policy.
@@ -52,8 +58,9 @@ retain their existing nonfinite-buffer rejection policy.
 The callback produces fixed observations through a 512-slot `rtrb` queue. It does
 not allocate, lock, wait, dispatch work or release final audio owners. Queue-full
 sets an epoch-tagged incomplete flag visible even if the final observation is
-lost. Worker-start failure uses the same indication. The worker owns integrated
-gating, LRA and history reduction. It publishes through `UnitMeter` and a bounded
+lost. Worker-start failure uses the same indication. The worker runs the
+portable integrated and range calculations and keeps display history.
+It publishes through `UnitMeter` and a bounded
 atomic snapshot. Readers make at most three attempts. Writers try once; a
 contending publication is skipped. A snapshot generation masks results racing
 with Reset or header power. Worker retirement sets a stop flag and joins the

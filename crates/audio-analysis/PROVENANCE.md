@@ -14,7 +14,31 @@ of the full SuperFlux algorithm. The mandatory independent implementation rule
 in specs/audio/timestretch.md continues to apply.
 
 RustFFT 6.4.1 (MIT OR Apache-2.0) remains the only direct external dependency.
+The `detectors` feature enables it.
 Bundled notices in licenses/ cover its existing transitive dependencies.
+
+## Loudness and peak measurement
+
+Moved the existing BSD-2-Clause offline analyzer, K-weighting filters,
+true-peak reconstruction and gated energy distribution from `daw-loudness`.
+The portable rolling windows, maxima and integrated statistics also come from
+`daw-loudness`. The extraction retains the coefficients and measurement rules in the
+[Loudness Meter spec](../../specs/effects/loudness-meter.md).
+
+## Waveform extrema, filter response and signal diagnostics
+
+The waveform reductions come from `daw-media` and `daw-ui`. The
+coefficient-only biquad evaluation comes from `daw-unit-core`. The PCM
+measurement and spectral power calculations come from `timestretch-cli`
+and `timestretch`. All are existing first-party BSD-2-Clause code.
+This extraction introduces no dependency or reference engine code.
+
+## Streaming spectrum
+
+Moved the existing BSD-2-Clause incremental FFT and logarithmic cell mapping
+from `daw-spectrum`. The extraction retains the stereo power calculation,
+capture windows and work budget. The live adapter still publishes the
+[meter and plugin readings](../../specs/effects/multiband-eq.md#spectrum-analysis-and-publication).
 
 ## Source tempo estimator
 

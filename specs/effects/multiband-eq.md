@@ -102,6 +102,9 @@ The combined curve and unselected band points use `palette.secondary`, matching 
 
 `equalizer::band_response` derives a portable `FrequencyResponse` from the actual private FunDSP SVF coefficients. Test it against the backend transfer response for every mode, Q range and supported sample rate. Effective modulation snapshots drive curves outside active edits; active drafts show their proposed base settings. The graph does not alter DSP or persist display state.
 
+`audio-analysis` evaluates the response from the supplied coefficients.
+`daw-unit-core` keeps the existing `FrequencyResponse` export.
+
 Normal point drags change logarithmic Frequency and, for gain-using modes, Gain. Command on macOS or Ctrl on Windows/Linux selects Q-only dragging. Read the modifier every frame so pressing or releasing it switches modes within the same pointer gesture. At each switch, retain the current draft and restart displacement accumulation from those values. Modifier-only frames must not change values; subsequent movement changes only the selected mode. Right/up increases Q; left/down decreases it, exponentially within 0.1…10. Shift reduces sensitivity tenfold. Accumulate displacement from the current mode segment's starting values to avoid drift. Retain the full gesture's original values for cancellation. In the DAW, publish all Frequency, Gain and Q changes atomically on release as one history transaction, independent of the number of mode switches. One Undo restores all three values; one Redo reapplies them. Escape, focus loss, hidden/disabled UI or invalidated target settings cancels. Preserve stable band IDs across interactions.
 
 When both Frequency and Gain are available, share the [tempo-point axis lock](../audio/timing-maps.md). The first motion selects the dominant axis. After 12 logical points of perpendicular displacement, switch axes and apply only the excess. Restart the lock when returning from Q mode. Keep single-parameter drag modes unrestricted on their supported axes. Show the draft values in the active band's knobs while the shared graph preview worker prepares audio.
@@ -112,9 +115,10 @@ The DAW keeps held drafts outside Session. Clone the render plan, validate the c
 
 `SpectrumMeter` publishes coherent frames with 512 logarithmic measured cells
 from 20 Hz to 20 kHz, sample rate, readiness, reset generation and an exclusive
-observation-end frame clock. The shared `daw-spectrum::SpectrumAnalyzer` packs L+iR through a full-range Hann
-branch into a
-prepared radix-2 FFT. Sum positive/negative coefficient powers to preserve mean
+observation-end frame clock. The `daw-spectrum` adapter applies display
+release and publication. The portable `audio-analysis` analyzer packs L+iR
+through a full-range Hann branch into a prepared radix-2 FFT. Sum
+positive/negative coefficient powers to preserve mean
 stereo energy, including opposite-phase audio. Analysis follows final output,
 never enters PCM, and adds no audio latency.
 

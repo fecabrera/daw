@@ -6,6 +6,7 @@ rust-version.workspace = true
 license = "BSD-2-Clause"
 
 [dependencies]
+audio-analysis.workspace = true
 serde.workspace = true
 uuid.workspace = true
 serde_json.workspace = true

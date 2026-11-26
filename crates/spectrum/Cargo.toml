@@ -4,7 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license = "BSD-2-Clause"
-description = "Prepared bounded live stereo spectrum analysis and coherent telemetry"
+description = "Live spectrum meter binding and coherent plugin telemetry"
 
 [dependencies]
+audio-analysis.workspace = true
 daw-unit-core.workspace = true

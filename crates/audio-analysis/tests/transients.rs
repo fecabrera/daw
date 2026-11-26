@@ -1,3 +1,5 @@
+#![cfg(feature = "detectors")]
+
 use audio_analysis::{Error, SAMPLE_RATES, TransientDetector as Mode, TransientRequest};
 use std::{f64::consts::TAU, ops::ControlFlow};
 

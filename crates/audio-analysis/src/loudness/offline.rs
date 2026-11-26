@@ -1,8 +1,5 @@
 //! Synchronous, bounded-memory analysis for workers. No publication thread or audio ownership.
-use crate::{
-    filter::{Biquad, TruePeak},
-    statistics::{Distribution, db},
-};
+use super::{Distribution, KWeighting, TruePeak, db, lufs};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum MeasureMode {
@@ -36,12 +33,12 @@ impl MeasureMode {
     }
 }
 
+/// Synchronous sample peak, true peak or integrated loudness measurement.
 pub struct OfflineAnalyzer {
     mode: MeasureMode,
     peak: f64,
     tp: Option<TruePeak>,
-    shelf: [Biquad; 2],
-    highpass: [Biquad; 2],
+    weighting: KWeighting,
     powers: Vec<f64>,
     distribution: Option<Distribution>,
     sum: f64,
@@ -50,21 +47,20 @@ pub struct OfflineAnalyzer {
 }
 impl OfflineAnalyzer {
     pub fn new(rate: u32, mode: MeasureMode) -> Result<Self, &'static str> {
-        if ![44100, 48000, 88200, 96000, 176400, 192000].contains(&rate) {
+        if !crate::SAMPLE_RATES.contains(&rate) {
             return Err("Unsupported analysis sample rate");
         }
         Ok(Self {
             mode,
             peak: 0.0,
             tp: (mode == MeasureMode::TruePeak).then(TruePeak::new),
-            shelf: [Biquad::shelf(rate as f64); 2],
-            highpass: [Biquad::highpass(rate as f64); 2],
+            weighting: KWeighting::new(f64::from(rate)),
             powers: if mode == MeasureMode::Integrated {
                 vec![0.0; rate as usize * 2 / 5]
             } else {
                 vec![]
             },
-            distribution: (mode == MeasureMode::Integrated).then(Distribution::new),
+            distribution: (mode == MeasureMode::Integrated).then(Distribution::default),
             sum: 0.0,
             count: 0,
             hop: (rate / 10) as u64,
@@ -80,18 +76,14 @@ impl OfflineAnalyzer {
             self.peak = self.peak.max(tp.tick(x, true));
         }
         if let Some(distribution) = &mut self.distribution {
-            let mut power = 0.0;
-            for (c, v) in x.into_iter().enumerate() {
-                let y = self.highpass[c].tick(self.shelf[c].tick(v));
-                power += y * y;
-            }
+            let power = self.weighting.power(x);
             let index = (self.count % self.powers.len() as u64) as usize;
             self.sum += power - self.powers[index];
             self.powers[index] = power;
             let count = self.count + 1;
             if count >= self.powers.len() as u64 && count.is_multiple_of(self.hop) {
                 let power = self.sum.max(0.0) / self.powers.len() as f64;
-                if crate::statistics::lufs(power) > 40.0 {
+                if lufs(power) > 40.0 {
                     return Err("Loudness exceeds the analysis range");
                 }
                 distribution.add(power);

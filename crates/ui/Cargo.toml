@@ -6,6 +6,7 @@ rust-version.workspace = true
 license = "BSD-2-Clause"
 
 [dependencies]
+audio-analysis.workspace = true
 daw-plugin-host.workspace = true
 daw-equalizer.workspace = true
 daw-unit-ui.workspace = true

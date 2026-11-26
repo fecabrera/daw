@@ -502,22 +502,7 @@ fn resample_scratch(input_rate: u32, output_rate: u32) -> Result<u64> {
 }
 
 pub const PEAK_BLOCK_FRAMES: usize = 256;
-const EMPTY_PEAK: [[f32; 2]; 2] = [[f32::INFINITY, f32::NEG_INFINITY]; 2];
-
-fn include_peak_frame(peak: &mut [[f32; 2]; 2], frame: [f32; 2]) {
-    for (extrema, sample) in peak.iter_mut().zip(frame) {
-        extrema[0] = extrema[0].min(sample);
-        extrema[1] = extrema[1].max(sample);
-    }
-}
-
-fn peak_for_chunk(chunk: &[[f32; 2]], seed: [[f32; 2]; 2]) -> [[f32; 2]; 2] {
-    let mut peak = seed;
-    for &frame in chunk {
-        include_peak_frame(&mut peak, frame);
-    }
-    peak
-}
+const EMPTY_PEAK: [[f32; 2]; 2] = [audio_analysis::waveform::EMPTY; 2];
 
 pub fn prepare_peaks(
     samples: &[[f32; 2]],
@@ -529,7 +514,7 @@ pub fn prepare_peaks(
             if cancelled() {
                 return Err(Error("Audio preparation cancelled".into()));
             }
-            Ok(peak_for_chunk(chunk, EMPTY_PEAK))
+            Ok(audio_analysis::waveform::stereo_extrema(chunk, EMPTY_PEAK))
         })
         .collect()
 }

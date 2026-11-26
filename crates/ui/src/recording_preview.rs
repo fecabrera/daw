@@ -1,5 +1,6 @@
 //! Bounded capture thumbnails and the transient Timeline overlay.
 use super::*;
+use audio_analysis::waveform;
 use daw_project::midi_recording::TrackPreview;
 use egui::Color32;
 use std::sync::Arc;
@@ -22,9 +23,7 @@ impl AudioPreview {
             if self.frames / self.bin_frames == MAX_PEAKS as u64 {
                 for peaks in &mut self.peaks {
                     for index in 0..MAX_PEAKS / 2 {
-                        let [a, b] = peaks[2 * index];
-                        let [c, d] = peaks[2 * index + 1];
-                        peaks[index] = [a.min(c), b.max(d)];
+                        peaks[index] = waveform::merge(peaks[2 * index], peaks[2 * index + 1]);
                     }
                     peaks.truncate(MAX_PEAKS / 2);
                 }
@@ -36,12 +35,9 @@ impl AudioPreview {
             let (bin, rest) = samples.split_at(length * routes);
             for (route, peaks) in self.peaks.iter_mut().enumerate() {
                 let peak = bin[route..].iter().step_by(routes).fold(
-                    peaks
-                        .get(index)
-                        .copied()
-                        .unwrap_or([f32::INFINITY, f32::NEG_INFINITY]),
-                    |[low, high], &[left, right]| {
-                        [low.min(left.min(right)), high.max(left.max(right))]
+                    peaks.get(index).copied().unwrap_or(waveform::EMPTY),
+                    |peak, &[left, right]| {
+                        waveform::merge(peak, [left.min(right), left.max(right)])
                     },
                 );
                 if index == peaks.len() {
@@ -161,10 +157,9 @@ impl DawUi {
                             .enumerate()
                         {
                             let index = first_bin + index * bins_per_pixel;
-                            let [low, high] = bins.iter().fold(
-                                [f32::INFINITY, f32::NEG_INFINITY],
-                                |[low, high], &[a, b]| [low.min(a), high.max(b)],
-                            );
+                            let [low, high] = bins
+                                .iter()
+                                .fold(waveform::EMPTY, |peak, &bin| waveform::merge(peak, bin));
                             let first = index as u64 * audio.bin_frames;
                             let last =
                                 (first + bins.len() as u64 * audio.bin_frames).min(audio.frames);

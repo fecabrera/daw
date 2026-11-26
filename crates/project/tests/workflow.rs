@@ -5731,7 +5731,7 @@ fn normalize_loudness_and_true_peak_reach_targets_from_prepared_audio_and_fail_a
         normalized.project.edit(Edit::Batch(edits)).unwrap();
         let clip = &normalized.project.tracks[0].clips[0];
         let gain = daw_core::linear_gain(clip.gain_db);
-        let mut analyzer = daw_loudness::OfflineAnalyzer::new(48000, mode).unwrap();
+        let mut analyzer = audio_analysis::loudness::OfflineAnalyzer::new(48000, mode).unwrap();
         let mut reader = daw_media::FrameReader::new(normalized.audio_for_clip(clip).unwrap());
         for local in 0..clip.length_frames {
             analyzer

@@ -1,9 +1,40 @@
 //! BS.1770 K-weighting prototypes transformed at the processing rate.
 #[derive(Clone, Copy, Default)]
-pub struct Biquad {
+struct Biquad {
     b: [f64; 3],
     a: [f64; 2],
     z: [f64; 2],
+}
+
+/// Independent K-weighting for each stereo channel.
+pub struct KWeighting {
+    shelf: [Biquad; 2],
+    highpass: [Biquad; 2],
+}
+
+impl KWeighting {
+    pub fn new(rate: f64) -> Self {
+        Self {
+            shelf: [Biquad::shelf(rate); 2],
+            highpass: [Biquad::highpass(rate); 2],
+        }
+    }
+
+    #[inline]
+    pub fn power(&mut self, frame: [f64; 2]) -> f64 {
+        let mut power = 0.0;
+        for (channel, sample) in frame.into_iter().enumerate() {
+            let filtered = self.highpass[channel].tick(self.shelf[channel].tick(sample));
+            power += filtered * filtered;
+        }
+        power
+    }
+
+    pub fn reset(&mut self) {
+        for filter in self.shelf.iter_mut().chain(self.highpass.iter_mut()) {
+            filter.reset();
+        }
+    }
 }
 impl Biquad {
     pub fn shelf(rate: f64) -> Self {
@@ -45,11 +76,19 @@ impl Biquad {
     }
 }
 #[derive(Clone)]
+/// Streaming stereo true-peak reconstruction with precomputed filters.
 pub struct TruePeak {
     kernels: [[f64; 64]; 8],
     history: [[f64; 2]; 64],
     index: usize,
 }
+
+impl Default for TruePeak {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TruePeak {
     pub fn new() -> Self {
         let kernels = std::array::from_fn(|phase| {
@@ -78,6 +117,7 @@ impl TruePeak {
         self.history.fill([0.0; 2]);
         self.index = 0;
     }
+    #[inline]
     pub fn tick(&mut self, x: [f64; 2], hq: bool) -> f64 {
         self.history[self.index] = x;
         self.index = (self.index + 1) % 64;

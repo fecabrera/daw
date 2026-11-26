@@ -557,7 +557,7 @@ impl DiskAudioWriter {
                 for sample in frame {
                     self.bytes.extend_from_slice(&sample.to_le_bytes());
                 }
-                crate::include_peak_frame(&mut self.peak, *frame);
+                audio_analysis::waveform::include_stereo(&mut self.peak, *frame);
                 self.peak_frames += 1;
                 if self.peak_frames == crate::PEAK_BLOCK_FRAMES {
                     self.push_peak()?;

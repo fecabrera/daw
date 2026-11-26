@@ -1,8 +1,46 @@
 # Audio analysis
 
-Portable offline analysis over host-owned interleaved f32 PCM. Original code is
-BSD-2-Clause. The first routine detects combined energy/spectral transients;
-Energy is available as a baseline. No DAW, timestretch, device or file dependency.
+Portable analysis over caller-owned PCM. Original code is [BSD-2-Clause](LICENSE).
+There is no DAW, timestretch, device or file dependency.
+
+## Loudness and peak measurement
+
+Use `audio_analysis::loudness::OfflineAnalyzer` for sample peak, true peak or
+integrated loudness. Feed it stereo `[f32; 2]` frames and call `finish` for
+the measurement. The [measurement specification](../../specs/audio/analysis.md#loudness-and-peaks)
+describes the result and input limits.
+
+Use `RollingLoudness` for prepared 400 ms and three-second windows.
+It emits numeric observations at 100 ms intervals at the project rates.
+`IntegratedStatistics` reduces those observations to integrated loudness,
+loudness range and peak ratios. The caller schedules the reduction and
+handles reset, transport and display history.
+
+## Streaming spectrum
+
+Prepare `audio_analysis::spectrum::SpectrumAnalyzer` at the input rate, then
+feed it stereo frames. Each ready update gives the powers of 512 logarithmic
+frequency cells and the frame position of the observation. The analyzer
+prepares its storage in advance and does bounded work per input frame.
+
+## Waveforms, filter response and diagnostics
+
+- `waveform` folds stereo samples into minimum and maximum pairs. The caller
+  supplies the initial pair and chooses window sizes.
+- `response::FrequencyResponse` evaluates a cascade of up to four biquads in dB
+  from their coefficients and sample rate.
+- `signal` provides power and spectral flatness helpers.
+  `signal::Pcm` measures tones, channel residual, stereo phase and events from
+  a borrowed interleaved PCM buffer. Event measurement allocates scratch space.
+
+All of these APIs, including loudness and spectrum, are available with
+`default-features = false`. This build has no external crate dependencies.
+
+## Transient detection
+
+The default `detectors` feature includes the transient, tempo and beat detectors.
+The transient detector combines energy and spectral evidence. Energy is
+available as a baseline.
 
 ```rust
 use audio_analysis::TransientRequest;
@@ -24,7 +62,6 @@ and retains its older detection adapter for compatibility.
 
 See the [implementation contract](../../specs/audio/analysis.md) for control flow,
 thresholds, errors and limits, and [provenance](PROVENANCE.md) for design history.
-RustFFT 6.4.1 and its transitive dependency notices are in licenses/. No dependency
-versions were upgraded by the extraction.
+The notices for RustFFT 6.4.1 and its transitive dependencies are in `licenses/`.
 
 Run `cargo test -p audio-analysis --all-targets` and `cargo test -p audio-analysis --doc`.

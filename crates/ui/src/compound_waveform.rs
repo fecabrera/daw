@@ -124,8 +124,8 @@ impl DawUi {
                             self.session.project.sample_rate_hz,
                         );
                     }
-                    result[0] = result[0].min(peak[0] * scale);
-                    result[1] = result[1].max(peak[1] * scale);
+                    result =
+                        audio_analysis::waveform::merge(result, [peak[0] * scale, peak[1] * scale]);
                 }
             }
         }

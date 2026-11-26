@@ -201,7 +201,7 @@ pub fn preview_extrema(
         .into_iter()
         .fold([0.0_f32; 2], |result, (start, count)| {
             let peak = read(start, count);
-            [result[0].min(peak[0]), result[1].max(peak[1])]
+            audio_analysis::waveform::merge(result, peak)
         })
 }
 
@@ -217,16 +217,13 @@ fn source_extrema(audio: &AudioData, start: u64, count: u64, channel: usize) -> 
             && end - position >= PEAK_BLOCK_FRAMES
             && let Some(peak) = audio.peaks.get(position / PEAK_BLOCK_FRAMES)
         {
-            result[0] = result[0].min(peak[channel][0]);
-            result[1] = result[1].max(peak[channel][1]);
+            result = audio_analysis::waveform::merge(result, peak[channel]);
             position += PEAK_BLOCK_FRAMES;
         } else {
             if let Some(sample) = audio.preview_sample(position as u64) {
-                result[0] = result[0].min(sample[channel]);
-                result[1] = result[1].max(sample[channel]);
+                result = audio_analysis::waveform::include(result, sample[channel]);
             } else if let Some(peak) = audio.peaks.get(position / PEAK_BLOCK_FRAMES) {
-                result[0] = result[0].min(peak[channel][0]);
-                result[1] = result[1].max(peak[channel][1]);
+                result = audio_analysis::waveform::merge(result, peak[channel]);
             }
             position += 1;
         }

@@ -30,7 +30,7 @@ daw-plugin-auv2 = { path = "crates/plugin-auv2" }
 bindgen = "=0.72.1"
 cc = "1"
 daw-spectrum = { path = "crates/spectrum" }
-audio-analysis = { path = "crates/audio-analysis", version = "0.1.0" }
+audio-analysis = { path = "crates/audio-analysis", version = "0.1.0", default-features = false }
 daw-shimmer-reverb = { path = "crates/shimmer-reverb" }
 daw-multiband-compressor = { path = "crates/multiband-compressor" }
 daw-loudness = { path = "crates/loudness" }
