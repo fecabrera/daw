@@ -723,6 +723,117 @@ fn oscillator_strip_reorder_uses_insertion_slots_without_changing_pitch_routes()
 }
 
 #[test]
+fn oscillator_strip_reorder_covers_every_three_source_permutation() {
+    use crate::instrument_workspace::InstrumentSubview;
+
+    let permutations = [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ];
+    let layouts = [
+        (InstrumentSubview::Layer, false),
+        (InstrumentSubview::Layer, true),
+        (InstrumentSubview::Sources, false),
+        (InstrumentSubview::Sources, true),
+    ];
+    // Each source has four insertion slots. The slots on either side of
+    // the dragged source both leave it in its original position.
+    let destination_positions = [[0, 0, 1, 2], [0, 1, 1, 2], [0, 1, 2, 2]];
+    for (view, compact) in layouts {
+        for order in permutations {
+            for (from, positions) in destination_positions.iter().enumerate() {
+                for (slot, &to) in positions.iter().enumerate() {
+                    let case = format!(
+                        "{view:?}, compact={compact}, {order:?}, source {from}, slot {slot}"
+                    );
+                    let (mut app, ctx, owners) = setup(settings::ColorTheme::Dark, compact);
+                    app.set_instrument_subview(view, &ctx);
+                    let layer = &mut app.session.project.tracks[0]
+                        .instrument
+                        .as_mut()
+                        .unwrap()
+                        .layers[0];
+                    layer.oscillators.push(Default::default());
+                    let sources = layer.oscillators.clone();
+                    layer.oscillators = order.map(|i| sources[i].clone()).to_vec();
+                    for (i, source) in sources.iter().enumerate() {
+                        let mut route =
+                            daw_core::Modulation::new(daw_core::ModulationParameter::Pitch);
+                        route.target = Some(source.id);
+                        route.amount = 4.0 * (i + 1) as f32;
+                        layer.oscillator_modulations.push(route);
+                    }
+                    let original = layer.clone();
+                    frame(&mut app, &ctx, vec![]);
+                    let origin = source(
+                        &app,
+                        owners[0],
+                        InstrumentComponent::Oscillator(original.oscillators[from].id),
+                    );
+                    let slots: Vec<_> = app
+                        .instrument_ui
+                        .oscillator_slots
+                        .iter()
+                        .filter(|(owner, _, _)| *owner == owners[0])
+                        .map(|(_, _, rect)| *rect)
+                        .collect();
+                    let (destination, line_x) = if let Some(rect) = slots.get(slot) {
+                        (rect.center() - egui::vec2(4.0, 0.0), rect.left())
+                    } else {
+                        let end = slots[2].right_center();
+                        (end - egui::vec2(2.0, 0.0), end.x)
+                    };
+
+                    start(&mut app, &ctx, origin);
+                    frame(&mut app, &ctx, vec![egui::Event::PointerMoved(destination)]);
+                    let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
+                    assert!(
+                        app.component_drag.as_ref().is_some_and(|drag| drag.active),
+                        "{case}"
+                    );
+                    let preview = shapes.iter().any(|shape| {
+                        matches!(&shape.shape,
+                        egui::Shape::LineSegment { points, stroke }
+                            if points[0].x == line_x && points[1].x == line_x
+                                && *stroke == egui::Stroke::new(2.0, theme::accent(&ctx)))
+                    });
+                    assert_eq!(preview, from != to, "{case}");
+                    assert_eq!(
+                        app.session.project.tracks[0]
+                            .instrument
+                            .as_ref()
+                            .unwrap()
+                            .layers[0],
+                        original,
+                        "{case}"
+                    );
+                    assert!(!app.dirty, "{case}");
+
+                    frame(&mut app, &ctx, vec![event(destination, false, false)]);
+                    let mut expected = original;
+                    let moving = expected.oscillators.remove(from);
+                    expected.oscillators.insert(to, moving);
+                    assert_eq!(
+                        app.session.project.tracks[0]
+                            .instrument
+                            .as_ref()
+                            .unwrap()
+                            .layers[0],
+                        expected,
+                        "{case}"
+                    );
+                    assert_eq!(app.dirty, from != to, "{case}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn shared_modulation_strips_reorder_on_amplitude_filter_drive_and_oscillator() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for kind in 0..4 {

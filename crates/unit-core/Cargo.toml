@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+daw-dsp-support.workspace = true
 audio-analysis.workspace = true
 serde.workspace = true
 uuid.workspace = true

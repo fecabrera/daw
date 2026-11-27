@@ -80,3 +80,7 @@ onset refinement and cumulative recurrence. No external implementation code,
 new dependency, or model data was used. The beat benchmark uses generated
 signals with exact source-frame references. Splice files and their names
 stay outside the repository's tracked fixtures and reports.
+
+The shared streaming spectrum and live loudness numerical implementations
+now live in [daw-analysis-kernels](../dsp-support/analysis-kernels/PROVENANCE.md).
+The public analysis APIs still use the same algorithms.

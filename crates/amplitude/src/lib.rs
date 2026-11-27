@@ -1,4 +1,5 @@
 //! A per-voice amplitude stage. Hosts supply a resolved envelope factor and note gate.
+use daw_dsp_support::gain::{amplitude as gain, voice_gain};
 use daw_unit_core::ModulationRamp as Ramp;
 use daw_unit_core::{AmplitudeSettings, ProcessingContext};
 #[derive(Clone)]
@@ -50,25 +51,11 @@ impl Amplitude {
     pub fn process(&mut self, input: f32, factor: f32, gate: f32) -> f32 {
         let level = self.level.next_value();
         let mix = self.mix.next_value();
-        let shape = if mix >= 1.0 {
-            factor * level
-        } else if mix <= 0.0 {
-            gate
-        } else {
-            gate + (factor * level - gate) * mix
-        };
+        let shape = voice_gain(level, mix, factor, gate);
         self.effective_gain = shape;
         input * shape
     }
 }
-fn gain(db: f32) -> f32 {
-    if db <= daw_unit_core::SILENT_GAIN_DB {
-        0.0
-    } else {
-        10.0_f32.powf(db / 20.0)
-    }
-}
-
 impl daw_unit_core::ModulationDestination for Amplitude {
     type Audio = f32;
     const MODULATION_PARAMETERS: &'static [daw_unit_core::ModulationParameter] =

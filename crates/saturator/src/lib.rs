@@ -1,8 +1,6 @@
 //! Portable stereo waveshaping with shared modulation and fixed-latency 4× anti-aliasing.
-pub use daw_dsp_support::{
-    oversampling,
-    waveshaping::{clip, shape},
-};
+use daw_dsp_support::delay::FixedDelay;
+pub use daw_dsp_support::oversampling;
 use daw_unit_core::{
     EffectUnit, LevelMonitor, ModulationContext, ModulationDestination,
     ModulationDestinationSettings, ModulationInputs, ModulationParameter, ModulationRamp,
@@ -10,6 +8,16 @@ use daw_unit_core::{
     SILENT_GAIN_DB, SaturatorClipMode, SaturatorSettings, SaturatorShape, UnitDescriptor,
 };
 use std::sync::{Arc, atomic::AtomicU32};
+#[inline]
+pub fn shape(shape: SaturatorShape, input: f64) -> f64 {
+    daw_dsp_support::waveshaping::shape(shape.into(), input)
+}
+
+#[inline]
+pub fn clip(mode: SaturatorClipMode, input: f64) -> f64 {
+    daw_dsp_support::waveshaping::clip(mode.into(), input)
+}
+
 fn gain(db: f32) -> f32 {
     if db <= SILENT_GAIN_DB {
         0.0
@@ -40,8 +48,7 @@ pub struct Saturator {
     fade_frames: u32,
     monitor: LevelMonitor<3>,
     oversampling: oversampling::Oversampling,
-    dry: [[f32; 2]; oversampling::LATENCY],
-    dry_index: usize,
+    dry: FixedDelay<[f32; 2], { oversampling::LATENCY }>,
 }
 impl Saturator {
     pub const LATENCY_FRAMES: u32 = oversampling::LATENCY as u32;
@@ -63,8 +70,7 @@ impl Saturator {
             effective: [s.drive_db, s.level_db, s.dry_wet],
             fade_frames: (context.sample_rate_hz / 200).max(1),
             oversampling: oversampling::Oversampling::new(),
-            dry: [[0.0; 2]; oversampling::LATENCY],
-            dry_index: 0,
+            dry: FixedDelay::default(),
         }
     }
     /// Attach a prepared output monitor on the control thread.
@@ -73,7 +79,7 @@ impl Saturator {
     }
     /// Attach current output and a click-resettable sample peak on the control thread.
     pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
-        self.monitor.attach_peak(meter);
+        self.monitor.attach_peak_prepared(meter);
     }
     pub fn retarget(&mut self, s: &SaturatorSettings) {
         self.monitor.set_enabled(s.enabled);
@@ -112,9 +118,7 @@ impl Saturator {
         let clips = weights(&mut self.clips);
         let drive = 10_f64.powf(drive_db / 20.0);
         let input = input.map(|v| if v.is_finite() { v } else { 0.0 });
-        let dry = self.dry[self.dry_index];
-        self.dry[self.dry_index] = input;
-        self.dry_index = (self.dry_index + 1) % self.dry.len();
+        let dry = self.dry.sample(input);
         let wet = self.oversampling.process(input, |up| {
             up.map(|v| {
                 let shaped = shapes
@@ -174,8 +178,7 @@ impl EffectUnit for Saturator {
         }
         self.external.reset();
         self.oversampling.reset();
-        self.dry.fill([0.0; 2]);
-        self.dry_index = 0;
+        self.dry.reset();
         let p = self.parameters.each_ref().map(ModulationRamp::target);
         self.effective = [
             p[0],

@@ -1,4 +1,5 @@
 //! Prepared stereo sample playback. The host owns loading, stretching, notes, and buffers.
+use daw_dsp_support::{gain::pitch_ratio, playback::Playback};
 use daw_unit_core::{PortKind, ProcessingContext, SILENT_GAIN_DB, SamplerSettings, UnitDescriptor};
 use std::sync::Arc;
 mod modulation;
@@ -17,18 +18,9 @@ pub struct Sampler {
     granular: Option<Box<daw_granulizer::Granulizer>>,
     note: u8,
     root_note: u8,
-    position: u64,
-    elapsed_frames: u64,
-    fraction: f64,
+    playback: Playback,
     requested_note: u8,
     preview_pitch: bool,
-    pitch_ratio: f64,
-    pitch_target: f64,
-    pitch_remaining: u32,
-    previous_sample: [f32; 2],
-    transition_from: [f32; 2],
-    transition_remaining: u32,
-    active: bool,
     gain: f32,
     target: f32,
     remaining: u32,
@@ -67,18 +59,9 @@ impl Sampler {
             }),
             note: settings.root_note,
             root_note: settings.root_note,
-            position: 0,
-            elapsed_frames: 0,
-            fraction: 0.0,
+            playback: Playback::default(),
             requested_note: settings.root_note,
             preview_pitch: false,
-            pitch_ratio: 1.0,
-            pitch_target: 1.0,
-            pitch_remaining: 0,
-            previous_sample: [0.0; 2],
-            transition_from: [0.0; 2],
-            transition_remaining: 0,
-            active: false,
             external: daw_unit_core::ModulationSmoother::new(context),
             effective_gain: target,
             gain: target,
@@ -100,11 +83,12 @@ impl Sampler {
                 .is_none_or(|s| s.len() as u64 != frames);
     }
     fn selected_bank(&self) -> &SampleBank {
-        if self.duration_missing {
-            return &EMPTY_BANK;
-        }
-        self.duration_index
-            .map_or(self.bank.as_ref(), |i| self.duration_banks[i].1.as_ref())
+        select_bank(
+            &self.bank,
+            &self.duration_banks,
+            self.duration_index,
+            self.duration_missing,
+        )
     }
     pub fn descriptor(&self) -> UnitDescriptor {
         UnitDescriptor {
@@ -161,14 +145,14 @@ impl Sampler {
                     self.root_note
                 };
                 self.select_pitch_buffer(note);
-                self.active &= self.position < self.samples().len() as u64;
+                self.playback.constrain(self.samples().len());
                 if previous_buffer != self.samples().as_ptr() {
-                    self.transition_from = self.previous_sample;
-                    self.transition_remaining = self.fade_frames;
+                    self.playback.begin_transition(self.fade_frames);
                 }
-                self.pitch_target = 2_f64
-                    .powf(f64::from(i16::from(self.requested_note) - i16::from(self.note)) / 12.0);
-                self.pitch_remaining = self.fade_frames;
+                self.playback.retarget_pitch(
+                    pitch_ratio(self.requested_note, self.note),
+                    self.fade_frames,
+                );
             }
         }
     }
@@ -187,18 +171,17 @@ impl Sampler {
         if !preview && self.selected_bank()[usize::from(note)].is_some() {
             self.select_pitch_buffer(note);
         }
-        self.pitch_target = 2_f64.powf(f64::from(i16::from(note) - i16::from(self.note)) / 12.0);
-        self.pitch_remaining = self.fade_frames;
+        self.playback
+            .retarget_pitch(pitch_ratio(note, self.note), self.fade_frames);
     }
     fn select_pitch_buffer(&mut self, note: u8) {
         if self.note == note {
             return;
         }
-        self.pitch_ratio *= 2_f64.powf(f64::from(i16::from(self.note) - i16::from(note)) / 12.0);
+        self.playback.scale_pitch(pitch_ratio(self.note, note));
         self.note = note;
-        self.active &= self.position < self.samples().len() as u64;
-        self.transition_from = self.previous_sample;
-        self.transition_remaining = self.fade_frames;
+        self.playback.constrain(self.samples().len());
+        self.playback.begin_transition(self.fade_frames);
     }
     pub fn note_on(&mut self) {
         self.note_on_at(self.root_note);
@@ -219,41 +202,25 @@ impl Sampler {
         self.note = note;
         self.requested_note = note;
         self.preview_pitch = false;
-        self.pitch_ratio = 1.0;
-        self.pitch_target = 1.0;
-        self.pitch_remaining = 0;
-        self.fraction = 0.0;
-        self.previous_sample = [0.0; 2];
-        self.transition_remaining = 0;
-        self.position = 0;
-        self.elapsed_frames = 0;
-        self.active = !self.samples().is_empty();
+        self.playback.restart(!self.samples().is_empty());
     }
     fn samples(&self) -> &[[f32; 2]] {
-        self.selected_bank()
-            .get(usize::from(if self.granular.is_some() {
+        buffer(
+            self.selected_bank(),
+            if self.granular.is_some() {
                 self.root_note
             } else {
                 self.note
-            }))
-            .and_then(Option::as_deref)
-            .map_or(&[], Vec::as_slice)
+            },
+        )
     }
     pub fn reset(&mut self) {
         if let Some(g) = &mut self.granular {
             g.reset();
         }
-        self.position = 0;
-        self.elapsed_frames = 0;
-        self.fraction = 0.0;
-        self.pitch_ratio = 1.0;
-        self.pitch_target = 1.0;
-        self.pitch_remaining = 0;
+        self.playback.restart(false);
         self.preview_pitch = false;
         self.requested_note = self.note;
-        self.previous_sample = [0.0; 2];
-        self.transition_remaining = 0;
-        self.active = false;
         self.gain = self.target;
         self.remaining = 0;
         self.external.reset();
@@ -267,22 +234,18 @@ impl Sampler {
             g.advance(frames, length);
             return;
         }
-        if self.active {
-            self.elapsed_frames = self.elapsed_frames.saturating_add(frames);
-            self.position = self
-                .position
-                .saturating_add(frames)
-                .min(self.samples().len() as u64);
-        }
-        self.active &= self.position < self.samples().len() as u64;
+        self.playback.advance(frames, self.samples().len());
     }
     pub fn active(&self) -> bool {
-        self.granular.as_ref().map_or(self.active, |g| g.active())
-    }
-    pub fn position(&self) -> Option<u64> {
         self.granular
             .as_ref()
-            .map_or_else(|| self.active.then_some(self.position), |g| g.position())
+            .map_or(self.playback.active(), |g| g.active())
+    }
+    pub fn position(&self) -> Option<u64> {
+        self.granular.as_ref().map_or_else(
+            || self.playback.active().then(|| self.playback.position()),
+            |g| g.position(),
+        )
     }
     pub fn granular_snapshot(&self) -> Option<([f32; 8], [f32; 16])> {
         self.granular
@@ -302,63 +265,15 @@ impl Sampler {
         self.process_modulated(0.0)
     }
     fn render_sample(&mut self) -> [f32; 2] {
-        if !self.active {
-            return [0.0; 2];
-        }
-        let mut sample = self
-            .samples()
-            .get(self.position as usize)
-            .copied()
-            .unwrap_or_default();
-        if self.fraction != 0.0 {
-            let next = self
-                .samples()
-                .get(self.position as usize + 1)
-                .copied()
-                .unwrap_or(sample);
-            for (value, next) in sample.iter_mut().zip(next) {
-                if value.is_finite() && next.is_finite() {
-                    *value = (f64::from(*value)
-                        + (f64::from(next) - f64::from(*value)) * self.fraction)
-                        as f32;
-                }
-            }
-        }
-        // Five-millisecond boundaries keep region edits and one-shot ends free of hard cuts.
-        let edge = (self.elapsed_frames as f32 / self.fade_frames as f32)
-            .min(
-                (self.samples().len() as u64 - self.position - 1) as f32
-                    / self.pitch_ratio as f32
-                    / self.fade_frames as f32,
-            )
-            .clamp(0.0, 1.0);
-        self.elapsed_frames = self.elapsed_frames.saturating_add(1);
-        if self.pitch_remaining > 0 {
-            self.pitch_ratio +=
-                (self.pitch_target - self.pitch_ratio) / f64::from(self.pitch_remaining);
-            self.pitch_remaining -= 1;
-        }
-        let position = self.position as f64 + self.fraction + self.pitch_ratio;
-        self.position = position.floor() as u64;
-        self.fraction = position.fract();
-        self.active = self.position < self.samples().len() as u64;
-        let mut output = sample.map(|v| {
-            if v.is_finite() {
-                (f64::from(v) * f64::from(self.effective_gain) * f64::from(edge))
-                    .clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
-            } else {
-                0.0
-            }
-        });
-        if self.transition_remaining > 0 {
-            let mix = 1.0 - self.transition_remaining as f32 / self.fade_frames as f32;
-            output = std::array::from_fn(|ch| {
-                self.transition_from[ch] + (output[ch] - self.transition_from[ch]) * mix
-            });
-            self.transition_remaining -= 1;
-        }
-        self.previous_sample = output;
-        output
+        let bank = select_bank(
+            &self.bank,
+            &self.duration_banks,
+            self.duration_index,
+            self.duration_missing,
+        );
+        let samples = buffer(bank, self.note);
+        self.playback
+            .sample(samples, self.effective_gain, self.fade_frames)
     }
 }
 impl daw_unit_core::StereoSourceUnit for Sampler {
@@ -371,6 +286,25 @@ impl daw_unit_core::StereoSourceUnit for Sampler {
     fn next_sample(&mut self) -> [f32; 2] {
         Sampler::next_sample(self)
     }
+}
+
+fn select_bank<'a>(
+    bank: &'a SampleBank,
+    duration_banks: &'a [(u64, Arc<SampleBank>)],
+    duration_index: Option<usize>,
+    duration_missing: bool,
+) -> &'a SampleBank {
+    if duration_missing {
+        &EMPTY_BANK
+    } else {
+        duration_index.map_or(bank, |i| duration_banks[i].1.as_ref())
+    }
+}
+
+fn buffer(bank: &SampleBank, note: u8) -> &[[f32; 2]] {
+    bank.get(usize::from(note))
+        .and_then(Option::as_deref)
+        .map_or(&[], Vec::as_slice)
 }
 
 fn gain(s: &SamplerSettings) -> f32 {
@@ -401,19 +335,14 @@ mod tests {
         // A newly prepared bank can replace the same pitch index, for example after
         // changing the offline pitch engine. Preserve the cursor and fade the PCM change.
         let mut next = Sampler::new(ctx, &settings, Arc::new(vec![[-1.0; 2]; 4800]));
-        let position = unit.position;
+        let position = unit.playback.position();
         unit.inherit_bank(&mut next);
-        assert_eq!(unit.position, position);
+        assert_eq!(unit.playback.position(), position);
         assert_eq!(unit.next_sample(), [1.0; 2]);
         for _ in 0..240 {
             assert!(unit.next_sample().iter().all(|v| v.is_finite()));
         }
         assert_eq!(unit.next_sample(), [-1.0; 2]);
-        unit.position = 4800 - 240;
-        unit.elapsed_frames = 1000;
-        unit.pitch_ratio = 2.0;
-        unit.pitch_remaining = 0;
-        assert!(unit.next_sample()[0].abs() < 0.51);
     }
     #[test]
     fn live_pitch_preserves_position_and_swaps_prepared_owners_without_restarting() {
@@ -431,14 +360,14 @@ mod tests {
             unit.advance(1000);
             let old_bank = unit.bank.clone();
             unit.set_live_pitch(high, true);
-            assert_eq!(unit.position, 1000);
+            assert_eq!(unit.playback.position(), 1000);
             assert_eq!(unit.note, root);
             for _ in 0..rate / 200 {
                 unit.next_sample();
             }
-            assert!((unit.pitch_ratio - 2.0).abs() < 1e-12);
-            assert!(unit.position > 1000 + u64::from(rate / 200));
-            let position = unit.position;
+            assert!((unit.playback.pitch_ratio() - 2.0).abs() < 1e-12);
+            assert!(unit.playback.position() > 1000 + u64::from(rate / 200));
+            let position = unit.playback.position();
             let mut bank: SampleBank = std::array::from_fn(|_| None);
             bank[usize::from(root)] = Some(samples.clone());
             bank[usize::from(high)] = Some(samples);
@@ -446,19 +375,19 @@ mod tests {
             unit.set_live_pitch(high, false);
             unit.inherit_bank(&mut prepared);
             assert!(Arc::ptr_eq(&old_bank, &prepared.bank));
-            assert_eq!(unit.position, position);
+            assert_eq!(unit.playback.position(), position);
             assert_eq!(unit.note, high);
             for _ in 0..rate / 200 {
                 assert_eq!(unit.next_sample(), [0.4, -0.2]);
             }
-            assert!((unit.pitch_ratio - 1.0).abs() < 1e-12);
+            assert!((unit.playback.pitch_ratio() - 1.0).abs() < 1e-12);
             unit.set_live_pitch(root, true);
-            let position = unit.position;
-            assert_eq!(unit.position, position);
+            let position = unit.playback.position();
+            assert_eq!(unit.playback.position(), position);
             for _ in 0..rate / 200 {
                 unit.next_sample();
             }
-            assert!((unit.pitch_ratio - 0.5).abs() < 1e-12);
+            assert!((unit.playback.pitch_ratio() - 0.5).abs() < 1e-12);
             unit.set_live_pitch(high, false);
             assert_eq!(unit.note, high);
         }

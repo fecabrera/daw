@@ -21,7 +21,7 @@
 
 ## Dependency notices
 
-- The DAW workspace defaults to GPL-3.0-or-later. Keep the explicit BSD-2-Clause grants in the standalone `audio-analysis`, `timestretch` and `timestretch-cli` manifests and their package license files. See the root `NOTICE` for scope and retain original copyright and third-party notices. Include the license and matching corresponding source with distributed DAW and plugin binaries.
+- The DAW workspace defaults to GPL-3.0-or-later. Keep the explicit BSD-2-Clause grants in the standalone `audio-analysis`, `dsp-support/analysis-kernels`, `timestretch` and `timestretch-cli` manifests and their package license files. See the root `NOTICE` for scope and retain original copyright and third-party notices. Include the license and matching corresponding source with distributed DAW and plugin binaries.
 - When adding or changing a bundled dependency, retain its license and source notices and update packaging. Do not remove notices because a library is linked statically.
 - Media notices belong in `crates/media/assets/licenses`. Preserve Rubber Band's GPL v2 text in `RubberBand-GPL.txt`, its source notice, and the Speex and KissFFT notices, including `RubberBand-Speex.txt`. Preserve LAME notices as well.
 - EQ dependency notices belong in `crates/equalizer/assets/licenses`; packaging includes them with the oscillator notices.

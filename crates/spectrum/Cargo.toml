@@ -7,5 +7,5 @@ license.workspace = true
 description = "Live spectrum meter binding and coherent plugin telemetry"
 
 [dependencies]
-audio-analysis.workspace = true
+daw-dsp-support.workspace = true
 daw-unit-core.workspace = true

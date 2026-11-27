@@ -18,7 +18,7 @@ Oscillator generates tones for MIDI notes. Add it from Sources in the Instrument
 
 ### Add and adjust sources
 
-Use Plus inside the unit, before Out, to add another oscillator. Each source has independent controls and power. Drag unused strip space to reorder sources. The insertion line stays within the oscillator unit’s height. Right-click a source or its knob to remove it. Removing the last source leaves the layer silent.
+Use Plus inside the unit, before Out, to add another oscillator. Each source has independent controls and power. Drag unused strip space to reorder sources. To move a source to the first position, drop it on the left half of the first strip. The insertion line stays within the oscillator unit’s height. Right-click a source or its knob to remove it. Removing the last source leaves the layer silent.
 
 Each source shows one cycle of its selected waveform above the Waveform dropdown. Choose Sine, Saw, Square or Triangle from that dropdown. The graphic stays visible while stopped or playing. Pitch changes the cycle duration, so it does not change the number of cycles shown. The preview shows the source shape at a fixed height; it excludes Gain, modulation, note phases, other sources, Amplitude and effects. A powered-off source keeps its shape in grey.
 

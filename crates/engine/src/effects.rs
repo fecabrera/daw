@@ -1237,7 +1237,7 @@ impl EffectChain {
             .get(&id)
             .and_then(|&i| self.output_taps[i].as_mut())
         {
-            tap.attach_peak(meter.clone());
+            tap.attach_peak_prepared(meter.clone());
             return;
         }
         match self.units.iter_mut().find(|(effect, _)| *effect == id) {

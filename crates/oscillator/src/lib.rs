@@ -1,21 +1,24 @@
 //! FunDSP adapter. No backend types appear in the unit API or persisted settings.
+use daw_dsp_support::oscillator::{OscillatorBank, Waveform as DspWaveform};
 use daw_unit_core::{
     ModulationContext, ModulationDestination, ModulationInputs, ModulationParameter,
-    ModulationRamp, ModulationScope, ModulationSmoother, ModulationTargetId, OSCILLATOR_TYPE_ID,
+    ModulationScope, ModulationSmoother, ModulationTargetId, OSCILLATOR_TYPE_ID,
     OscillatorSettings, PortKind, ProcessingContext, SourceUnit, UnitDescriptor, Waveform,
 };
-use fundsp::prelude32::*;
+
+fn dsp_waveform(waveform: Waveform) -> DspWaveform {
+    match waveform {
+        Waveform::Sine => DspWaveform::Sine,
+        Waveform::Saw => DspWaveform::Saw,
+        Waveform::Square => DspWaveform::Square,
+        Waveform::Triangle => DspWaveform::Triangle,
+    }
+}
 
 #[derive(Clone)]
 pub struct Oscillator {
-    nodes: Vec<Box<dyn AudioUnit>>,
-    waveform: Waveform,
-    controls: [ModulationRamp; 3],
-    tuning: [f32; 8],
-    pans: [[f32; 2]; 8],
-    last_controls: [f32; 3],
+    kernel: OscillatorBank,
     frequency: f32,
-    sample_rate_hz: u32,
     target: Option<ModulationTargetId>,
     offsets: ModulationSmoother<4>,
     effective_offset: f32,
@@ -24,39 +27,15 @@ pub struct Oscillator {
     effective_gain: f32,
 }
 impl Oscillator {
-    /// Backend object footprint. Shared waveform tables and allocator overhead are excluded.
     pub fn heap_bytes(&self) -> u64 {
-        self.nodes
-            .iter()
-            .map(|node| node.footprint() as u64)
-            .sum::<u64>()
-            + (self.nodes.capacity() * std::mem::size_of::<Box<dyn AudioUnit>>()) as u64
+        self.kernel.heap_bytes()
     }
 
     /// Construct and allocate on a control thread, before entering audio processing.
     pub fn new(waveform: Waveform, context: ProcessingContext) -> Self {
-        let mut node: Box<dyn AudioUnit> = match waveform {
-            Waveform::Sine => Box::new(sine()),
-            Waveform::Saw => Box::new(saw()),
-            Waveform::Square => Box::new(square()),
-            Waveform::Triangle => Box::new(triangle()),
-        };
-        node.set_sample_rate(f64::from(context.sample_rate_hz));
-        node.allocate();
-        node.reset();
         Self {
-            nodes: vec![node],
-            waveform,
-            controls: [
-                ModulationRamp::new(0.0),
-                ModulationRamp::new(10.0),
-                ModulationRamp::new(100.0),
-            ],
-            tuning: [1.0; 8],
-            pans: [[1.0; 2]; 8],
-            last_controls: [0.0, 10.0, 100.0],
+            kernel: OscillatorBank::new(dsp_waveform(waveform), context.sample_rate_hz),
             frequency: 440.0,
-            sample_rate_hz: context.sample_rate_hz,
             target: None,
             offsets: ModulationSmoother::new(context),
             effective_offset: 0.0,
@@ -65,34 +44,23 @@ impl Oscillator {
             effective_gain: 1.0,
         }
     }
+
     /// Prepare an identified instance. Hosts keep MIDI pitch and base transpose in the base frequency.
     pub fn from_settings(settings: &OscillatorSettings, context: ProcessingContext) -> Self {
         let mut source = Self::new(settings.waveform, context);
         source.target = Some(settings.id);
-        for index in 1..settings.unison.voices() {
-            let mut node = Self::new(settings.waveform, context).nodes.remove(0);
-            node.set_hash((index as u64).wrapping_mul(0x9e3779b97f4a7c15));
-            source.nodes.push(node);
-        }
-        let finite = |value: f32, fallback: f32, min: f32, max: f32| {
-            if value.is_finite() {
-                value.clamp(min, max)
-            } else {
-                fallback
-            }
-        };
-        source.controls = [
-            ModulationRamp::new(finite(settings.cents, 0.0, -100.0, 100.0)),
-            ModulationRamp::new(finite(settings.detune_cents, 10.0, 0.0, 100.0)),
-            ModulationRamp::new(finite(settings.width, 100.0, 0.0, 100.0)),
-        ];
-        source.last_controls = [f32::NAN; 3];
-        source.update_tuning([0.0; 2]);
+        source.kernel.prepare_voices(
+            settings.unison.voices(),
+            settings.cents,
+            settings.detune_cents,
+            settings.width,
+        );
         source
     }
+
     /// Processed fine tuning plus modulation, in semitones; excludes MIDI/coarse pitch.
     pub fn pitch_offset(&self) -> f32 {
-        self.effective_offset + self.last_controls[0] / 100.0
+        self.effective_offset + self.kernel.cents() / 100.0
     }
     /// Common unit tuning, prepared once per note by OscillatorOutput.
     /// Keep source Pitch modulation independent of this ratio.
@@ -114,73 +82,21 @@ impl Oscillator {
     }
     /// Continuous changes retain every prepared oscillator phase and allocate nothing.
     pub fn compatible(&self, next: &Self) -> bool {
-        self.waveform == next.waveform
-            && self.sample_rate_hz == next.sample_rate_hz
-            && self.nodes.len() == next.nodes.len()
+        self.kernel.compatible(&next.kernel)
     }
+
     pub fn retarget(&mut self, next: &Self) -> bool {
-        if !self.compatible(next) {
-            return false;
-        }
-        let frames = std::cmp::max(self.sample_rate_hz / 200, 1);
-        for (current, target) in self.controls.iter_mut().zip(&next.controls) {
-            current.set(target.target(), frames);
-        }
-        true
+        self.kernel.retarget(&next.kernel)
     }
+
     pub fn effective_cents(&self) -> f32 {
-        self.last_controls[0]
+        self.kernel.cents()
     }
     pub fn effective_width(&self) -> f32 {
-        self.last_controls[2]
-    }
-    fn update_tuning(&mut self, offsets: [f32; 2]) {
-        let mut controls = self.controls.each_mut().map(ModulationRamp::next_value);
-        controls[0] = (controls[0] + offsets[0]).clamp(-100.0, 100.0);
-        controls[2] = (controls[2] + offsets[1]).clamp(0.0, 100.0);
-        if controls == self.last_controls {
-            return;
-        }
-        self.last_controls = controls;
-        let count = self.nodes.len();
-        for index in 0..count {
-            let position = if count == 1 {
-                0.0
-            } else {
-                2.0 * index as f32 / (count - 1) as f32 - 1.0
-            };
-            let cents = controls[0] + position * controls[1];
-            self.tuning[index] = if cents == 0.0 {
-                1.0
-            } else {
-                2_f32.powf(cents / 1200.0)
-            };
-            let pan = position * controls[2] / 100.0;
-            self.pans[index] = [1.0 - pan, 1.0 + pan];
-        }
-    }
-    fn sample_stereo_at(&mut self, frequency: f32, offsets: [f32; 2]) -> [f32; 2] {
-        self.update_tuning(offsets);
-        let mut sum = [0.0; 2];
-        for (index, node) in self.nodes.iter_mut().enumerate() {
-            let hz = if self.tuning[index] == 1.0 {
-                frequency
-            } else {
-                frequency * self.tuning[index]
-            };
-            let enabled = hz.is_finite() && hz > 0.0 && hz < self.sample_rate_hz as f32 * 0.5;
-            let mut output = [0.0];
-            node.tick(&[if enabled { hz } else { 0.0 }], &mut output);
-            let sample = if enabled { output[0] } else { 0.0 };
-            for (channel, value) in sum.iter_mut().enumerate() {
-                *value += sample * self.pans[index][channel];
-            }
-        }
-        let scale = 1.0 / self.nodes.len() as f32;
-        sum.map(|v| v * scale)
+        self.kernel.width()
     }
     pub fn next_stereo_sample(&mut self) -> [f32; 2] {
-        self.sample_stereo_at(self.frequency, [0.0; 2])
+        self.kernel.sample(self.frequency, [0.0; 2])
     }
 }
 impl ModulationDestination for Oscillator {
@@ -222,7 +138,8 @@ impl ModulationDestination for Oscillator {
         } else {
             frequency * self.output_pitch_ratio
         };
-        self.sample_stereo_at(frequency, [cents_offset as f32, width_offset as f32])
+        self.kernel
+            .sample(frequency, [cents_offset as f32, width_offset as f32])
             .map(|v| v * self.effective_gain)
     }
 }
@@ -237,14 +154,7 @@ impl SourceUnit for Oscillator {
         }
     }
     fn reset(&mut self) {
-        for node in &mut self.nodes {
-            node.reset();
-        }
-        for control in &mut self.controls {
-            control.reset();
-        }
-        self.last_controls = [f32::NAN; 3];
-        self.update_tuning([0.0; 2]);
+        self.kernel.reset();
         self.offsets.reset();
         self.effective_gain = self.base_gain;
         self.effective_offset = 0.0;

@@ -1,6 +1,9 @@
 //! Live meter binding and telemetry for the portable spectrum analyzer.
 pub mod telemetry;
-use audio_analysis::spectrum::{SpectrumAnalyzer as Analysis, Update};
+use daw_dsp_support::analysis::{
+    release_spectrum,
+    spectrum::{SpectrumAnalyzer as Analysis, Update},
+};
 use daw_unit_core::{SPECTRUM_UPPER_READY, SpectrumMeter, SpectrumReading, UnitMeter};
 use std::sync::Arc;
 #[derive(Clone)]
@@ -91,14 +94,12 @@ impl SpectrumAnalyzer {
             }
             Update::Ready { powers, end_frame } => {
                 let elapsed = end_frame - self.reading.upper_end_frame;
-                let release = (-(elapsed as f32)
-                    / self.reading.sample_rate_hz as f32
-                    / daw_unit_core::LEVEL_METER_RELEASE_SECONDS)
-                    .exp();
-                for (magnitude, &power) in self.reading.magnitudes.iter_mut().zip(powers) {
-                    let amplitude = power.max(0.0).sqrt();
-                    *magnitude = amplitude.max(*magnitude * release);
-                }
+                release_spectrum(
+                    &mut self.reading.magnitudes,
+                    powers,
+                    elapsed,
+                    self.reading.sample_rate_hz,
+                );
                 // Preserve the schema-2 full-range flag and clock.
                 self.reading.valid_branches = SPECTRUM_UPPER_READY;
                 self.reading.upper_end_frame = end_frame;

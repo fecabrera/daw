@@ -375,6 +375,74 @@ fn modulated_note_plan() -> RenderPlan {
 }
 
 #[test]
+fn oscillator_gain_preparation_keeps_live_gap_meter_readings() {
+    let mut plan = modulated_note_plan();
+    let track = &mut plan.project.tracks[0];
+    let layer = &mut track.instrument.as_mut().unwrap().layers[0];
+    layer.amplitude.present = true;
+    let source = daw_engine::SourceOutputTarget::for_layer(track.id, layer)
+        .unwrap()
+        .0;
+    let amplitude = daw_engine::SourceOutputTarget::amplitude(track.id, layer.id);
+    let drive = daw_core::EffectInstance::drive();
+    let compressor = daw_core::EffectInstance::compressor();
+    let direction_mixer = daw_core::EffectInstance::direction_mixer();
+    let (drive_id, compressor_id, direction_id) = (drive.id, compressor.id, direction_mixer.id);
+    layer.effects.extend([drive, compressor]);
+    plan.project.master.effects.push(direction_mixer);
+
+    let bindings = preparation::Bindings::prepare(&plan, &Default::default());
+    let mut active = PreparedRenderer::new(plan.clone(), &bindings.tracks);
+    bindings.attach(&mut active);
+    active.play();
+    let meters = [
+        ("oscillator", &bindings.sources[&source]),
+        ("amplitude", &bindings.sources[&amplitude]),
+        (
+            "drive",
+            &bindings.bands[&ModulationTarget::Effect(drive_id)],
+        ),
+        ("compressor", &bindings.outputs[&compressor_id]),
+        ("direction mixer", &bindings.outputs[&direction_id]),
+    ];
+    for gain_db in [-6.0, -9.0, -12.0] {
+        realtime(|| {
+            for _ in 0..2048 {
+                active.next_sample();
+            }
+        });
+        let before = meters.map(|(_, meter)| {
+            let levels = meter.readings();
+            let peaks = meter.boost_peaks().each_ref().map(|peak| peak.peak());
+            assert!(levels.iter().all(|&v| v > 0.0));
+            assert!(peaks.iter().all(|&v| v > 0.0));
+            (levels, peaks)
+        });
+        plan.project.tracks[0].instrument.as_mut().unwrap().layers[0].oscillators[0].gain_db =
+            gain_db;
+        let next_bindings = preparation::Bindings::prepare(&plan, &bindings);
+        let mut next = PreparedRenderer::new(plan.clone(), &next_bindings.tracks);
+        next_bindings.attach(&mut next);
+        for ((name, meter), (levels, peaks)) in meters.into_iter().zip(before) {
+            assert_eq!(
+                meter.readings(),
+                levels,
+                "{name} changed during preparation"
+            );
+            assert_eq!(meter.boost_peaks().each_ref().map(|p| p.peak()), peaks);
+        }
+
+        assert!(next.can_inherit_without_preroll(&active));
+        realtime(|| next.inherit(&mut active));
+        for ((name, meter), (levels, peaks)) in meters.into_iter().zip(before) {
+            assert_eq!(meter.readings(), levels, "{name} changed during handoff");
+            assert_eq!(meter.boost_peaks().each_ref().map(|p| p.peak()), peaks);
+        }
+        active = next;
+    }
+}
+
+#[test]
 fn note_edits_keep_playing_and_preserve_modulation_through_loop_catch_up() {
     let mut plan = modulated_note_plan();
     let bindings = preparation::Bindings {

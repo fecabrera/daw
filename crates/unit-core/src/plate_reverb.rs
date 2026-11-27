@@ -152,6 +152,16 @@ impl PlateReverbSettings {
     }
 }
 
+impl From<PlateDriveMode> for daw_dsp_support::reverb::DriveMode {
+    fn from(value: PlateDriveMode) -> Self {
+        match value {
+            PlateDriveMode::Soft => Self::Soft,
+            PlateDriveMode::Hard => Self::Hard,
+            PlateDriveMode::Tube => Self::Tube,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

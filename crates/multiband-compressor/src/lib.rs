@@ -264,7 +264,7 @@ impl MultibandCompressor {
         self.spectrum.attach(meter);
     }
     pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
-        self.monitor.attach_peak(meter);
+        self.monitor.attach_peak_prepared(meter);
     }
     pub fn set_audition_gate(&mut self, allowed: Arc<AtomicBool>) {
         self.audition_allowed = Some(allowed);

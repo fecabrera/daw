@@ -117,18 +117,14 @@ impl MeterStorage for LevelHistory {
 #[derive(Clone)]
 pub struct LevelHistoryWriter {
     meter: UnitMeter<LevelHistory>,
-    period: u32,
-    frames: u32,
-    peaks: [f32; 2],
+    history: daw_dsp_support::levels::PeakBins,
     pending: bool,
 }
 impl LevelHistoryWriter {
     pub fn new(rate: u32, enabled: bool) -> Self {
         Self {
             meter: UnitMeter::new(enabled),
-            period: (rate / 50).max(1),
-            frames: 0,
-            peaks: [0.0; 2],
+            history: daw_dsp_support::levels::PeakBins::new(rate),
             pending: false,
         }
     }
@@ -139,13 +135,11 @@ impl LevelHistoryWriter {
     pub fn set_enabled(&mut self, enabled: bool) {
         self.meter.set_enabled(enabled);
         if !enabled {
-            self.frames = 0;
-            self.peaks = [0.0; 2];
+            self.history.reset();
         }
     }
     pub fn reset(&mut self) {
-        self.frames = 0;
-        self.peaks = [0.0; 2];
+        self.history.reset();
         self.meter.clear();
     }
     pub fn sample(&mut self, input: f32, reduction: f32) {
@@ -158,16 +152,8 @@ impl LevelHistoryWriter {
         if !self.meter.is_connected() {
             return;
         }
-        for (peak, value) in self.peaks.iter_mut().zip([input, reduction]) {
-            if value.is_finite() {
-                *peak = peak.max(value);
-            }
-        }
-        self.frames += 1;
-        if self.frames == self.period {
-            self.meter.publish(self.peaks);
-            self.frames = 0;
-            self.peaks = [0.0; 2];
+        if let Some(peaks) = self.history.sample([input, reduction]) {
+            self.meter.publish(peaks);
         }
     }
 }

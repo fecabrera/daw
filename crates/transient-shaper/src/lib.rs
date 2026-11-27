@@ -1,4 +1,5 @@
 //! Stereo-linked transient shaping using fast and slow peak envelopes.
+use daw_dsp_support::transient::TransientDetector;
 use daw_unit_core::{
     EffectUnit, LevelMonitor, ModulationContext, ModulationDestination,
     ModulationDestinationSettings, ModulationInputs, ModulationParameter, ModulationRamp,
@@ -34,11 +35,7 @@ pub struct TransientShaper {
     external: ModulationSmoother<6>,
     power: ModulationRamp,
     clip_mix: [ModulationRamp; 4],
-    // Update coefficients for fast rise, fast fall, slow rise, and slow fall.
-    smooth: [f64; 4],
-    snappy: [f64; 4],
-    fast_envelope: f64,
-    slow_envelope: f64,
+    detector: TransientDetector,
     fade_frames: u32,
     monitor: LevelMonitor<3>,
 }
@@ -51,8 +48,6 @@ impl TransientShaper {
     }
 
     pub fn new(context: ProcessingContext, settings: &TransientShaperSettings) -> Self {
-        let rate = f64::from(context.sample_rate_hz.max(1));
-        let coefficients = |times: [f64; 4]| times.map(|ms| -(-1000.0 / (rate * ms)).exp_m1());
         Self {
             parameters: Self::ramp_values(settings).map(ModulationRamp::new),
             effective: settings.values(),
@@ -60,10 +55,7 @@ impl TransientShaper {
             power: ModulationRamp::new(f32::from(settings.enabled)),
             clip_mix: TransientShaperClipMode::ALL
                 .map(|mode| ModulationRamp::new(f32::from(mode == settings.clip_mode))),
-            smooth: coefficients([0.8, 25.0, 24.0, 150.0]),
-            snappy: coefficients([0.06, 5.0, 5.0, 35.0]),
-            fast_envelope: 0.0,
-            slow_envelope: 0.0,
+            detector: TransientDetector::new(context.sample_rate_hz),
             fade_frames: (context.sample_rate_hz / 200).max(1),
             monitor: LevelMonitor::new(context.sample_rate_hz, settings.enabled),
         }
@@ -86,32 +78,11 @@ impl TransientShaper {
     }
 
     pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
-        self.monitor.attach_peak(meter);
+        self.monitor.attach_peak_prepared(meter);
     }
 
     pub fn effective_parameters(&self) -> [f32; 6] {
         self.effective
-    }
-
-    fn shape_db(&mut self, peak: f64, [attack, pump, sustain, speed]: [f64; 4]) -> f64 {
-        let update = |envelope: f64, rise: usize| {
-            let index = rise + usize::from(peak < envelope);
-            let coefficient =
-                self.smooth[index] + (self.snappy[index] - self.smooth[index]) * speed;
-            envelope + (peak - envelope) * coefficient
-        };
-        self.fast_envelope = update(self.fast_envelope, 0);
-        self.slow_envelope = update(self.slow_envelope, 2);
-
-        let fast = self.fast_envelope;
-        let slow = self.slow_envelope;
-        // The floor keeps signals below -120 dBFS from driving gain changes.
-        let reference = fast.max(slow).max(1e-6);
-        let onset = ((fast - slow) / reference).max(0.0);
-        let decay = ((slow - fast) / reference).max(0.0);
-        // Preserve the attack region when changing sustain, and fade shaping out in silence.
-        let body = (slow / reference) * (1.0 - onset);
-        attack * onset - pump * decay + sustain * body
     }
 
     pub fn process_modulated(&mut self, input: [f32; 2], offsets: [f32; 6]) -> [f32; 2] {
@@ -139,7 +110,7 @@ impl TransientShaper {
 
         let dry = input.map(|v| if v.is_finite() { v } else { 0.0 });
         let peak = f64::from(dry[0].abs().max(dry[1].abs()));
-        let shape_db = self.shape_db(peak, [attack, pump, sustain, speed]);
+        let shape_db = self.detector.shape_db(peak, [attack, pump, sustain, speed]);
         let weights = self
             .clip_mix
             .each_mut()
@@ -165,7 +136,9 @@ impl TransientShaper {
                 .iter()
                 .zip(modes)
                 .filter(|(weight, _)| **weight != 0.0)
-                .map(|(weight, mode)| weight * daw_dsp_support::waveshaping::clip(mode, shaped))
+                .map(|(weight, mode)| {
+                    weight * daw_dsp_support::waveshaping::clip(mode.into(), shaped)
+                })
                 .sum::<f64>()
                 / weight_sum;
             let wet = clipped * output_gain;
@@ -189,8 +162,7 @@ impl EffectUnit for TransientShaper {
     }
 
     fn reset(&mut self) {
-        self.fast_envelope = 0.0;
-        self.slow_envelope = 0.0;
+        self.detector.reset();
         self.monitor.reset();
         self.external.reset();
         self.power.reset();

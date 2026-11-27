@@ -19,10 +19,11 @@ impl Sampler {
         }
     }
     fn update_gain(&mut self, offset_db: f32) {
-        if self.remaining > 0 {
-            self.gain += (self.target - self.gain) / self.remaining as f32;
-            self.remaining -= 1;
-        }
+        daw_dsp_support::ramps::advance_linear_f32(
+            &mut self.gain,
+            self.target,
+            &mut self.remaining,
+        );
         let [offset] = self.external.process([offset_db]);
         // Preserve neutral arithmetic and exact base silence. Limit summed offsets before conversion.
         self.effective_gain = if offset == 0.0 {

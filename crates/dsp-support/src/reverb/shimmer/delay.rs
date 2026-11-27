@@ -1,8 +1,8 @@
 //! Prepared scalar rings. Linear reads are convex even when the delay moves.
-use daw_reverb_core::DelayRing;
+use crate::reverb::DelayRing;
 
 #[derive(Clone)]
-pub(crate) struct Delay(DelayRing<1>);
+pub struct Delay(DelayRing<1>);
 impl Delay {
     pub fn new(frames: usize) -> Self {
         Self(DelayRing::new(frames + 2))
@@ -23,7 +23,7 @@ impl Delay {
 
 /// Fixed-coefficient Schroeder allpass. Both branches use the same current read.
 #[derive(Clone)]
-pub(crate) struct Diffuser {
+pub struct Diffuser {
     delay: Delay,
     frames: f64,
 }

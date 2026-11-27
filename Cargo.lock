@@ -492,6 +492,7 @@ dependencies = [
 name = "audio-analysis"
 version = "0.1.0"
 dependencies = [
+ "daw-analysis-kernels",
  "rustfft",
 ]
 
@@ -1325,13 +1326,19 @@ dependencies = [
 name = "daw-amplitude"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
 ]
+
+[[package]]
+name = "daw-analysis-kernels"
+version = "0.1.0"
 
 [[package]]
 name = "daw-auto-filter"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-filter",
  "daw-lfo",
  "daw-unit-core",
@@ -1406,6 +1413,7 @@ dependencies = [
 name = "daw-bitcrusher"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
 ]
 
@@ -1478,6 +1486,7 @@ dependencies = [
 name = "daw-chorus"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-lfo",
  "daw-unit-core",
 ]
@@ -1566,8 +1575,8 @@ dependencies = [
 name = "daw-compressor"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
- "fundsp",
 ]
 
 [[package]]
@@ -1678,6 +1687,7 @@ dependencies = [
 name = "daw-direction-mixer"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
 ]
 
@@ -1752,7 +1762,6 @@ version = "0.1.0"
 dependencies = [
  "daw-dsp-support",
  "daw-unit-core",
- "fundsp",
 ]
 
 [[package]]
@@ -1889,7 +1898,8 @@ dependencies = [
 name = "daw-dsp-support"
 version = "0.1.0"
 dependencies = [
- "daw-unit-core",
+ "daw-analysis-kernels",
+ "fundsp",
 ]
 
 [[package]]
@@ -1906,6 +1916,7 @@ dependencies = [
  "daw-direction-mixer",
  "daw-drive",
  "daw-drive-plugin",
+ "daw-dsp-support",
  "daw-envelope",
  "daw-equalizer",
  "daw-exciter",
@@ -1938,6 +1949,7 @@ dependencies = [
 name = "daw-envelope"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
 ]
 
@@ -1945,9 +1957,9 @@ dependencies = [
 name = "daw-equalizer"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-spectrum",
  "daw-unit-core",
- "fundsp",
 ]
 
 [[package]]
@@ -2096,8 +2108,8 @@ dependencies = [
 name = "daw-filter"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
- "fundsp",
 ]
 
 [[package]]
@@ -2169,6 +2181,7 @@ dependencies = [
 name = "daw-granulizer"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
 ]
 
@@ -2176,7 +2189,7 @@ dependencies = [
 name = "daw-harmonic-lift"
 version = "0.1.0"
 dependencies = [
- "daw-filter",
+ "daw-dsp-support",
  "daw-unit-core",
 ]
 
@@ -2249,6 +2262,7 @@ dependencies = [
 name = "daw-lfo"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
 ]
 
@@ -2256,6 +2270,7 @@ dependencies = [
 name = "daw-limiter"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
 ]
 
@@ -2329,6 +2344,7 @@ name = "daw-loudness"
 version = "0.1.0"
 dependencies = [
  "audio-analysis",
+ "daw-dsp-support",
  "daw-unit-core",
  "rtrb",
 ]
@@ -2573,6 +2589,7 @@ dependencies = [
 name = "daw-noise"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
 ]
 
@@ -2580,17 +2597,17 @@ dependencies = [
 name = "daw-oscillator"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
- "fundsp",
 ]
 
 [[package]]
 name = "daw-ott"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-filter",
  "daw-unit-core",
- "fundsp",
 ]
 
 [[package]]
@@ -2848,7 +2865,6 @@ name = "daw-reverb-core"
 version = "0.1.0"
 dependencies = [
  "daw-dsp-support",
- "daw-filter",
  "daw-unit-core",
 ]
 
@@ -2856,6 +2872,7 @@ dependencies = [
 name = "daw-sampler"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-granulizer",
  "daw-unit-core",
 ]
@@ -2950,6 +2967,7 @@ dependencies = [
 name = "daw-shimmer-reverb"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-reverb-core",
  "daw-unit-core",
 ]
@@ -3023,7 +3041,7 @@ dependencies = [
 name = "daw-spectrum"
 version = "0.1.0"
 dependencies = [
- "audio-analysis",
+ "daw-dsp-support",
  "daw-unit-core",
 ]
 
@@ -3031,8 +3049,8 @@ dependencies = [
 name = "daw-stereo-spread"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
- "fundsp",
 ]
 
 [[package]]
@@ -3202,6 +3220,7 @@ name = "daw-unit-core"
 version = "0.1.0"
 dependencies = [
  "audio-analysis",
+ "daw-dsp-support",
  "serde",
  "serde_json",
  "uuid",

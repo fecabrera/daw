@@ -49,6 +49,29 @@ impl SaturatorClipMode {
         }
     }
 }
+impl From<SaturatorShape> for daw_dsp_support::waveshaping::Shape {
+    fn from(value: SaturatorShape) -> Self {
+        match value {
+            SaturatorShape::AnalogClip => Self::AnalogClip,
+            SaturatorShape::SoftSine => Self::SoftSine,
+            SaturatorShape::BassShaper => Self::BassShaper,
+            SaturatorShape::MediumCurve => Self::MediumCurve,
+            SaturatorShape::HardCurve => Self::HardCurve,
+        }
+    }
+}
+
+impl From<SaturatorClipMode> for daw_dsp_support::waveshaping::ClipMode {
+    fn from(value: SaturatorClipMode) -> Self {
+        match value {
+            SaturatorClipMode::NoClip => Self::NoClip,
+            SaturatorClipMode::SoftClip => Self::SoftClip,
+            SaturatorClipMode::HardClip => Self::HardClip,
+            SaturatorClipMode::TubeClip => Self::TubeClip,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SaturatorSettings {
     pub version: u32,

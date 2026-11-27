@@ -1,9 +1,9 @@
-use crate::delay::Delay;
+use super::delay::Delay;
 /// Infinity-norm contractive eight-line network. Every scattering row has an
 /// absolute sum of one; the return gain is at most 0.92. Moving linear reads,
 /// convex damping and convex DC rejection cannot increase that bound.
 #[derive(Clone)]
-pub(crate) struct Tank {
+pub struct Tank {
     delay: [Delay; 8],
     low: [f64; 8],
     dc: [f64; 8],
@@ -13,7 +13,7 @@ pub(crate) struct Tank {
     motion_step: [f64; 8],
     coefficients: [f64; 2],
     tick: u8,
-    size_transition: daw_reverb_core::TapTransition<1>,
+    size_transition: crate::reverb::TapTransition<1>,
 }
 impl Tank {
     pub fn new(rate: u32) -> Self {
@@ -30,7 +30,7 @@ impl Tank {
                 1.0 - (-std::f64::consts::TAU * 400.0 / f64::from(rate)).exp(),
             ],
             tick: 0,
-            size_transition: daw_reverb_core::TapTransition::new(rate),
+            size_transition: crate::reverb::TapTransition::new(rate),
         }
     }
     pub fn sample(

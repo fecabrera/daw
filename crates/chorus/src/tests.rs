@@ -125,10 +125,10 @@ fn retarget_preserves_delay_clock_and_meter_bypass_detaches_clones() {
         }
         assert!(meter[0].load(std::sync::atomic::Ordering::Relaxed) > 0);
         let mut reference = unit.clone();
-        let (cursor, phase) = (unit.cursor, unit.phase);
+        let (cursor, phase) = (unit.delay.cursor(), unit.phase);
         s.enabled = false;
         unit.retarget(&s);
-        assert_eq!((unit.cursor, unit.phase), (cursor, phase));
+        assert_eq!((unit.delay.cursor(), unit.phase), (cursor, phase));
         for _ in 0..rate / 100 {
             unit.process_sample([0.4; 2]);
             reference.process_sample([0.4; 2]);
@@ -161,7 +161,8 @@ fn retarget_preserves_delay_clock_and_meter_bypass_detaches_clones() {
         }
         unit.reset();
         assert_eq!(unit.phase, 0.0);
-        assert!(unit.delay.iter().all(|v| *v == [0.0; 2]));
+        assert_eq!(unit.delay.cursor(), 0);
+        assert_eq!(unit.process_sample([0.0; 2]), [0.0; 2]);
     }
 }
 #[test]

@@ -269,7 +269,15 @@ impl DawUi {
                 .map(|(_, id, r)| (*id, *r))
                 .collect();
             let pointer = ui.input(|i| i.pointer.latest_pos()).unwrap();
-            let slot = if pointer.x < row.left() + TRACK_WIDTH {
+            // The Layer page has a narrower label than the other instrument views.
+            // Only rows with a rendered component area have visible insertion slots.
+            let content_left = self
+                .instrument_ui
+                .component_viewports
+                .iter()
+                .find(|(layer, rect)| layer == owner && rect.intersects(*row))
+                .map(|(_, rect)| rect.left());
+            let slot = if content_left.is_none_or(|left| pointer.x < left) {
                 slots.len()
             } else {
                 drag::insertion_slot(pointer, slots.iter().map(|(_, r)| *r))
@@ -281,12 +289,15 @@ impl DawUi {
                 return false;
             }
             destination_index = Some(index);
-            oscillator_insertion = Some((
-                slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
-                slot,
-                *row,
-                *owner,
-            ));
+            oscillator_insertion = content_left.map(|left| {
+                (
+                    slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
+                    slot,
+                    *row,
+                    *owner,
+                    left,
+                )
+            });
             true
         });
         if let Some((_, rect)) = target
@@ -294,7 +305,7 @@ impl DawUi {
         {
             panels::selection_border(ui, rect);
         }
-        if let Some((slots, slot, row, owner)) = oscillator_insertion {
+        if let Some((slots, slot, row, owner, content_left)) = oscillator_insertion {
             let unit = self
                 .instrument_ui
                 .component_slots
@@ -307,7 +318,7 @@ impl DawUi {
                     |(_, _, rect)| *rect,
                 );
             let body = Rect::from_min_max(
-                Pos2::new(row.left() + TRACK_WIDTH, unit.top()),
+                Pos2::new(content_left, unit.top()),
                 Pos2::new(row.right(), unit.bottom()),
             )
             .intersect(viewport);

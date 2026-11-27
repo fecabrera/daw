@@ -122,6 +122,16 @@ impl AmbientReverbSettings {
     }
 }
 
+impl From<ReverbFilterSlope> for daw_dsp_support::reverb::Slope {
+    fn from(value: ReverbFilterSlope) -> Self {
+        match value {
+            ReverbFilterSlope::Db6 => Self::Db6,
+            ReverbFilterSlope::Db12 => Self::Db12,
+            ReverbFilterSlope::Db24 => Self::Db24,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

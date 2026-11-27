@@ -7,6 +7,8 @@ use daw_unit_core::{
     UnitDescriptor,
 };
 
+use daw_dsp_support::periodic::StereoSweep;
+#[cfg(test)]
 use daw_lfo::waveform as wave;
 
 #[derive(Clone)]
@@ -21,9 +23,7 @@ pub struct AutoFilter {
     rate_mode: LfoRateMode,
     rate_hz: f32,
     note_beats: f64,
-    modulation: [f64; 2],
-    modulation_initialized: bool,
-    modulation_alpha: f64,
+    sweep: StereoSweep,
     lfo_offsets: daw_unit_core::ModulationSmoother<3>,
     effective_lfo: [f32; 3],
     standalone_frame: u64,
@@ -39,7 +39,6 @@ impl AutoFilter {
         self.filter.set_output_peak_meter(meter);
     }
     pub fn new(context: ProcessingContext, settings: &AutoFilterSettings) -> Self {
-        let sample_rate = f64::from(context.sample_rate_hz);
         Self {
             fade: (context.sample_rate_hz / 200).max(1),
             filter: Filter::new(context, &filter_settings(settings)),
@@ -51,9 +50,7 @@ impl AutoFilter {
             rate_mode: settings.rate_mode,
             rate_hz: settings.rate_hz,
             note_beats: settings.note_rate.beats(),
-            modulation: [0.0; 2],
-            modulation_initialized: false,
-            modulation_alpha: 1.0 - (-1.0 / (0.001 * sample_rate)).exp(),
+            sweep: StereoSweep::new(context.sample_rate_hz),
             lfo_offsets: daw_unit_core::ModulationSmoother::new(context),
             effective_lfo: [
                 settings.strength_octaves,
@@ -172,22 +169,7 @@ impl AutoFilter {
         let phase = self.musical_phase(frame, tempo_bpm, musical);
         let depth = strength * self.lfo_mix.next_value();
         let waves: [f64; 5] = std::array::from_fn(|i| self.waves[i].next_value());
-        let mut cutoff_offsets = [0.0; 2];
-        for (ch, cutoff_offset) in cutoff_offsets.iter_mut().enumerate() {
-            let channel_phase = phase + sync + if ch == 1 { stereo } else { 0.0 };
-            let modulation: f64 = waves
-                .iter()
-                .enumerate()
-                .map(|(i, weight)| wave(i, channel_phase) * weight)
-                .sum();
-            if !self.modulation_initialized {
-                self.modulation[ch] = modulation;
-            } else {
-                self.modulation[ch] += self.modulation_alpha * (modulation - self.modulation[ch]);
-            }
-            *cutoff_offset = depth * self.modulation[ch];
-        }
-        self.modulation_initialized = true;
+        let cutoff_offsets = self.sweep.sample(phase, sync, stereo, depth, waves);
         self.filter.process_with_cutoff_offsets(
             input,
             [offsets[0], offsets[1], offsets[2], offsets[3]],
@@ -225,7 +207,7 @@ impl EffectUnit for AutoFilter {
         ];
         self.filter.reset();
         self.clock.reset();
-        self.modulation_initialized = false;
+        self.sweep.reset();
         self.standalone_frame = 0;
     }
     /// Standalone hosts without a transport use 120 BPM and an advancing frame counter.
@@ -317,13 +299,13 @@ mod tests {
         };
         let mut filter = unit(48000, &settings);
         filter.process_at([1.0; 2], 0, 120.0);
-        assert!((filter.modulation[0] + 1.0).abs() < 1e-12);
-        assert!((filter.modulation[1] - 1.0).abs() < 1e-12);
+        assert!((filter.sweep.modulation()[0] + 1.0).abs() < 1e-12);
+        assert!((filter.sweep.modulation()[1] - 1.0).abs() < 1e-12);
         settings.stereo_phase_degrees = -90.0;
         let mut filter = unit(48000, &settings);
         filter.process_at([0.0; 2], 6000, 120.0);
-        assert!(filter.modulation[0].abs() < 1e-12);
-        assert!((filter.modulation[1] + 1.0).abs() < 1e-12);
+        assert!(filter.sweep.modulation()[0].abs() < 1e-12);
+        assert!((filter.sweep.modulation()[1] + 1.0).abs() < 1e-12);
         for index in 0..NoteRate::COUNT {
             let note = NoteRate(index);
             let settings = AutoFilterSettings {

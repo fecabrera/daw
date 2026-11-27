@@ -140,6 +140,23 @@ impl ModulationDestinationSettings for MultibandEqSettings {
     }
 }
 
+impl From<EqBandMode> for daw_dsp_support::filters::parametric::Mode {
+    fn from(mode: EqBandMode) -> Self {
+        match mode {
+            EqBandMode::Bell => Self::Bell,
+            EqBandMode::LowShelf => Self::LowShelf,
+            EqBandMode::HighShelf => Self::HighShelf,
+            EqBandMode::LowPass => Self::LowPass,
+            EqBandMode::HighPass => Self::HighPass,
+            EqBandMode::Notch => Self::Notch,
+            EqBandMode::HighPass4 => Self::HighPass4,
+            EqBandMode::LowPass4 => Self::LowPass4,
+            EqBandMode::HighPass8 => Self::HighPass8,
+            EqBandMode::LowPass8 => Self::LowPass8,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

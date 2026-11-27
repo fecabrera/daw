@@ -14,7 +14,8 @@ import zipfile
 import package_sources as sources
 
 LICENSE_PATHS = ('LICENSE', 'NOTICE', 'crates/audio-analysis/LICENSE',
-                 'crates/timestretch/LICENSE', 'crates/timestretch-cli/LICENSE')
+                 'crates/timestretch/LICENSE', 'crates/timestretch-cli/LICENSE',
+                 'crates/dsp-support/analysis-kernels/LICENSE')
 PAPER_FIXTURE = b'paper excerpt fixture for packaging tests'
 
 

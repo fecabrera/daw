@@ -7,5 +7,6 @@ license.workspace = true
 publish = false
 
 [dependencies]
+daw-dsp-support.workspace = true
 daw-unit-core.workspace = true
 daw-reverb-core.workspace = true

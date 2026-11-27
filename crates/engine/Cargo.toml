@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+daw-dsp-support.workspace = true
 daw-plugin-host.workspace = true
 daw-loudness.workspace=true
 daw-plate-reverb.workspace = true

@@ -2,9 +2,7 @@
 use crate::*;
 use std::collections::HashMap;
 
-pub fn vec_bytes<T>(values: &Vec<T>) -> u64 {
-    (values.capacity() as u64).saturating_mul(std::mem::size_of::<T>() as u64)
-}
+pub use daw_dsp_support::memory::vec_bytes;
 
 /// Conservative bucket allowance: capacity is usable entries, not allocated buckets.
 pub fn map_bytes<K, V>(values: &HashMap<K, V>) -> u64 {

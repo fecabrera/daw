@@ -1,3 +1,6 @@
+pub use daw_dsp_support::dynamics::{
+    compressor_gain_reduction_db, compressor_shaped_gain_reduction_db,
+};
 use serde::{Deserialize, Serialize};
 
 pub const COMPRESSOR_TYPE_ID: &str = "daw.compressor";
@@ -32,17 +35,8 @@ impl DynamicsDirection {
         knee: f32,
         curve: f32,
     ) -> f32 {
-        match self {
-            Self::Compressor => {
-                compressor_shaped_gain_reduction_db(input, threshold, slope, knee, curve)
-            }
-            Self::Expander => {
-                // Reflect the detector about the threshold and convert the
-                // compressor slope (1 - 1/ratio) to an expansion slope (ratio - 1).
-                compressor_shaped_gain_reduction_db(-input, -threshold, slope, knee, curve)
-                    / (1.0 - slope)
-            }
-        }
+        daw_dsp_support::dynamics::Direction::from(self)
+            .gain_reduction_db(input, threshold, slope, knee, curve)
     }
 }
 
@@ -116,54 +110,13 @@ impl CompressorSettings {
     }
 }
 
-/// Soft-knee gain reduction in dB. The knee joins the two slopes continuously.
-/// Inputs use validated compressor bounds; slope is `1 - 1 / ratio`.
-pub fn compressor_gain_reduction_db(
-    level_db: f32,
-    threshold_db: f32,
-    slope: f32,
-    knee: f32,
-) -> f32 {
-    let over = level_db - threshold_db;
-    if knee > 0.0 && over > -knee * 0.5 && over < knee * 0.5 {
-        slope * (over + knee * 0.5).powi(2) / (2.0 * knee)
-    } else {
-        slope * over.max(0.0)
-    }
-}
-
-/// Output shaping starts above the knee, preserving its value and tangent.
-/// The exponential branch caps its output slope at unity, preventing expansion.
-/// Zero retains the original arithmetic exactly, including legacy rounding.
-#[inline]
-pub fn compressor_shaped_gain_reduction_db(
-    level_db: f32,
-    threshold_db: f32,
-    slope: f32,
-    knee: f32,
-    curve: f32,
-) -> f32 {
-    let edge = threshold_db + knee * 0.5;
-    if curve == 0.0 || slope <= 0.0 || level_db <= edge {
-        return compressor_gain_reduction_db(level_db, threshold_db, slope, knee);
-    }
-    let distance = f64::from(level_db) - f64::from(edge);
-    let slope = f64::from(slope);
-    let tangent = 1.0 - slope;
-    // Full curvature uses a 12 dB characteristic distance. exp_m1/ln_1p
-    // retain precision while the smoothed coefficient crosses zero.
-    let coefficient = f64::from(curve.abs()) / 12.0;
-    let extra = if curve < 0.0 {
-        let limit = -tangent.ln() / coefficient;
-        if distance >= limit {
-            (-tangent.ln() - slope) / coefficient
-        } else {
-            distance - tangent * (coefficient * distance).exp_m1() / coefficient
+impl From<DynamicsDirection> for daw_dsp_support::dynamics::Direction {
+    fn from(direction: DynamicsDirection) -> Self {
+        match direction {
+            DynamicsDirection::Compressor => Self::Compressor,
+            DynamicsDirection::Expander => Self::Expander,
         }
-    } else {
-        distance - tangent * (coefficient * distance).ln_1p() / coefficient
-    };
-    (slope * f64::from(knee) * 0.5 + extra).max(0.0) as f32
+    }
 }
 
 #[cfg(test)]

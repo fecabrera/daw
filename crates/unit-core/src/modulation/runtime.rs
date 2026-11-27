@@ -10,42 +10,7 @@ fn route_bucket(route: &ModulationRoute, count: usize) -> usize {
         % count as u64) as usize
 }
 
-#[derive(Clone, Copy)]
-/// Shared finite linear ramp for control values and contribution weights.
-pub struct ModulationRamp {
-    value: f32,
-    target: f32,
-    left: u32,
-}
-impl ModulationRamp {
-    pub fn new(value: f32) -> Self {
-        Self {
-            value,
-            target: value,
-            left: 0,
-        }
-    }
-    pub fn set(&mut self, value: f32, frames: u32) {
-        if self.target != value {
-            self.target = value;
-            self.left = frames;
-        }
-    }
-    pub fn next_value(&mut self) -> f32 {
-        if self.left > 0 {
-            self.value += (self.target - self.value) / self.left as f32;
-            self.left -= 1;
-        }
-        self.value
-    }
-    pub fn target(&self) -> f32 {
-        self.target
-    }
-    pub fn reset(&mut self) {
-        self.value = self.target;
-        self.left = 0;
-    }
-}
+pub use daw_dsp_support::ramps::ModulationRamp;
 
 #[derive(Clone, Copy)]
 struct SourceBinding {
@@ -105,7 +70,7 @@ impl ModulationRoute {
     }
     pub fn retarget(&mut self, next: &Self) {
         self.settings = next.settings;
-        self.amount.set(next.amount.target, self.frames);
+        self.amount.set(next.amount.target(), self.frames);
     }
     fn value<'a>(
         &mut self,
@@ -439,33 +404,23 @@ impl ModulationParameter {
     }
 }
 
-/// Shared 1 ms smoothing for additive parameter offsets. Nonfinite inputs become neutral.
-/// f64 state preserves the existing filter and drive response at every project rate.
+/// Shared 1 ms smoothing for additive parameter offsets.
 #[derive(Clone)]
-pub struct ModulationSmoother<const N: usize> {
-    values: [f64; N],
-    alpha: f64,
-}
+pub struct ModulationSmoother<const N: usize>(daw_dsp_support::ramps::OffsetSmoother<N>);
+
 impl<const N: usize> ModulationSmoother<N> {
     pub fn new(context: crate::ProcessingContext) -> Self {
-        Self {
-            values: [0.0; N],
-            alpha: 1.0 - (-1.0 / (0.001 * f64::from(context.sample_rate_hz))).exp(),
-        }
+        Self(daw_dsp_support::ramps::OffsetSmoother::new(
+            context.sample_rate_hz,
+        ))
     }
+
     pub fn reset(&mut self) {
-        self.values = [0.0; N];
+        self.0.reset();
     }
+
     pub fn process(&mut self, offsets: [f32; N]) -> [f64; N] {
-        for (value, target) in self.values.iter_mut().zip(offsets) {
-            let target = if target.is_finite() {
-                f64::from(target)
-            } else {
-                0.0
-            };
-            *value += self.alpha * (target - *value);
-        }
-        self.values
+        self.0.process(offsets)
     }
 }
 

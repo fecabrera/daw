@@ -435,14 +435,19 @@ impl LayerVoice {
             .iter_mut()
             .map(|s| {
                 if s.frequency_remaining > 0 {
-                    s.frequency +=
-                        (s.frequency_target - s.frequency) / s.frequency_remaining as f32;
-                    s.frequency_remaining -= 1;
+                    daw_dsp_support::ramps::advance_linear_f32(
+                        &mut s.frequency,
+                        s.frequency_target,
+                        &mut s.frequency_remaining,
+                    );
                     s.source.set_frequency(s.frequency);
                 }
                 if s.gain_remaining > 0 {
-                    s.gain += (s.gain_target - s.gain) / s.gain_remaining as f32;
-                    s.gain_remaining -= 1;
+                    daw_dsp_support::ramps::advance_linear_f32(
+                        &mut s.gain,
+                        s.gain_target,
+                        &mut s.gain_remaining,
+                    );
                 }
                 s.source.set_base_gain(s.gain);
                 s.source.set_output_pitch_ratio(output_pitch_ratio);
@@ -523,9 +528,7 @@ fn output_frame(clip: &Clip, frame: u64) -> u64 {
     })
 }
 
-fn note_frequency(pitch: u8, transpose: i8) -> f32 {
-    440.0 * 2.0_f32.powf((f32::from(pitch) + f32::from(transpose) - 69.0) / 12.0)
-}
+use daw_dsp_support::oscillator::note_frequency;
 
 fn clip_pitch(pitch: u8, transpose: i8) -> u8 {
     daw_core::transposed_midi_pitch(pitch, transpose)
@@ -1876,7 +1879,7 @@ impl MidiTrackRuntime {
                 })
             && source.unit == target.unit
         {
-            source.level.attach_peak(meter);
+            source.level.attach_peak_prepared(meter);
         }
     }
     pub fn set_effect_meter(&mut self, id: Id, meter: &std::sync::Arc<daw_unit_core::PeakMeter>) {

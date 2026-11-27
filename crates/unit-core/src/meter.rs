@@ -5,7 +5,7 @@ use std::sync::{
 };
 
 /// Time constant for instant-attack output level displays, in seconds.
-pub const LEVEL_METER_RELEASE_SECONDS: f32 = 0.3;
+pub use daw_dsp_support::levels::LEVEL_METER_RELEASE_SECONDS;
 
 /// Atomic storage for a scalar or fixed-size set of readings.
 pub trait MeterStorage {
@@ -358,8 +358,7 @@ impl<const N: usize> UnitMeter<BandMeter<N>> {
 /// Values are nonnegative linear amplitudes. Prepare and attach handles off the callback.
 #[derive(Clone)]
 pub struct LevelMonitor<const N: usize> {
-    peaks: [f32; N],
-    release: f32,
+    levels: daw_dsp_support::levels::ReleasedLevels<N>,
     meter: UnitMeter<[AtomicU32; N]>,
     peak_meter: UnitMeter<BandMeter<N>>,
     peak_pending: bool,
@@ -367,18 +366,17 @@ pub struct LevelMonitor<const N: usize> {
 impl<const N: usize> LevelMonitor<N> {
     pub fn new(sample_rate_hz: u32, enabled: bool) -> Self {
         Self {
-            peaks: [0.0; N],
-            release: (-1.0 / (LEVEL_METER_RELEASE_SECONDS * sample_rate_hz as f32)).exp(),
+            levels: daw_dsp_support::levels::ReleasedLevels::new(sample_rate_hz),
             meter: UnitMeter::new(enabled),
             peak_meter: UnitMeter::new(enabled),
             peak_pending: false,
         }
     }
     pub fn attach(&mut self, handle: Arc<[AtomicU32; N]>) {
-        self.meter.attach(handle, self.peaks);
+        self.meter.attach(handle, self.levels.current());
     }
     pub fn attach_peak(&mut self, handle: Arc<BandMeter<N>>) {
-        self.peak_meter.attach(handle, self.peaks);
+        self.peak_meter.attach(handle, self.levels.current());
         self.peak_pending = false;
     }
     /// Control/worker binding only. Preserve the active producer's live readings;
@@ -400,14 +398,14 @@ impl<const N: usize> LevelMonitor<N> {
         self.set_enabled(enabled);
         if let Some(handle) = &self.meter.handle {
             if enabled {
-                handle.initialize(self.peaks);
+                handle.initialize(self.levels.current());
             } else {
                 handle.clear();
             }
         }
         if let Some(handle) = &self.peak_meter.handle {
             if enabled {
-                handle.initialize(self.peaks);
+                handle.initialize(self.levels.current());
             } else {
                 handle.clear();
             }
@@ -439,21 +437,16 @@ impl<const N: usize> LevelMonitor<N> {
         if !self.is_connected() {
             return;
         }
-        for (held, level) in self.peaks.iter_mut().zip(levels) {
-            let level = if level.is_finite() {
-                level.max(0.0)
-            } else {
-                0.0
-            };
-            *held = level.max(*held * self.release);
-        }
-        self.meter.publish(self.peaks);
-        self.peak_meter.publish_levels(self.peaks, levels);
+        self.levels.sample(levels);
+        self.meter.publish(self.levels.current());
+        self.peak_meter
+            .publish_levels(self.levels.current(), levels);
     }
     pub fn reset(&mut self) {
-        self.peaks = [0.0; N];
-        self.meter.publish(self.peaks);
-        self.peak_meter.publish_levels(self.peaks, [0.0; N]);
+        self.levels.reset();
+        self.meter.publish(self.levels.current());
+        self.peak_meter
+            .publish_levels(self.levels.current(), [0.0; N]);
     }
 }
 

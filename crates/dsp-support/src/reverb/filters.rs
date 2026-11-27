@@ -1,6 +1,7 @@
 //! Warm parallel reverb filters with bounded, tail-preserving slope transitions.
-use daw_filter::svf::StateVariableFilter;
-use daw_unit_core::{ModulationRamp, ReverbFilterSlope as Slope};
+use super::Slope;
+use crate::filters::svf::StateVariableFilter;
+use crate::ramps::ModulationRamp;
 
 #[derive(Clone)]
 pub(crate) struct SlopeFilter {

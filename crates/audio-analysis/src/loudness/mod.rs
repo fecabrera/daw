@@ -7,12 +7,6 @@
 //! assert!((analyzer.finish()?.unwrap() + 6.0206).abs() < 0.001);
 //! # Ok::<(), &'static str>(())
 //! ```
-mod distribution;
-mod filter;
-mod live;
 mod offline;
-
-pub use distribution::{Distribution, db, lufs};
-pub use filter::{KWeighting, TruePeak};
-pub use live::{IntegratedStatistics, Measurements, Observation, RollingLoudness};
+pub use daw_analysis_kernels::loudness::*;
 pub use offline::{MeasureMode, OfflineAnalyzer};

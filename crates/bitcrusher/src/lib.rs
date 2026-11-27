@@ -1,4 +1,5 @@
 //! Stereo amplitude quantization and whole-ratio sample holding.
+use daw_dsp_support::bitcrush::SampleHold;
 use daw_unit_core::{
     BITCRUSHER_TYPE_ID, BitcrusherSettings, EffectUnit, LevelMonitor, ModulationContext,
     ModulationDestination, ModulationDestinationSettings, ModulationInputs, ModulationParameter,
@@ -10,26 +11,13 @@ use std::sync::{Arc, atomic::AtomicU32};
 fn amplitude(db: f32) -> f32 {
     10.0_f32.powf(db / 20.0)
 }
-fn quantize(input: f64, bits: u8) -> f64 {
-    let input = input.clamp(-1.0, 1.0);
-    // Symmetric endpoint-inclusive levels. Preserve digital silence explicitly:
-    // an even number of equally spaced levels has no zero, including at one bit.
-    if input == 0.0 {
-        return 0.0;
-    }
-    let intervals = f64::from((1_u32 << bits) - 1);
-    let magnitude = ((input.abs() + 1.0) * 0.5 * intervals).round() * 2.0 / intervals - 1.0;
-    magnitude.copysign(input)
-}
-
 #[derive(Clone)]
 pub struct Bitcrusher {
     // Drive dB, Resolution bits, Downsampling ratio, Level amplitude, Dry/Wet, power.
     parameters: [ModulationRamp; 6],
     external: ModulationSmoother<5>,
     effective: [f32; 5],
-    held: [f64; 2],
-    elapsed: u8,
+    capture: SampleHold,
     fade_frames: u32,
     monitor: LevelMonitor<3>,
 }
@@ -57,8 +45,7 @@ impl Bitcrusher {
                 s.level_db,
                 s.dry_wet,
             ],
-            held: [0.0; 2],
-            elapsed: u8::MAX,
+            capture: SampleHold::new(u8::MAX),
             fade_frames: (context.sample_rate_hz / 200).max(1),
         }
     }
@@ -68,7 +55,7 @@ impl Bitcrusher {
     }
     /// Attach current output and a click-resettable sample peak on the control thread.
     pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
-        self.monitor.attach_peak(meter);
+        self.monitor.attach_peak_prepared(meter);
     }
     pub fn retarget(&mut self, s: &BitcrusherSettings) {
         self.monitor.set_enabled(s.enabled);
@@ -103,14 +90,7 @@ impl Bitcrusher {
             mix as f32,
         ];
         let dry = input.map(|v| if v.is_finite() { v } else { 0.0 });
-        // One capture clock preserves stereo timing. A changed ratio retains elapsed time;
-        // shortening the period captures now if that time already meets the new period.
-        if self.elapsed >= ratio {
-            let drive = 10_f64.powf(drive / 20.0);
-            self.held = dry.map(|v| quantize(f64::from(v) * drive, bits));
-            self.elapsed = 0;
-        }
-        self.elapsed += 1;
+        let held = self.capture.sample(dry, drive, bits, ratio);
         // Keep clock and modulation history running through bypass; no stale frozen sample.
         if p[5] == 0.0 {
             return dry;
@@ -118,7 +98,7 @@ impl Bitcrusher {
         let output = std::array::from_fn(|ch| {
             let dry = f64::from(dry[ch]);
             // Weighted sums preserve clipped wet samples even when dry headroom is huge.
-            let wet = (dry * (1.0 - mix) + self.held[ch] * mix) * gain;
+            let wet = (dry * (1.0 - mix) + held[ch] * mix) * gain;
             let enabled = f64::from(p[5]);
             (dry * (1.0 - enabled) + wet * enabled).clamp(-f64::from(f32::MAX), f64::from(f32::MAX))
                 as f32
@@ -143,8 +123,7 @@ impl EffectUnit for Bitcrusher {
             ramp.reset();
         }
         self.external.reset();
-        self.held = [0.0; 2];
-        self.elapsed = u8::MAX;
+        self.capture = SampleHold::new(u8::MAX);
         let p = self.parameters.each_ref().map(ModulationRamp::target);
         self.effective = [
             p[0],

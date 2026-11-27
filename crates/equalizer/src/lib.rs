@@ -1,67 +1,14 @@
 //! Reusable stereo three-band EQ. FunDSP coefficients and filter state stay private.
+use daw_dsp_support::filters::eq3::{Band, MidCut, MidShelf};
 use daw_unit_core::{
     EQ_TYPE_ID, EffectUnit, EqBandSettings, EqSettings, PortKind, ProcessingContext, UnitDescriptor,
 };
-use fundsp::{audionode::AudioNode, svf::*};
 
 mod modulation;
 #[cfg(test)]
 mod modulation_tests;
 mod monitor;
 
-#[derive(Clone)]
-enum Filter {
-    LowShelf(FixedSvf<f64, LowshelfMode<f64>>),
-    HighShelf(FixedSvf<f64, HighshelfMode<f64>>),
-    HighPass(FixedSvf<f64, HighpassMode<f64>>),
-    LowPass(FixedSvf<f64, LowpassMode<f64>>),
-}
-macro_rules! with_filter {
-    ($filter:expr, $node:ident, $body:expr) => {
-        match $filter {
-            Filter::LowShelf($node) => $body,
-            Filter::HighShelf($node) => $body,
-            Filter::HighPass($node) => $body,
-            Filter::LowPass($node) => $body,
-        }
-    };
-}
-impl Filter {
-    fn new(index: usize, cut: bool, params: &SvfParams<f64>) -> Self {
-        match (index, cut) {
-            (0, false) => Self::LowShelf(FixedSvf::new(LowshelfMode::new(), params)),
-            (_, false) => Self::HighShelf(FixedSvf::new(HighshelfMode::new(), params)),
-            (0, true) => Self::HighPass(FixedSvf::new(HighpassMode::new(), params)),
-            (_, true) => Self::LowPass(FixedSvf::new(LowpassMode::new(), params)),
-        }
-    }
-    fn configure(&mut self, values: [f32; 4]) {
-        with_filter!(
-            self,
-            node,
-            node.set_cutoff_q_gain(
-                f64::from(values[0]),
-                f64::from(values[1]),
-                10_f64.powf(f64::from(values[2]) / 20.0)
-            )
-        );
-    }
-    fn sample(&mut self, input: f32) -> f32 {
-        with_filter!(self, node, node.filter_mono(input))
-    }
-    fn reset(&mut self) {
-        with_filter!(self, node, node.reset());
-    }
-}
-#[derive(Clone)]
-struct Band {
-    normal: Option<[Filter; 2]>,
-    cut: Option<[Filter; 2]>,
-    current: [f32; 4],
-    target: [f32; 4],
-    remaining: u32,
-    configured: [f32; 4],
-}
 fn values(settings: EqBandSettings) -> [f32; 4] {
     [
         settings.frequency_hz,
@@ -69,250 +16,6 @@ fn values(settings: EqBandSettings) -> [f32; 4] {
         settings.gain_db,
         if settings.enabled { 1.0 } else { 0.0 },
     ]
-}
-impl Band {
-    fn new(index: usize, sample_rate_hz: u32, settings: EqBandSettings) -> Self {
-        let current = values(settings);
-        let params = SvfParams {
-            sample_rate: f64::from(sample_rate_hz),
-            cutoff: f64::from(current[0]),
-            q: f64::from(current[1]),
-            gain: 10_f64.powf(f64::from(current[2]) / 20.0),
-        };
-        Self {
-            normal: (index != 1)
-                .then(|| std::array::from_fn(|_| Filter::new(index, false, &params))),
-            cut: (index != 1).then(|| std::array::from_fn(|_| Filter::new(index, true, &params))),
-            current,
-            target: current,
-            remaining: 0,
-            configured: current,
-        }
-    }
-    fn retarget(&mut self, settings: EqBandSettings, frames: u32) {
-        let mut target = values(settings);
-        if self.normal.is_none() {
-            // Mid owns gain/power only. Legacy frequency/Q changes do not restart its ramp.
-            target[..2].copy_from_slice(&self.target[..2]);
-        }
-        if self.target != target {
-            self.target = target;
-            self.remaining = frames;
-        }
-    }
-    fn advance(&mut self) {
-        if self.remaining > 0 {
-            for (current, target) in self.current.iter_mut().zip(self.target) {
-                *current += (target - *current) / self.remaining as f32;
-            }
-            self.remaining -= 1;
-        }
-    }
-    fn configure(&mut self, values: [f32; 4]) {
-        if self.configured[..3] != values[..3] {
-            for filter in self
-                .normal
-                .iter_mut()
-                .flatten()
-                .chain(self.cut.iter_mut().flatten())
-            {
-                filter.configure(values);
-            }
-            self.configured = values;
-        }
-    }
-    fn sample(&mut self, input: [f32; 2], external: Option<([f32; 2], [f32; 2])>) -> [f32; 2] {
-        std::array::from_fn(|ch| {
-            let normal = self.normal.as_mut().map_or_else(
-                || external.map_or(input, |outputs| outputs.0)[ch],
-                |normal| normal[ch].sample(input[ch]),
-            );
-            let cut = self.cut.as_mut().map_or_else(
-                || external.map_or(input, |outputs| outputs.1)[ch],
-                |cut| cut[ch].sample(input[ch]),
-            );
-            cut + (normal - cut) * self.current[3]
-        })
-    }
-    fn reset(&mut self) {
-        self.current = self.target;
-        self.remaining = 0;
-        for filter in self
-            .normal
-            .iter_mut()
-            .flatten()
-            .chain(self.cut.iter_mut().flatten())
-        {
-            filter.reset();
-            filter.configure(self.current);
-        }
-        self.configured = self.current;
-    }
-}
-
-/// Parallel low/high-pass branches reject the interval between the shelf frequencies.
-/// Q maps continuously from one to eight biquad stages; all stages keep advancing.
-#[derive(Clone)]
-struct MidCut {
-    low: [[Filter; 2]; 8],
-    high: [[Filter; 2]; 8],
-    parameters: [f32; 4],
-    order: [f32; 2],
-    width: f32,
-}
-impl MidCut {
-    fn new(sample_rate_hz: u32, settings: &EqSettings) -> Self {
-        let params = SvfParams {
-            sample_rate: f64::from(sample_rate_hz),
-            cutoff: 1000.0,
-            q: f64::from(std::f32::consts::FRAC_1_SQRT_2),
-            gain: 1.0,
-        };
-        let mut cut = Self {
-            low: std::array::from_fn(|_| {
-                std::array::from_fn(|_| Filter::LowPass(FixedSvf::new(LowpassMode::new(), &params)))
-            }),
-            high: std::array::from_fn(|_| {
-                std::array::from_fn(|_| {
-                    Filter::HighPass(FixedSvf::new(HighpassMode::new(), &params))
-                })
-            }),
-            parameters: [0.0; 4],
-            order: [1.0; 2],
-            width: 1.0,
-        };
-        cut.configure(
-            settings.bands[0].frequency_hz,
-            settings.bands[2].frequency_hz,
-            settings.bands[0].q,
-            settings.bands[2].q,
-        );
-        cut
-    }
-    fn configure(&mut self, low: f32, high: f32, low_q: f32, high_q: f32) {
-        let parameters = [low, high, low_q, high_q];
-        if parameters == self.parameters {
-            return;
-        }
-        self.parameters = parameters;
-        let (low, high, qs) = if low <= high {
-            (low, high, [low_q, high_q])
-        } else {
-            (high, low, [high_q, low_q])
-        };
-        self.order = qs.map(|q| 1.0 + 7.0 * ((q / 0.1).log10() / 2.0).clamp(0.0, 1.0));
-        // Equal boundaries mean no middle interval. Blend to dry as that interval closes.
-        self.width = ((high - low) / ((low + high) * 0.5) * 10.0).clamp(0.0, 1.0);
-        for (branch, (filters, cutoff)) in [(&mut self.low, low), (&mut self.high, high)]
-            .into_iter()
-            .enumerate()
-        {
-            let order = self.order[branch];
-            for (stage, filters) in filters.iter_mut().enumerate() {
-                let lower = order.floor() as usize;
-                let upper = (lower + 1).min(8);
-                let stage_q = |stages: usize| {
-                    let stages = if stage < stages { stages } else { 8 };
-                    1.0 / (2.0
-                        * ((2 * stage + 1) as f32 * std::f32::consts::PI / (4.0 * stages as f32))
-                            .cos())
-                };
-                let q = if stage < lower {
-                    stage_q(lower)
-                } else {
-                    stage_q(upper)
-                };
-                let q = q + (stage_q(upper) - q) * order.fract();
-                for filter in filters {
-                    filter.configure([cutoff, q, 0.0, 0.0]);
-                }
-            }
-        }
-    }
-    fn sample(&mut self, input: [f32; 2]) -> [f32; 2] {
-        std::array::from_fn(|ch| {
-            let mut output = 0.0;
-            for (branch, filters) in [&mut self.low, &mut self.high].into_iter().enumerate() {
-                let order = self.order[branch];
-                let lower = order.floor() as usize - 1;
-                let upper = order.ceil() as usize - 1;
-                let mut value = input[ch];
-                let mut first = 0.0;
-                let mut last = 0.0;
-                for (stage, filters) in filters.iter_mut().enumerate() {
-                    value = filters[ch].sample(value);
-                    if stage == lower {
-                        first = value;
-                    }
-                    if stage == upper {
-                        last = value;
-                    }
-                }
-                output += first + (last - first) * order.fract();
-            }
-            input[ch] + (output - input[ch]) * self.width
-        })
-    }
-    fn reset(&mut self) {
-        for filter in self.low.iter_mut().chain(&mut self.high).flatten() {
-            filter.reset();
-        }
-    }
-}
-
-/// Opposing shelves keep the outer ranges at unity and set the middle plateau's gain.
-#[derive(Clone)]
-struct MidShelf {
-    low: [Filter; 2],
-    high: [Filter; 2],
-    parameters: [f32; 5],
-    gain: f32,
-}
-impl MidShelf {
-    fn new(rate: u32) -> Self {
-        let params = SvfParams {
-            sample_rate: f64::from(rate),
-            cutoff: 1000.0,
-            q: f64::from(std::f32::consts::FRAC_1_SQRT_2),
-            gain: 1.0,
-        };
-        Self {
-            low: std::array::from_fn(|_| Filter::new(0, false, &params)),
-            high: std::array::from_fn(|_| Filter::new(2, false, &params)),
-            parameters: [f32::NAN; 5],
-            gain: 1.0,
-        }
-    }
-    fn configure(&mut self, low: [f32; 4], high: [f32; 4], gain: f32) {
-        let parameters = [low[0], low[1], high[0], high[1], gain];
-        if self.parameters == parameters {
-            return;
-        }
-        self.parameters = parameters;
-        let (low, high) = if low[0] <= high[0] {
-            (low, high)
-        } else {
-            (high, low)
-        };
-        // No interval at equal boundaries; approach unity as the interval closes.
-        let width = ((high[0] - low[0]) / ((high[0] + low[0]) * 0.5) * 10.0).clamp(0.0, 1.0);
-        let gain = gain * width;
-        self.gain = 10_f32.powf(gain / 20.0);
-        for filter in &mut self.low {
-            filter.configure([low[0], low[1], -gain, 1.0]);
-        }
-        for filter in &mut self.high {
-            filter.configure([high[0], high[1], -gain, 1.0]);
-        }
-    }
-    fn sample(&mut self, input: [f32; 2]) -> [f32; 2] {
-        std::array::from_fn(|ch| self.high[ch].sample(self.low[ch].sample(input[ch])) * self.gain)
-    }
-    fn reset(&mut self) {
-        for filter in self.low.iter_mut().chain(&mut self.high) {
-            filter.reset();
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -337,9 +40,13 @@ impl Equalizer {
         let mix = if settings.enabled { 1.0 } else { 0.0 };
         Self {
             bands: std::array::from_fn(|index| {
-                Band::new(index, context.sample_rate_hz, settings.bands[index])
+                Band::new(index, context.sample_rate_hz, values(settings.bands[index]))
             }),
-            mid_cut: MidCut::new(context.sample_rate_hz, settings),
+            mid_cut: MidCut::new(
+                context.sample_rate_hz,
+                values(settings.bands[0]),
+                values(settings.bands[2]),
+            ),
             mid_shelf: MidShelf::new(context.sample_rate_hz),
             mix,
             target: mix,
@@ -356,7 +63,7 @@ impl Equalizer {
     pub fn retarget(&mut self, settings: &EqSettings) {
         self.spectrum.set_enabled(settings.enabled);
         for (band, settings) in self.bands.iter_mut().zip(settings.bands) {
-            band.retarget(settings, self.fade_frames);
+            band.retarget(values(settings), self.fade_frames);
         }
         let target = if settings.enabled { 1.0 } else { 0.0 };
         if target != self.target {
@@ -402,7 +109,7 @@ impl EffectUnit for Equalizer {
         self.spectrum.reset();
         self.external.reset();
         self.configuration = None;
-        self.effective = std::array::from_fn(|i| self.bands[i].current);
+        self.effective = std::array::from_fn(|i| self.bands[i].current());
     }
     fn process_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
         self.process_modulated(input, [0.0; 7])
@@ -434,7 +141,7 @@ impl Equalizer {
             - self
                 .bands
                 .iter()
-                .map(|band| 1.0 - band.current[3])
+                .map(|band| 1.0 - band.current()[3])
                 .product::<f32>();
         for sample in &mut wet {
             *sample *= audible;

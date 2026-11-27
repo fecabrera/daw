@@ -51,7 +51,7 @@ impl Filter {
     }
     /// Attach current output and held-peak storage on the control thread.
     pub fn set_output_peak_meter(&mut self, meter: std::sync::Arc<daw_unit_core::BandMeter<3>>) {
-        self.monitor.attach_peak(meter);
+        self.monitor.attach_peak_prepared(meter);
     }
     /// Last processed cutoff L/R (Hz), Q, output dB and wet fraction.
     pub fn effective_parameters(&self) -> [f32; 5] {

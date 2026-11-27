@@ -1,72 +1,9 @@
 //! Settled control-thread responses of the same filters used for audio.
 use super::*;
-type Complex = fundsp::math::Complex64;
-fn filter(filter: &mut Filter, hz: f64) -> Complex {
-    with_filter!(
-        filter,
-        node,
-        node.response(0, hz).unwrap_or(Complex::new(1.0, 0.0))
-    )
-}
-/// Low/Mid/High response curves, including band cuts. Bypass is handled by the graph.
-pub fn response(settings: &EqSettings, rate: u32) -> [Vec<f32>; 3] {
-    let mut bands: [Band; 3] = std::array::from_fn(|i| Band::new(i, rate, settings.bands[i]));
-    let mut mid_shelf = MidShelf::new(rate);
-    mid_shelf.configure(
-        values(settings.bands[0]),
-        values(settings.bands[2]),
-        settings.bands[1].gain_db,
-    );
-    let mut mid_cut = MidCut::new(rate, settings);
-    std::array::from_fn(|band| {
-        (0..160)
-            .map(|i| {
-                let hz = 20.0 * 1000_f64.powf(i as f64 / 159.0);
-                let v = if !settings.bands.iter().any(|b| b.enabled) {
-                    Complex::new(0.0, 0.0)
-                } else if band != 1 {
-                    let b = &mut bands[band];
-                    let filters = if settings.bands[band].enabled {
-                        b.normal.as_mut()
-                    } else {
-                        b.cut.as_mut()
-                    }
-                    .unwrap();
-                    filter(&mut filters[0], hz)
-                } else if settings.bands[1].enabled {
-                    filter(&mut mid_shelf.low[0], hz)
-                        * filter(&mut mid_shelf.high[0], hz)
-                        * f64::from(mid_shelf.gain)
-                } else {
-                    let mut total = Complex::new(0.0, 0.0);
-                    for (branch, filters) in [&mut mid_cut.low, &mut mid_cut.high]
-                        .into_iter()
-                        .enumerate()
-                    {
-                        let order = mid_cut.order[branch];
-                        let mut value = Complex::new(1.0, 0.0);
-                        let mut first = value;
-                        let mut last = value;
-                        for (stage, filters) in filters.iter_mut().enumerate() {
-                            value *= filter(&mut filters[0], hz);
-                            if stage == order.floor() as usize - 1 {
-                                first = value;
-                            }
-                            if stage == order.ceil() as usize - 1 {
-                                last = value;
-                            }
-                        }
-                        total += first + (last - first) * f64::from(order.fract());
-                    }
-                    Complex::new(1.0, 0.0)
-                        + (total - Complex::new(1.0, 0.0)) * f64::from(mid_cut.width)
-                };
-                (20.0 * v.norm().max(1e-12).log10()).clamp(-144.0, 144.0) as f32
-            })
-            .collect()
-    })
-}
 
+pub fn response(settings: &EqSettings, rate: u32) -> [Vec<f32>; 3] {
+    daw_dsp_support::filters::eq3::response(settings.bands.map(values), rate)
+}
 #[cfg(test)]
 mod tests {
     use super::*;

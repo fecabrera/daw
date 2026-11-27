@@ -6,5 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+daw-dsp-support.workspace = true
 daw-unit-core.workspace = true
 daw-granulizer.workspace = true

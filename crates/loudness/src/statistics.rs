@@ -1,6 +1,6 @@
 //! Live-meter aggregation, reset epochs and displayed history.
 use crate::Observation;
-use audio_analysis::loudness::IntegratedStatistics;
+use daw_dsp_support::analysis::loudness::IntegratedStatistics;
 use daw_unit_core::{LOUDNESS_HISTORY, LOUDNESS_SCALARS, LoudnessReading};
 pub struct Statistics {
     pub epoch: u64,
@@ -67,7 +67,7 @@ mod tests {
     fn observation(tick: u64, l: f64) -> Observation {
         Observation {
             epoch: 1,
-            measurement: audio_analysis::loudness::Observation {
+            measurement: daw_dsp_support::analysis::loudness::Observation {
                 momentary_power: power(l),
                 short_term_power: power(l),
                 max_momentary_power: power(l),

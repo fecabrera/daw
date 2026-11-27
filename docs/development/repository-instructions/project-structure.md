@@ -35,7 +35,8 @@ The table includes existing unit implementations at their current locations.
 | `crates/bitcrusher` | Portable stereo quantization, whole-ratio sample holding, and shared modulation; no DAW, UI, media, or device dependencies. |
 | `crates/stereo-spread` | Portable spectral stereo widening with private FunDSP filter banks and shared modulation; no DAW, UI, media, or device dependencies. |
 | `crates/direction-mixer` | Portable stereo direction/width and M/S decoding through the shared effect and modulation APIs; no DAW, UI, or device dependencies. |
-| `crates/dsp-support` | Home for unit DSP algorithms and building blocks. Currently provides waveshaping and fixed 4× oversampling. |
+| `crates/dsp-support/analysis-kernels` | Dependency-free BSD-2-Clause live spectrum and loudness kernels used by DSP support and standalone analysis. |
+| `crates/dsp-support` | Home for unit DSP algorithms and building blocks. Provides filter, dynamics, delay, reverb, source, modulation, and numerical measurement blocks. |
 | `crates/drive` | Reusable stereo soft-clipping drive with color/tone filters behind the shared effect API; keep FunDSP types private. |
 | `crates/saturator-plugin`, `crates/bitcrusher-plugin` | Typed plugin identities, parameters, bounded state and prepared adapters over the portable DSP. Share format/editor infrastructure; no DAW or SDK ownership. |
 | `crates/saturator-editor`, `crates/bitcrusher-editor` | Shared headerless body bindings, bounded host gestures, appearance and output telemetry. |

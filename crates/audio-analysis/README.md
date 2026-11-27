@@ -1,7 +1,10 @@
 # Audio analysis
 
 Portable analysis over caller-owned PCM. Original code is [BSD-2-Clause](LICENSE).
-There is no DAW, timestretch, device or file dependency.
+There is no DAW, timestretch, device or file dependency. Keep
+`crates/audio-analysis` and `crates/dsp-support/analysis-kernels` at the same
+relative paths when building outside the DAW workspace. The second is a
+dependency-free BSD-2-Clause package with the shared live measurements.
 
 ## Loudness and peak measurement
 

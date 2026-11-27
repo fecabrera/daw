@@ -1,10 +1,10 @@
 //! Linked stereo compressor and downward expander. FunDSP detector types remain private.
+use daw_dsp_support::dynamics::DynamicsDetector;
 use daw_unit_core::ramps::ExactRamp32 as Ramp;
 use daw_unit_core::{
     BandMeter, CompressorDetection, CompressorSettings, DynamicsDirection, EffectUnit,
     LevelMonitor, PeakMeter, PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
 };
-use fundsp::dynamics::{Meter, MeterState};
 use std::sync::{Arc, atomic::AtomicU32};
 
 #[cfg(test)]
@@ -12,10 +12,6 @@ use std::sync::atomic::Ordering;
 mod modulation;
 #[cfg(test)]
 mod modulation_tests;
-
-const RMS: Meter = Meter::Rms(0.01);
-const EXPANDER_PEAK: Meter = Meter::Peak(0.030);
-const EXPANDER_MAX_REDUCTION_DB: f32 = 120.0;
 
 fn amplitude(db: f32) -> f32 {
     10_f32.powf(db / 20.0)
@@ -27,15 +23,10 @@ use daw_unit_core::compressor_gain_reduction_db as reduction;
 #[derive(Clone)]
 pub struct Compressor {
     direction: DynamicsDirection,
-    rms: [MeterState; 2],
-    peak_detector: Option<MeterState>,
     // Threshold, slope, knee, log attack/release time, RMS weight, level, wet, enabled, Curve.
     parameters: [Ramp; 10],
-    rate: f64,
     fade_frames: u32,
-    configured_times: [f32; 2],
-    coefficients: [f64; 2],
-    reduction_db: f64,
+    detector: DynamicsDetector,
     output_monitor: LevelMonitor<3>,
     curve_monitor: LevelMonitor<3>,
     history: daw_unit_core::LevelHistoryWriter,
@@ -54,26 +45,11 @@ impl Compressor {
         settings: &CompressorSettings,
         direction: DynamicsDirection,
     ) -> Self {
-        let rate = f64::from(context.sample_rate_hz);
-        let rms = std::array::from_fn(|_| {
-            let mut state = MeterState::new(RMS);
-            state.set_sample_rate(RMS, rate);
-            state
-        });
         let mut unit = Self {
             direction,
-            rms,
-            peak_detector: (direction == DynamicsDirection::Expander).then(|| {
-                let mut state = MeterState::new(EXPANDER_PEAK);
-                state.set_sample_rate(EXPANDER_PEAK, rate);
-                state
-            }),
             parameters: Self::values(settings).map(Ramp::new),
-            rate,
             fade_frames: (context.sample_rate_hz / 200).max(1),
-            configured_times: [f32::NAN; 2],
-            coefficients: [0.0; 2],
-            reduction_db: 0.0,
+            detector: DynamicsDetector::new(context.sample_rate_hz, direction.into()),
             output_monitor: LevelMonitor::new(context.sample_rate_hz, settings.enabled),
             curve_monitor: LevelMonitor::new(context.sample_rate_hz, settings.enabled),
             history: daw_unit_core::LevelHistoryWriter::new(
@@ -128,20 +104,14 @@ impl Compressor {
     }
     /// Compression before the dry/wet blend, zero when bypassed.
     pub fn gain_reduction_db(&self) -> f32 {
-        self.reduction_db as f32 * self.parameters[8].value()
+        self.detector.reduction_db() * self.parameters[8].value()
     }
     fn configure(&mut self, times: [f32; 2]) {
-        for (index, time) in times.into_iter().enumerate() {
-            if time != self.configured_times[index] {
-                self.coefficients[index] =
-                    (-1.0 / (f64::from(time).exp() * 0.001 * self.rate)).exp();
-                self.configured_times[index] = time;
-            }
-        }
+        self.detector.configure(times);
     }
     /// Attach final-output current and held sample peaks on a control thread.
     pub fn set_output_peak_meter(&mut self, meter: Arc<BandMeter<3>>) {
-        self.output_monitor.attach_peak(meter);
+        self.output_monitor.attach_peak_prepared(meter);
     }
     /// Prepared input-envelope monitor: linked detector amplitude in cell zero.
     /// Binding must not overwrite a handle owned by the active renderer.
@@ -169,16 +139,10 @@ impl EffectUnit for Compressor {
         }
     }
     fn reset(&mut self) {
-        for state in &mut self.rms {
-            state.reset(RMS);
-        }
-        if let Some(detector) = &mut self.peak_detector {
-            detector.reset(EXPANDER_PEAK);
-        }
         for parameter in &mut self.parameters {
             parameter.reset();
         }
-        self.reduction_db = 0.0;
+        self.detector.reset();
         self.external.reset();
         self.effective = self.parameters.each_ref().map(|p| p.value());
         self.configure([self.effective[3], self.effective[4]]);
@@ -193,59 +157,7 @@ impl EffectUnit for Compressor {
 }
 impl Compressor {
     fn process_effective_sample(&mut self, input: [f32; 2]) -> [f32; 2] {
-        let input = input.map(|value| if value.is_finite() { value } else { 0.0 });
-        let peak = input[0].abs().max(input[1].abs());
-        let mut rms: f32 = 0.0;
-        for (state, sample) in self.rms.iter_mut().zip(input) {
-            // Bound only the detector input to prevent square overflow with extreme headroom.
-            state.tick(RMS, sample.clamp(-1e15, 1e15));
-            let level = state.level(RMS);
-            if level < 1e-15 {
-                state.reset(RMS);
-            } else {
-                rms = rms.max(level);
-            }
-        }
-        // Follow the linked peak across zero crossings when expanding.
-        let detected_peak = if let Some(detector) = &mut self.peak_detector {
-            detector.tick(EXPANDER_PEAK, peak);
-            let level = detector.level(EXPANDER_PEAK);
-            if level < 1e-15 {
-                detector.reset(EXPANDER_PEAK);
-            }
-            level
-        } else {
-            peak
-        };
-        let p = &self.effective;
-        let detected = detected_peak * (1.0 - p[5]) + rms * p[5];
-        let level_db = 20.0 * detected.max(1e-20).log10();
-        let target = self
-            .direction
-            .gain_reduction_db(level_db, p[0], p[1], p[2], p[9]);
-        // Bound how far the envelope must travel to reopen after digital silence.
-        let target = f64::from(match self.direction {
-            DynamicsDirection::Compressor => target,
-            DynamicsDirection::Expander => target.min(EXPANDER_MAX_REDUCTION_DB),
-        });
-        let releasing = match self.direction {
-            DynamicsDirection::Compressor => target < self.reduction_db,
-            DynamicsDirection::Expander => target > self.reduction_db,
-        };
-        let coefficient = self.coefficients[usize::from(releasing)];
-        self.reduction_db = target + coefficient * (self.reduction_db - target);
-        if self.reduction_db < 1e-8 {
-            self.reduction_db = 0.0;
-        }
-        let gain = f64::from(amplitude(-(self.reduction_db as f32)));
-        let output = input.map(|dry| {
-            let dry = f64::from(dry);
-            let mix = f64::from(p[7]);
-            let enabled = f64::from(p[8]);
-            let wet = dry * ((1.0 - mix) + gain * mix) * f64::from(p[6]);
-            (dry * (1.0 - enabled) + wet * enabled).clamp(-f64::from(f32::MAX), f64::from(f32::MAX))
-                as f32
-        });
+        let (output, detected, peak) = self.detector.sample(input, &self.effective);
         self.publish();
         self.output_monitor.sample_output(output);
         self.curve_monitor.sample([detected, 0.0, 0.0]);

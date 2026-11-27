@@ -89,7 +89,7 @@ impl DriveV2 {
     }
     /// Attach current output and a click-resettable sample peak on the control thread.
     pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
-        self.monitor.attach_peak(meter);
+        self.monitor.attach_peak_prepared(meter);
     }
     fn ramps(&mut self) -> [&mut Ramp; 6] {
         [

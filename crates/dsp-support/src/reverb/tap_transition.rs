@@ -1,4 +1,4 @@
-use crate::Delay;
+use super::Delay;
 
 /// Fade between stationary read positions instead of moving an active read head.
 /// Positions and movement use the same caller-defined units. Targets must be finite.

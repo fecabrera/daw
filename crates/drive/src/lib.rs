@@ -1,27 +1,20 @@
 //! Stereo drive with color and tone filters before clipping.
 //! FunDSP filter types stay private; callback operations do not allocate or block.
+use daw_dsp_support::filters::drive::DriveFilters;
 use daw_dsp_support::waveshaping::NormalizedClipper;
 use daw_unit_core::ramps::ExactRamp32 as Ramp;
 use daw_unit_core::{
     DRIVE_TYPE_ID, DriveSettings, EffectUnit, LevelMonitor, PortKind, ProcessingContext,
     UnitDescriptor,
 };
-use fundsp::{audionode::AudioNode, svf::*};
 use std::sync::{Arc, atomic::AtomicU32};
 
 mod v2;
 pub use v2::DriveV2;
 
-type Bell = FixedSvf<f64, BellMode<f64>>;
-type Bass = FixedSvf<f64, LowshelfMode<f64>>;
-type Tone = FixedSvf<f64, HighshelfMode<f64>>;
-
 #[derive(Clone)]
 pub struct Drive {
-    // Each color branch and channel has independent history, including inactive branches.
-    bells: [[Bell; 2]; 3],
-    bass: [Bass; 2],
-    tone_filter: [Tone; 2],
+    filters: DriveFilters,
     gain: Ramp,
     tone: Ramp,
     volume: Ramp,
@@ -42,18 +35,8 @@ fn amplitude(db: f32) -> f32 {
 impl Drive {
     /// Prepare on a control thread with validated settings and a supported sample rate.
     pub fn new(context: ProcessingContext, settings: &DriveSettings) -> Self {
-        let params = SvfParams {
-            sample_rate: f64::from(context.sample_rate_hz),
-            cutoff: f64::from(settings.color_frequency_hz),
-            q: 0.65,
-            gain: 1.0,
-        };
         let mut drive = Self {
-            bells: std::array::from_fn(|_| {
-                std::array::from_fn(|_| Bell::new(BellMode::new(), &params))
-            }),
-            bass: std::array::from_fn(|_| Bass::new(LowshelfMode::new(), &params)),
-            tone_filter: std::array::from_fn(|_| Tone::new(HighshelfMode::new(), &params)),
+            filters: DriveFilters::new(context.sample_rate_hz, settings.color_frequency_hz),
             gain: Ramp::new(settings.gain),
             tone: Ramp::new(settings.tone),
             volume: Ramp::new(amplitude(settings.volume_db)),
@@ -85,7 +68,7 @@ impl Drive {
     }
     /// Attach current output and a click-resettable sample peak on the control thread.
     pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
-        self.monitor.attach_peak(meter);
+        self.monitor.attach_peak_prepared(meter);
     }
     /// Preserve filter history and any unrelated in-flight ramps on live edits.
     pub fn retarget(&mut self, settings: &DriveSettings) {
@@ -120,28 +103,7 @@ impl Drive {
             // Zero is clean. Full gain supplies approximately 36 dB of drive.
             self.clipper = NormalizedClipper::new(10_f32.powf(1.8 * values[0]) - 1.0);
         }
-        if values[1] != self.configured[1] {
-            let gain = f64::from(amplitude((values[1] - 0.5) * 24.0));
-            for filter in &mut self.tone_filter {
-                filter.set_cutoff_q_gain(2500.0, std::f64::consts::FRAC_1_SQRT_2, gain);
-            }
-        }
-        if values[2..] != self.configured[2..] {
-            let frequency = f64::from(values[3].exp());
-            for (index, filters) in self.bells.iter_mut().enumerate() {
-                let db = values[2] * if index == 0 { -12.0 } else { 12.0 };
-                for filter in filters {
-                    filter.set_cutoff_q_gain(frequency, 0.65, f64::from(amplitude(db)));
-                }
-            }
-            for filter in &mut self.bass {
-                filter.set_cutoff_q_gain(
-                    frequency * 0.5,
-                    std::f64::consts::FRAC_1_SQRT_2,
-                    f64::from(amplitude(-18.0 * values[2])),
-                );
-            }
-        }
+        self.filters.configure(values, self.configured);
         self.configured = values;
     }
     fn ramps(&mut self) -> impl Iterator<Item = &mut Ramp> {
@@ -172,15 +134,7 @@ impl EffectUnit for Drive {
         for ramp in self.ramps() {
             ramp.reset();
         }
-        for filter in self.bells.iter_mut().flatten() {
-            filter.reset();
-        }
-        for filter in &mut self.bass {
-            filter.reset();
-        }
-        for filter in &mut self.tone_filter {
-            filter.reset();
-        }
+        self.filters.reset();
         self.external.reset();
         self.effective[0] = self.volume.value();
         self.configure(self.base_parameters());
@@ -246,19 +200,9 @@ impl Drive {
         self.effective[0] = volume;
         std::array::from_fn(|channel| {
             let dry = input[channel];
-            let bass = self.bass[channel].filter_mono(dry);
-            let branches = [
-                dry,
-                self.bells[0][channel].filter_mono(dry),
-                self.bells[1][channel].filter_mono(dry),
-                self.bells[2][channel].filter_mono(bass),
-            ];
-            let color = branches
-                .into_iter()
-                .zip(&self.colors)
-                .map(|(sample, weight)| sample * weight.value())
-                .sum::<f32>();
-            let tone = self.tone_filter[channel].filter_mono(color);
+            let tone = self
+                .filters
+                .sample(channel, dry, self.colors.each_ref().map(|r| r.value()));
             let clipped = self.clipper.process(tone, hard, tube);
             if pre_level {
                 clipped

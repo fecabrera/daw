@@ -20,7 +20,7 @@ impl Equalizer {
         for band in &mut self.bands {
             band.advance();
         }
-        let base = self.bands.each_ref().map(|b| b.current);
+        let base = self.bands.each_ref().map(|b| b.current());
         if self.configuration != Some((base, offsets)) {
             self.configuration = Some((base, offsets));
             self.effective = base;

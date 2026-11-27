@@ -1,7 +1,7 @@
 //! Native Harmonic Lift. Independent DSP from the documented transfer equations;
 //! no extracted plugin implementation or coefficient arrays are used.
 mod oversampling;
-use daw_filter::svf::{HighShelf, StateVariableFilter as Svf};
+use daw_dsp_support::harmonic_lift::HarmonicLiftKernel as Core;
 use daw_unit_core::{
     BandMeter, EffectUnit, HarmonicLiftSettings as Settings, HarmonicQuality, LevelMonitor,
     ModulationContext, ModulationDestination, ModulationInputs, ModulationParameter as P,
@@ -125,101 +125,6 @@ impl ModulationDestination for Controls {
     }
 }
 #[derive(Clone)]
-struct Core {
-    pre: [[Svf; 2]; 6],
-    post: [[Svf; 2]; 6],
-    emphasis: [HighShelf; 2],
-    deemphasis: [HighShelf; 2],
-    envelope: f64,
-    coefficient: f64,
-    rate: f64,
-    reduction: f32,
-    branch_peaks: [f32; 6],
-    maximizer: Ramp,
-    fade: u32,
-}
-impl Core {
-    fn new(rate: u32, active: bool) -> Self {
-        let fade = (rate / 200).max(1);
-        let rate = f64::from(rate);
-        Self {
-            pre: std::array::from_fn(|_| std::array::from_fn(|_| Svf::default())),
-            post: std::array::from_fn(|_| std::array::from_fn(|_| Svf::default())),
-            emphasis: std::array::from_fn(|_| HighShelf::new(rate, 6300., 0.1, 3.)),
-            deemphasis: std::array::from_fn(|_| HighShelf::new(rate, 6300., 0.1, -3.)),
-            envelope: 0.,
-            coefficient: (-std::f64::consts::TAU * 10. / rate).exp(),
-            rate,
-            reduction: 0.,
-            branch_peaks: [0.; 6],
-            maximizer: Ramp::new(f32::from(active)),
-            fade,
-        }
-    }
-    fn sample(
-        &mut self,
-        input: [f64; 2],
-        bands: [[f32; 3]; 6],
-        drive: f32,
-        push: f32,
-        limit: f32,
-    ) -> [f64; 2] {
-        let mut wet = input;
-        self.branch_peaks.fill(0.);
-        for (i, b) in bands.iter().enumerate() {
-            for ch in 0..2 {
-                let v = if i == 5 {
-                    self.pre[i][ch].high(input[ch], f64::from(b[0]), 0.58, self.rate)
-                } else {
-                    self.pre[i][ch].band(input[ch], f64::from(b[0]), 0.58, self.rate)
-                };
-                let shaped = if v > 0. {
-                    v.tanh()
-                } else {
-                    v / (1. + v.abs().powf(0.4466)).powf(2.23914)
-                };
-                let branch =
-                    self.post[i][ch].high(shaped, 10., std::f64::consts::FRAC_1_SQRT_2, self.rate);
-                let contribution = f64::from(b[2]) * gain(b[1]) * branch;
-                wet[ch] += contribution;
-                self.branch_peaks[i] = self.branch_peaks[i].max(finite(contribution).abs());
-            }
-        }
-        for (ch, v) in wet.iter_mut().enumerate() {
-            let emphasized = self.emphasis[ch].sample(*v);
-            let k = 3. * f64::from(drive);
-            let shaped = (1. + k) * emphasized / (1. + k * emphasized.abs());
-            let processed = self.deemphasis[ch].sample(shaped);
-            if drive > 0. {
-                *v = processed;
-            }
-        }
-        let peak = wet[0].abs().max(wet[1].abs());
-        self.envelope = (1. - self.coefficient) * peak + self.coefficient * self.envelope;
-        let threshold = 10_f64.powf(-1.5 * f64::from(push));
-        let reduction = (threshold / self.envelope.max(0.).sqrt().max(peak).max(1e-30)).min(1.);
-        // Zero Push bypasses maximization. Ramp that discrete boundary as well
-        // as Push itself, so hot input cannot step when reduction first engages.
-        self.maximizer.set(f32::from(push > 0.0), self.fade);
-        let active = f64::from(self.maximizer.next_value());
-        self.reduction = (-20.0 * ((1.0 - active) + active * reduction).max(1e-30).log10()) as f32;
-        let multiplier = gain(limit) * ((1.0 - active) + active * reduction / threshold);
-        wet.map(|v| v * multiplier)
-    }
-    fn reset(&mut self, active: bool) {
-        self.maximizer = Ramp::new(f32::from(active));
-        for filter in self.pre.iter_mut().chain(&mut self.post).flatten() {
-            filter.reset();
-        }
-        for f in self.emphasis.iter_mut().chain(&mut self.deemphasis) {
-            f.reset();
-        }
-        self.envelope = 0.;
-        self.reduction = 0.;
-        self.branch_peaks.fill(0.);
-    }
-}
-#[derive(Clone)]
 pub struct HarmonicLift {
     bands: [RoutedDestination<BandControl>; 6],
     controls: RoutedDestination<Controls>,
@@ -317,12 +222,8 @@ impl HarmonicLift {
             {
                 old.bands.swap(i, j);
                 old.branch_levels.swap(i, j);
-                old.core.pre.swap(i, j);
-                old.core.post.swap(i, j);
-                old.core.branch_peaks.swap(i, j);
-                old.hq_core.pre.swap(i, j);
-                old.hq_core.post.swap(i, j);
-                old.hq_core.branch_peaks.swap(i, j);
+                old.core.move_branch(i, j);
+                old.hq_core.move_branch(i, j);
                 old.bands[i].destination.index = i;
                 old.bands[j].destination.index = j;
             }
@@ -390,7 +291,7 @@ impl HarmonicLift {
         let mut hq_peaks = [0.0_f32; 6];
         let frames = self.oversampling.up(driven).map(|frame| {
             let output = self.hq_core.sample(frame, bands, drive, push, limit);
-            for (peak, value) in hq_peaks.iter_mut().zip(self.hq_core.branch_peaks) {
+            for (peak, value) in hq_peaks.iter_mut().zip(self.hq_core.branch_peaks()) {
                 *peak = peak.max(value);
             }
             output
@@ -399,7 +300,7 @@ impl HarmonicLift {
         let quality = f64::from(self.quality_blend.next_value());
         for (i, meter) in self.branch_levels.iter_mut().enumerate() {
             if meter.is_enabled() {
-                let normal = self.core.branch_peaks[i];
+                let normal = self.core.branch_peaks()[i];
                 let peak = normal + (hq_peaks[i] - normal) * quality as f32;
                 meter.sample([peak, 0., 0.]);
             }
@@ -419,8 +320,8 @@ impl HarmonicLift {
         let target = if self.bypass.target() == 0. {
             0.
         } else {
-            self.core.reduction
-                + (self.hq_core.reduction - self.core.reduction) * self.quality_blend.target()
+            self.core.reduction()
+                + (self.hq_core.reduction() - self.core.reduction()) * self.quality_blend.target()
         };
         let c = if target > self.reduction {
             self.attack
@@ -442,7 +343,7 @@ impl HarmonicLift {
             .map(|b| [b.destination.effective[0], b.destination.effective[1]])
     }
     pub fn set_output_peak_meter(&mut self, m: Arc<BandMeter<3>>) {
-        self.output.attach_peak(m);
+        self.output.attach_peak_prepared(m);
     }
     pub fn set_band_level_meter(&mut self, id: ModulationTargetId, meter: Arc<BandMeter<3>>) {
         if let Some(i) = self.bands.iter().position(|b| b.destination.id == id) {

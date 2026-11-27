@@ -138,12 +138,12 @@ fn compatible_updates_preserve_unrelated_ramps_and_reset_is_silent() {
     for _ in 0..120 {
         unit.process_sample([0.0; 2]);
     }
-    let remaining = unit.parameters[0].remaining;
+    let remaining = unit.parameters[0].remaining_frames();
     settings.collapsed = true;
     settings.modulation_open = true;
     settings.spread = 2.0;
     unit.retarget(&settings);
-    assert_eq!(unit.parameters[0].remaining, remaining);
+    assert_eq!(unit.parameters[0].remaining_frames(), remaining);
     for _ in 0..120 {
         assert_eq!(unit.process_sample([0.0; 2]), [0.0; 2]);
     }

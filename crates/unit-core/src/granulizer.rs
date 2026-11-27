@@ -17,14 +17,8 @@ impl GrainWindow {
             Self::Trapezoid => "Trapezoid",
         }
     }
-    /// Zero at both endpoints. Trapezoid reserves one quarter for each fade.
     pub fn amplitude(self, phase: f32) -> f32 {
-        let p = phase.clamp(0.0, 1.0);
-        match self {
-            Self::Hann => (1.0 - (std::f32::consts::TAU * p).cos()) * 0.5,
-            Self::Triangle => (2.0 * p.min(1.0 - p)).max(0.0),
-            Self::Trapezoid => (4.0 * p.min(1.0 - p)).clamp(0.0, 1.0),
-        }
+        daw_dsp_support::granular::GrainWindow::from(self).amplitude(phase)
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -93,6 +87,16 @@ impl GranulizerSettings {
                 .into_iter()
                 .zip(Self::bounds())
                 .all(|(v, (min, max))| v.is_finite() && (min..=max).contains(&v))
+    }
+}
+
+impl From<GrainWindow> for daw_dsp_support::granular::GrainWindow {
+    fn from(window: GrainWindow) -> Self {
+        match window {
+            GrainWindow::Hann => Self::Hann,
+            GrainWindow::Triangle => Self::Triangle,
+            GrainWindow::Trapezoid => Self::Trapezoid,
+        }
     }
 }
 

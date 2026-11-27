@@ -228,7 +228,7 @@ fn rapid_order_and_frequency_changes_stay_finite_preserve_ramps_and_reset() {
         for _ in 0..rate / 50 {
             unit.process_sample([0.0; 2]);
         }
-        assert_eq!(unit.banks[unit.active].order, 12);
+        assert_eq!(unit.banks[unit.active].order(), 12);
         unit.reset();
         assert_eq!(unit.process_sample([f32::NAN, f32::INFINITY]), [0.0; 2]);
         for _ in 0..1000 {

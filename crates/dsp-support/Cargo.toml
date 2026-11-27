@@ -6,4 +6,5 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-daw-unit-core.workspace = true
+daw-analysis-kernels = { path = "analysis-kernels", version = "0.1.0" }
+fundsp.workspace = true

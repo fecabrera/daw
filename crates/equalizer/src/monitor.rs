@@ -1,32 +1,18 @@
 //! Read-only analysis of the EQ output. These filters never enter the audio path.
-use super::Filter;
+use daw_dsp_support::filters::eq3::BandAnalyzer;
 use daw_unit_core::LevelMonitor;
-use fundsp::svf::SvfParams;
 use std::sync::{Arc, atomic::AtomicU32};
 
 #[derive(Clone)]
 pub(super) struct Monitor {
-    // Low LP, Mid HP/LP, High HP, with independent stereo histories.
-    filters: [[Filter; 2]; 4],
-    boundaries: [f32; 2],
+    analyzer: BandAnalyzer,
     meter: LevelMonitor<3>,
 }
 
 impl Monitor {
     pub fn new(sample_rate_hz: u32, enabled: bool) -> Self {
-        let params = SvfParams {
-            sample_rate: f64::from(sample_rate_hz),
-            cutoff: 1000.0,
-            q: f64::from(std::f32::consts::FRAC_1_SQRT_2),
-            gain: 1.0,
-        };
         Self {
-            filters: std::array::from_fn(|index| {
-                std::array::from_fn(|_| {
-                    Filter::new(if index % 2 == 0 { 2 } else { 0 }, true, &params)
-                })
-            }),
-            boundaries: [f32::NAN; 2],
+            analyzer: BandAnalyzer::new(sample_rate_hz),
             meter: LevelMonitor::new(sample_rate_hz, enabled),
         }
     }
@@ -46,39 +32,11 @@ impl Monitor {
         if !self.meter.is_connected() {
             return;
         }
-        let boundaries = [low.min(high), low.max(high)];
-        if self.boundaries != boundaries {
-            self.boundaries = boundaries;
-            for (index, filters) in self.filters.iter_mut().enumerate() {
-                let cutoff = boundaries[usize::from(index >= 2)];
-                for filter in filters {
-                    filter.configure([cutoff, std::f32::consts::FRAC_1_SQRT_2, 0.0, 1.0]);
-                }
-            }
-        }
-        let mut peaks = [0.0_f32; 3];
-        for (ch, sample) in output.into_iter().enumerate() {
-            let sample = if sample.is_finite() { sample } else { 0.0 };
-            let low = self.filters[0][ch].sample(sample);
-            let middle = self.filters[1][ch].sample(sample);
-            let middle = self.filters[2][ch].sample(middle);
-            let high = self.filters[3][ch].sample(sample);
-            for (peak, value) in peaks.iter_mut().zip([low, middle, high]) {
-                if value.is_finite() {
-                    *peak = peak.max(value.abs());
-                }
-            }
-        }
-        if boundaries[0] == boundaries[1] {
-            peaks[1] = 0.0;
-        }
-        self.meter.sample(peaks);
+        self.meter.sample(self.analyzer.sample(output, low, high));
     }
 
     pub fn reset(&mut self) {
-        for filter in self.filters.iter_mut().flatten() {
-            filter.reset();
-        }
+        self.analyzer.reset();
         self.meter.reset();
     }
 }

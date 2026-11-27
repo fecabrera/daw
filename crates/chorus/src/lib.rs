@@ -1,4 +1,5 @@
 //! Bounded stereo chorus. All delay storage is prepared before audio processing.
+use daw_dsp_support::chorus::{ChorusDelay, VoiceFrame};
 use daw_unit_core::{
     CHORUS_TYPE_ID, ChorusSettings, EffectUnit, LevelMonitor, ModulationContext,
     ModulationDestination, ModulationDestinationSettings, ModulationInputs, ModulationParameter,
@@ -13,8 +14,7 @@ const DEPTH_REFERENCE_RATE_HZ: f64 = 0.8;
 
 #[derive(Clone)]
 pub struct Chorus {
-    delay: Vec<[f64; 2]>,
-    cursor: usize,
+    delay: ChorusDelay,
     phase: f64,
     depth_compensation: Option<ModulationRamp>,
     clock: daw_lfo::LfoClock,
@@ -49,8 +49,7 @@ impl Chorus {
     }
     pub fn new(context: ProcessingContext, s: &ChorusSettings) -> Self {
         Self {
-            delay: vec![[0.0; 2]; (f64::from(context.sample_rate_hz) * 0.046).ceil() as usize + 4],
-            cursor: 0,
+            delay: ChorusDelay::new(context.sample_rate_hz),
             phase: 0.0,
             depth_compensation: None,
             clock: daw_lfo::LfoClock::new(context),
@@ -72,14 +71,14 @@ impl Chorus {
         }
     }
     pub fn heap_bytes(&self) -> u64 {
-        (self.delay.capacity() * std::mem::size_of::<[f64; 2]>()) as u64
+        self.delay.heap_bytes()
     }
     pub fn set_meter(&mut self, meter: Arc<[AtomicU32; 3]>) {
         self.monitor.attach(meter);
     }
     /// Attach current output and a click-resettable sample peak on the control thread.
     pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
-        self.monitor.attach_peak(meter);
+        self.monitor.attach_peak_prepared(meter);
     }
 
     pub fn retarget(&mut self, s: &ChorusSettings) {
@@ -96,14 +95,6 @@ impl Chorus {
     }
     pub fn effective_parameters(&self) -> [f32; 8] {
         self.effective
-    }
-    fn read(&self, frames: f64, channel: usize) -> f64 {
-        let position = (self.cursor as f64 - frames).rem_euclid(self.delay.len() as f64);
-        let index = position.floor() as usize;
-        let a = self.delay[index][channel];
-        let b = self.delay[(index + 1) % self.delay.len()][channel];
-        // Linear interpolation is convex: the bounded feedback loop cannot gain energy here.
-        a + (b - a) * position.fract()
     }
     pub fn process_modulated(&mut self, input: [f32; 2], offsets: [f32; 8]) -> [f32; 2] {
         let frame = self.next_frame;
@@ -188,26 +179,18 @@ impl Chorus {
         let dry = input.map(|v| if v.is_finite() { f64::from(v) } else { 0.0 });
         let weights = self.weights.each_mut().map(ModulationRamp::next_value);
         let phases = self.phases.each_mut().map(ModulationRamp::next_value);
-        let total = f64::from(weights.iter().sum::<f32>()).max(1.0);
-        let mut wet = [0.0; 2];
-        for (i, weight) in weights.into_iter().enumerate() {
-            if weight == 0.0 {
-                continue;
-            }
-            for (ch, value) in wet.iter_mut().enumerate() {
-                let lfo = daw_lfo::waveform(
-                    0,
-                    self.phase + f64::from(phases[i]) + if ch == 1 { phase } else { 0.0 },
-                );
-                // 45% excursion leaves a strictly positive delay at every setting and rate.
-                let delay = time * (1.0 + excursion * lfo) * self.rate / 1000.0;
-                *value += self.read(delay, ch) * f64::from(weight) / total;
-            }
-        }
-        self.delay[self.cursor] = std::array::from_fn(|ch| {
-            (dry[ch] + wet[ch] * feedback).clamp(-f64::from(f32::MAX), f64::from(f32::MAX))
-        });
-        self.cursor = (self.cursor + 1) % self.delay.len();
+        let mut wet = self.delay.sample(
+            dry,
+            VoiceFrame {
+                time,
+                excursion,
+                feedback,
+                phase: self.phase,
+                stereo_phase: phase,
+                weights,
+                phases,
+            },
+        );
         self.phase = (self.phase + rate / self.rate).rem_euclid(1.0);
         let middle = (wet[0] + wet[1]) * 0.5;
         let side = (wet[0] - wet[1]) * 0.5 * width;
@@ -235,8 +218,7 @@ impl EffectUnit for Chorus {
         }
     }
     fn reset(&mut self) {
-        self.delay.fill([0.0; 2]);
-        self.cursor = 0;
+        self.delay.reset();
         self.phase = 0.0;
         self.depth_compensation = None;
         self.clock.reset();

@@ -1,4 +1,31 @@
 //! Shared, portable audio DSP for unit processors.
 
+pub mod analysis;
+pub mod bitcrush;
+pub mod chorus;
+pub mod delay;
+pub mod dynamics;
+pub mod envelope;
+pub mod exciter;
+pub mod filters;
+pub mod gain;
+pub mod granular;
+pub mod harmonic_lift;
+pub mod imaging;
+pub mod kaiser_oversampling;
+pub mod levels;
+pub mod limiter;
+mod limiter_guard;
+pub mod memory;
+pub mod noise;
+pub mod oscillator;
+pub mod ott;
 pub mod oversampling;
+pub mod periodic;
+pub mod playback;
+pub mod ramps;
+pub mod reverb;
+pub mod sidechain;
+pub mod spread;
+pub mod transient;
 pub mod waveshaping;

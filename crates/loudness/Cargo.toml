@@ -5,6 +5,7 @@ edition.workspace=true
 rust-version.workspace=true
 license.workspace = true
 [dependencies]
+daw-dsp-support.workspace = true
 audio-analysis.workspace=true
 daw-unit-core.workspace=true
 rtrb.workspace=true

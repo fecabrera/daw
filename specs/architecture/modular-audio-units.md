@@ -40,6 +40,22 @@ Drive v2 use the gain-normalized clipper after Tone. Plate Reverb shares Hard
 and Tube with Saturator and uses the rational Soft curve. Exciter shares the
 oversampler, Analog Clip, Hard Curve and the biased tanh operation.
 
+The migration moves the numeric building blocks behind the existing unit
+interfaces. `daw-unit-core` depends on `daw-dsp-support` for ramps, gain and
+measurement calculations, and maps persisted selectors to numeric selectors.
+The DSP crate has no dependency on unit crates. Filter and reverb facades retain
+their existing entry points. Sources receive caller-owned PCM, note timing and
+transport coordinates. The engine keeps voice routing and prepared buffer
+ownership. The DSP crate keeps the original interpolation, oversampling and
+reconstruction profiles. It shares fixed dry alignment where the read and write
+conventions match.
+
+The canonical spectrum and live loudness algorithms use the dependency-free
+BSD-2-Clause package at `crates/dsp-support/analysis-kernels`. Both DSP support
+and standalone audio analysis use this package. The standalone API retains
+its public paths and offline detection and measurement entry points. Portable
+source distributions carry both BSD packages at their workspace-relative paths.
+
 ## Terms
 
 | Term | Meaning |
@@ -638,9 +654,11 @@ remain distinct, retain compatible release history, detach in renderer clones,
 and retire outside the callback. Discover beat source/Amplitude handles under
 subtrack IDs in both logical and compiled plans, so initial playback uses the
 same scope as later prepared updates. Power-off clears/masks current and held values
-immediately and stops publication. Prepared attachment must not raise peaks;
-stopped/paused output hides current values and retains held peaks. No new project
-or plugin state is saved.
+immediately and stops publication. Binding gap-meter handles to a candidate
+renderer leaves the active renderer's current readings and held peaks intact.
+Publication starts at handoff or on the candidate's first active sample.
+Stopped/paused output hides current values and retains held peaks. No new
+project or plugin state is saved.
 
 DAW `PanelStyle::unit_shell` tags its existing scope with
 `unit-ui::meters::HIDE_OUTPUT_LEVELS_TAG`. The shared `effect_output_level`

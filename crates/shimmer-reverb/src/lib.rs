@@ -1,13 +1,13 @@
 //! Original portable Shimmer Reverb. The supplied Solaris behavioral report
 //! informed its features; no extracted code, tables or host runtime is embedded.
-mod delay;
-mod pitch;
-mod tank;
+use daw_dsp_support::reverb::shimmer::delay;
+use daw_dsp_support::reverb::shimmer::pitch;
+use daw_dsp_support::reverb::shimmer::tank;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod transition_tests;
-mod vowel;
+use daw_dsp_support::reverb::shimmer::vowel;
 use daw_unit_core::{ShimmerReverbSettings as Settings, *};
 use delay::Diffuser;
 use std::sync::{Arc, atomic::AtomicU32};
@@ -107,7 +107,7 @@ impl ShimmerReverb {
         self.monitor.attach(m);
     }
     pub fn set_output_peak_meter(&mut self, m: Arc<BandMeter<3>>) {
-        self.monitor.attach_peak(m);
+        self.monitor.attach_peak_prepared(m);
     }
     pub fn effective_parameters(&self) -> [f32; 12] {
         self.effective

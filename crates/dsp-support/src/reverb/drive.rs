@@ -1,6 +1,6 @@
 //! Plate output-drive curves share gain, bypass and a bounded mode crossfade.
-use daw_dsp_support::waveshaping::{clip, rational_tanh};
-use daw_unit_core::{ModulationRamp, SaturatorClipMode};
+use crate::ramps::ModulationRamp;
+use crate::waveshaping::{ClipMode, clip, rational_tanh};
 
 pub(crate) fn weights(ramps: &mut [ModulationRamp; 3]) -> [f64; 3] {
     let values = ramps.each_mut().map(|r| f64::from(r.next_value()));
@@ -11,8 +11,8 @@ pub(crate) fn weights(ramps: &mut [ModulationRamp; 3]) -> [f64; 3] {
 }
 pub(crate) fn shape(y: f64, weights: [f64; 3]) -> f64 {
     rational_tanh(y) * weights[0]
-        + clip(SaturatorClipMode::HardClip, y) * weights[1]
-        + clip(SaturatorClipMode::TubeClip, y) * weights[2]
+        + clip(ClipMode::HardClip, y) * weights[1]
+        + clip(ClipMode::TubeClip, y) * weights[2]
 }
 
 #[cfg(test)]

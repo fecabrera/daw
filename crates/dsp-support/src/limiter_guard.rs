@@ -2,10 +2,10 @@
 //! Each block uses one linked gain. Test every FIR window that the block can affect,
 //! including its zero-extended tail, against the already committed output history.
 const TAPS: usize = 64;
-pub(super) const BLOCK: usize = 32;
+pub const BLOCK: usize = 32;
 
 #[derive(Clone)]
-pub(super) struct Guard {
+pub struct Guard {
     coefficients: [[f64; TAPS]; 8],
     history: [[f64; 2]; TAPS],
     pending: [[f64; 2]; BLOCK],

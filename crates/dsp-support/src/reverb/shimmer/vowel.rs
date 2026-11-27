@@ -1,6 +1,6 @@
 //! Two bounded rotating resonators per channel. Each state transition has norm r<1.
 #[derive(Clone)]
-pub(crate) struct Vowel {
+pub struct Vowel {
     state: [[[f64; 2]; 2]; 2],
     rotation: [[f64; 2]; 2],
     radius: f64,

@@ -117,7 +117,7 @@ pub use envelope::{
 pub const OSCILLATOR_TYPE_ID: &str = "daw.oscillator";
 pub const UNIT_STATE_VERSION: u32 = 1;
 /// Finite saved dB value whose f32 amplitude is exactly zero.
-pub const SILENT_GAIN_DB: f32 = -1000.0;
+pub use daw_dsp_support::gain::SILENT_GAIN_DB;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -1,7 +1,7 @@
-use crate::delay::Delay;
-use daw_unit_core::ModulationRamp;
+use super::delay::Delay;
+use crate::ramps::ModulationRamp;
 #[derive(Clone)]
-pub(crate) struct Pitch {
+pub struct Pitch {
     delay: [Delay; 2],
     phase: f64,
     window: f64,
@@ -16,17 +16,15 @@ impl Pitch {
             delay: std::array::from_fn(|_| Delay::new((f64::from(rate) * 0.6).ceil() as usize + 4)),
             phase: 0.0,
             window: f64::from(rate) * 0.6,
-            ratio: ModulationRamp::new(2.0f32.powf(daw_unit_core::shimmer_pitch(pitch) / 12.0)),
+            ratio: ModulationRamp::new(2.0f32.powf(shimmer_pitch(pitch) / 12.0)),
             gain: ModulationRamp::new(if pitch == 0 { 0.0 } else { amount }),
             low: [0.0; 2],
             coefficient: 1.0 - (-std::f64::consts::TAU * 10000.0 / f64::from(rate)).exp(),
         }
     }
     pub fn retarget(&mut self, pitch: i8, amount: f32, frames: u32) {
-        self.ratio.set(
-            2.0f32.powf(daw_unit_core::shimmer_pitch(pitch) / 12.0),
-            frames,
-        );
+        self.ratio
+            .set(2.0f32.powf(shimmer_pitch(pitch) / 12.0), frames);
         self.gain.set(if pitch == 0 { 0.0 } else { amount }, frames);
     }
     pub fn sample(&mut self, input: [f64; 2], amount: f32, active: bool, frames: u32) -> [f64; 2] {
@@ -63,4 +61,10 @@ impl Pitch {
     pub fn heap_bytes(&self) -> u64 {
         self.delay.iter().map(Delay::heap_bytes).sum()
     }
+}
+
+/// Thirty-one intervals: quarter-semitone steps near zero, integer semitones outside ±1 st.
+pub fn shimmer_pitch(index: i8) -> f32 {
+    let n = f32::from(index.clamp(-15, 15));
+    n.signum() * (n.abs() * 0.25).max(n.abs() - 3.0)
 }

@@ -1,28 +1,14 @@
 //! Serial parametric EQ bands. All allocation and topology changes are prepared by the host.
+use daw_dsp_support::filters::parametric::{self, Filter, FilterParameters, bounded};
 use daw_unit_core::{
     EffectUnit, EqBandMode, ModulationContext, ModulationDestination, ModulationInputs,
     ModulationParameter as P, ModulationScope, ModulationSmoother, ModulationTargetId,
     ModulationValue, MultibandEqBand, MultibandEqSettings, PortKind, ProcessingContext,
     RoutedDestination, UnitDescriptor, process_modulation_chain,
 };
-use fundsp::{audionode::AudioNode, svf::*};
 
-// Butterworth section Qs relative to the shared default Q (1/√2):
-// √2 / (2 cos((2k + 1)π / (2 × order))). Modulated Q scales every section.
-const FOUR_POLE_Q_SCALE: [f64; 2] = [0.7653668647301796, 1.8477590650225735];
-const EIGHT_POLE_Q_SCALE: [f64; 4] = [
-    0.7209598220069479,
-    0.8504300947672565,
-    1.272758580572834,
-    3.6245097854115516,
-];
 const MODE_COUNT: usize = EqBandMode::ALL.len();
 
-// SVF histories use f64, but AudioNode returns f32. Bound representational
-// overflow before feeding another section; ordinary finite headroom is unchanged.
-fn bounded(value: f32) -> f32 {
-    value.clamp(-f32::MAX, f32::MAX)
-}
 fn mix(dry: f32, wet: f32, amount: f32) -> f32 {
     if amount == 0.0 {
         dry
@@ -34,61 +20,25 @@ fn mix(dry: f32, wet: f32, amount: f32) -> f32 {
     }
 }
 
-#[derive(Clone)]
-struct Cascade<M: SvfMode<f64>, const N: usize> {
-    stages: [FixedSvf<f64, M>; N],
-    q_scales: [f64; N],
-}
-impl<M: SvfMode<f64>, const N: usize> Cascade<M, N> {
-    fn new(params: &SvfParams<f64>, q_scales: [f64; N]) -> Self {
-        Self {
-            stages: std::array::from_fn(|i| {
-                FixedSvf::new(
-                    M::default(),
-                    &SvfParams {
-                        sample_rate: params.sample_rate,
-                        cutoff: params.cutoff,
-                        q: params.q * q_scales[i],
-                        gain: params.gain,
-                    },
-                )
-            }),
-            q_scales,
-        }
-    }
-    fn set_cutoff_q_gain(&mut self, cutoff: f64, q: f64, gain: f64) {
-        for (stage, scale) in self.stages.iter_mut().zip(self.q_scales) {
-            stage.set_cutoff_q_gain(cutoff, q * scale, gain);
-        }
-    }
-    fn filter_mono(&mut self, mut input: f32) -> f32 {
-        for stage in &mut self.stages {
-            input = bounded(stage.filter_mono(input));
-        }
-        input
-    }
-    fn reset(&mut self) {
-        for stage in &mut self.stages {
-            stage.reset();
-        }
-    }
-    #[cfg(test)]
-    fn response(&mut self, channel: usize, frequency: f64) -> Option<fundsp::math::Complex64> {
-        let mut response = fundsp::math::Complex64::new(1.0, 0.0);
-        for stage in &mut self.stages {
-            response *= stage.response(channel, frequency)?;
-        }
-        Some(response)
-    }
-}
-
 /// Settled response of the exact portable SVF topology, for control-thread graphs.
 pub fn band_response(band: &MultibandEqBand, rate: u32) -> daw_unit_core::FrequencyResponse {
     let cascade = match band.mode {
-        EqBandMode::HighPass4 => Some((EqBandMode::HighPass, FOUR_POLE_Q_SCALE.as_slice())),
-        EqBandMode::LowPass4 => Some((EqBandMode::LowPass, FOUR_POLE_Q_SCALE.as_slice())),
-        EqBandMode::HighPass8 => Some((EqBandMode::HighPass, EIGHT_POLE_Q_SCALE.as_slice())),
-        EqBandMode::LowPass8 => Some((EqBandMode::LowPass, EIGHT_POLE_Q_SCALE.as_slice())),
+        EqBandMode::HighPass4 => Some((
+            EqBandMode::HighPass,
+            parametric::FOUR_POLE_Q_SCALE.as_slice(),
+        )),
+        EqBandMode::LowPass4 => Some((
+            EqBandMode::LowPass,
+            parametric::FOUR_POLE_Q_SCALE.as_slice(),
+        )),
+        EqBandMode::HighPass8 => Some((
+            EqBandMode::HighPass,
+            parametric::EIGHT_POLE_Q_SCALE.as_slice(),
+        )),
+        EqBandMode::LowPass8 => Some((
+            EqBandMode::LowPass,
+            parametric::EIGHT_POLE_Q_SCALE.as_slice(),
+        )),
         _ => None,
     };
     if let Some((mode, scales)) = cascade {
@@ -103,108 +53,16 @@ pub fn band_response(band: &MultibandEqBand, rate: u32) -> daw_unit_core::Freque
         }
         return response;
     }
-    let params = SvfParams {
-        sample_rate: f64::from(rate),
-        cutoff: f64::from(
-            band.frequency_hz
-                .clamp(20.0, (rate as f32 * 0.49).min(20_000.0)),
-        ),
-        q: f64::from(band.q),
-        gain: 10_f64.powf(f64::from(band.gain_db) / 20.0),
-    };
-    let mut c = SvfCoefs::default();
-    match band.mode {
-        EqBandMode::Bell => BellMode::new().update(&params, &mut c),
-        EqBandMode::LowShelf => LowshelfMode::new().update(&params, &mut c),
-        EqBandMode::HighShelf => HighshelfMode::new().update(&params, &mut c),
-        EqBandMode::LowPass => LowpassMode::new().update(&params, &mut c),
-        EqBandMode::HighPass => HighpassMode::new().update(&params, &mut c),
-        EqBandMode::Notch => NotchMode::new().update(&params, &mut c),
-        EqBandMode::HighPass4
-        | EqBandMode::LowPass4
-        | EqBandMode::HighPass8
-        | EqBandMode::LowPass8 => {
-            unreachable!("handled as cascaded responses")
-        }
-    }
-    // H(z)=D+C(zI−A)⁻¹B from the SVF's two integrator states.
-    let (a, b, c2, d) = (2.0 * c.a1 - 1.0, -2.0 * c.a2, 2.0 * c.a2, 1.0 - 2.0 * c.a3);
-    let (b1, b2) = (2.0 * c.a2, 2.0 * c.a3);
-    let direct = c.m0 + c.m1 * c.a2 + c.m2 * c.a3;
-    let (c1, c2out) = (
-        c.m1 * c.a1 + c.m2 * c.a2,
-        -c.m1 * c.a2 + c.m2 * (1.0 - c.a3),
-    );
-    let det = a * d - b * c2;
-    daw_unit_core::FrequencyResponse::from_biquad(
-        [
-            direct,
-            -direct * (a + d) + c1 * b1 + c2out * b2,
-            direct * det + c1 * (-d * b1 + b * b2) + c2out * (c2 * b1 - a * b2),
-        ],
-        [1.0, -a - d, det],
+    let (numerator, denominator) = parametric::biquad(
+        band.mode.into(),
+        band.frequency_hz,
+        band.q,
+        band.gain_db,
         rate,
-    )
+    );
+    daw_unit_core::FrequencyResponse::from_biquad(numerator, denominator, rate)
 }
 
-#[derive(Clone)]
-enum Filter {
-    Bell(FixedSvf<f64, BellMode<f64>>),
-    LowShelf(FixedSvf<f64, LowshelfMode<f64>>),
-    HighShelf(FixedSvf<f64, HighshelfMode<f64>>),
-    LowPass(FixedSvf<f64, LowpassMode<f64>>),
-    HighPass(FixedSvf<f64, HighpassMode<f64>>),
-    Notch(FixedSvf<f64, NotchMode<f64>>),
-    HighPass4(Cascade<HighpassMode<f64>, 2>),
-    LowPass4(Cascade<LowpassMode<f64>, 2>),
-    HighPass8(Cascade<HighpassMode<f64>, 4>),
-    LowPass8(Cascade<LowpassMode<f64>, 4>),
-}
-macro_rules! filter {
-    ($s:expr, $v:ident, $body:expr) => {
-        match $s {
-            Filter::Bell($v) => $body,
-            Filter::LowShelf($v) => $body,
-            Filter::HighShelf($v) => $body,
-            Filter::LowPass($v) => $body,
-            Filter::HighPass($v) => $body,
-            Filter::Notch($v) => $body,
-            Filter::HighPass4($v) => $body,
-            Filter::LowPass4($v) => $body,
-            Filter::HighPass8($v) => $body,
-            Filter::LowPass8($v) => $body,
-        }
-    };
-}
-impl Filter {
-    fn new(mode: EqBandMode, params: &SvfParams<f64>) -> Self {
-        match mode {
-            EqBandMode::Bell => Self::Bell(FixedSvf::new(BellMode::new(), params)),
-            EqBandMode::LowShelf => Self::LowShelf(FixedSvf::new(LowshelfMode::new(), params)),
-            EqBandMode::HighShelf => Self::HighShelf(FixedSvf::new(HighshelfMode::new(), params)),
-            EqBandMode::LowPass => Self::LowPass(FixedSvf::new(LowpassMode::new(), params)),
-            EqBandMode::HighPass => Self::HighPass(FixedSvf::new(HighpassMode::new(), params)),
-            EqBandMode::Notch => Self::Notch(FixedSvf::new(NotchMode::new(), params)),
-            EqBandMode::HighPass4 => Self::HighPass4(Cascade::new(params, FOUR_POLE_Q_SCALE)),
-            EqBandMode::LowPass4 => Self::LowPass4(Cascade::new(params, FOUR_POLE_Q_SCALE)),
-            EqBandMode::HighPass8 => Self::HighPass8(Cascade::new(params, EIGHT_POLE_Q_SCALE)),
-            EqBandMode::LowPass8 => Self::LowPass8(Cascade::new(params, EIGHT_POLE_Q_SCALE)),
-        }
-    }
-    fn configure(&mut self, values: [f64; 3]) {
-        filter!(
-            self,
-            node,
-            node.set_cutoff_q_gain(values[1], values[2], values[0])
-        );
-    }
-    fn sample(&mut self, input: f32) -> f32 {
-        bounded(filter!(self, node, node.filter_mono(input)))
-    }
-    fn reset(&mut self) {
-        filter!(self, node, node.reset());
-    }
-}
 #[derive(Clone)]
 struct Ramp<const N: usize> {
     current: [f32; N],
@@ -337,7 +195,7 @@ struct Band {
 impl Band {
     fn new(c: ProcessingContext, s: &MultibandEqBand, enabled: bool) -> Self {
         let effective = values(s);
-        let params = SvfParams {
+        let params = FilterParameters {
             sample_rate: f64::from(c.sample_rate_hz),
             cutoff: f64::from(s.frequency_hz),
             q: f64::from(s.q),
@@ -350,12 +208,13 @@ impl Band {
                 flag: None,
                 weight: Ramp::new([0.0]),
                 region: Ramp::new(region(s.mode)),
-                eq: EqBandMode::ALL.map(|mode| std::array::from_fn(|_| Filter::new(mode, &params))),
+                eq: EqBandMode::ALL
+                    .map(|mode| std::array::from_fn(|_| Filter::new(mode.into(), &params))),
                 reject: [EqBandMode::Notch, EqBandMode::HighPass, EqBandMode::LowPass]
-                    .map(|mode| std::array::from_fn(|_| Filter::new(mode, &params))),
+                    .map(|mode| std::array::from_fn(|_| Filter::new(mode.into(), &params))),
             },
             filters: EqBandMode::ALL
-                .map(|mode| std::array::from_fn(|_| Filter::new(mode, &params))),
+                .map(|mode| std::array::from_fn(|_| Filter::new(mode.into(), &params))),
             parameters: Ramp::new(effective),
             weights: Ramp::new(weights(s)),
             external: ModulationSmoother::new(c),
@@ -648,7 +507,7 @@ impl MultibandEq {
     /// Attach the final unit output monitor, independently of per-band analysis.
     /// Prepare and attach on the control thread; retain the handle until retirement.
     pub fn set_output_peak_meter(&mut self, meter: std::sync::Arc<daw_unit_core::BandMeter<3>>) {
-        self.output_monitor.attach_peak(meter);
+        self.output_monitor.attach_peak_prepared(meter);
     }
     /// Attach prepared current/held band levels without changing the audio path.
     pub fn set_band_peak_meter(
@@ -889,17 +748,15 @@ mod tests {
                         ..Default::default()
                     };
                     let curve = band_response(&band, rate);
-                    let params = SvfParams {
+                    let params = FilterParameters {
                         sample_rate: f64::from(rate),
                         cutoff: 1200.0,
                         q: f64::from(q),
                         gain: 10_f64.powf(12.0 / 20.0),
                     };
-                    let mut filter = Filter::new(mode, &params);
+                    let mut filter = Filter::new(mode.into(), &params);
                     for hz in [30.0, 500.0, 1190.0, 2000.0, 15000.0] {
-                        let expected = filter!(&mut filter, node, node.response(0, hz))
-                            .unwrap()
-                            .norm();
+                        let expected = filter.response_magnitude(hz).unwrap();
                         let db = (20.0 * expected.max(1e-20).log10()).clamp(-144.0, 144.0) as f32;
                         assert!(
                             (curve.db(hz as f32) - db).abs() < 0.02,

@@ -47,26 +47,9 @@ impl CurveShape {
             Self::SCurve => "S-curve",
         }
     }
-    /// Normalized stage progress, with exact endpoints. Falling stages reverse
-    /// exponential/logarithmic curvature so exponential releases have a long tail.
+
     pub fn progress(self, position: f32, amount: f32, falling: bool) -> f32 {
-        let t = position.clamp(0.0, 1.0);
-        let amount = amount.clamp(0.0, 1.0);
-        if amount == 0.0 {
-            return t;
-        }
-        let power = 1.0 + 7.0 * amount;
-        match self {
-            Self::Linear => t,
-            Self::Exponential if !falling => t.powf(power),
-            Self::Exponential => 1.0 - (1.0 - t).powf(power),
-            Self::Logarithmic if !falling => 1.0 - (1.0 - t).powf(power),
-            Self::Logarithmic => t.powf(power),
-            Self::SCurve => {
-                let smooth = t * t * (3.0 - 2.0 * t);
-                t + amount * (smooth - t)
-            }
-        }
+        daw_dsp_support::envelope::Curve::from(self).progress(position, amount, falling)
     }
 }
 
@@ -85,7 +68,7 @@ impl EnvelopeStageSettings {
             && (0.0..=1.0).contains(&self.amount)
     }
     pub fn frames(&self, sample_rate_hz: u32) -> u64 {
-        (f64::from(self.time_ms) * f64::from(sample_rate_hz) / 1000.0) as u64
+        daw_dsp_support::envelope::stage_frames(self.time_ms, sample_rate_hz)
     }
 }
 
@@ -179,6 +162,17 @@ impl EnvelopeSettings {
             && self.release.valid()
             && self.sustain.is_finite()
             && (0.0..=1.0).contains(&self.sustain)
+    }
+}
+
+impl From<CurveShape> for daw_dsp_support::envelope::Curve {
+    fn from(shape: CurveShape) -> Self {
+        match shape {
+            CurveShape::Linear => Self::Linear,
+            CurveShape::Exponential => Self::Exponential,
+            CurveShape::Logarithmic => Self::Logarithmic,
+            CurveShape::SCurve => Self::SCurve,
+        }
     }
 }
 

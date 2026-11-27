@@ -6,6 +6,11 @@ fn extracted_manifests_resolve_without_the_daw_workspace() {
     let cli = Path::new(env!("CARGO_MANIFEST_DIR"));
     // Resolve path dependencies too; --no-deps would miss workspace inheritance.
     for (name, source, entry) in [
+        (
+            "dsp-support/analysis-kernels",
+            cli.join("../dsp-support/analysis-kernels"),
+            "lib.rs",
+        ),
         ("audio-analysis", cli.join("../audio-analysis"), "lib.rs"),
         ("timestretch", cli.join("../timestretch"), "lib.rs"),
         ("timestretch-cli", cli.to_path_buf(), "main.rs"),
@@ -73,7 +78,11 @@ fn copy_sources(source: &Path, destination: &Path) {
 fn external_consumer_builds_and_processes_without_daw_or_native_dependencies() {
     let extracted = tempfile::tempdir().unwrap();
     let cli = Path::new(env!("CARGO_MANIFEST_DIR"));
-    for name in ["timestretch", "audio-analysis"] {
+    for name in [
+        "timestretch",
+        "audio-analysis",
+        "dsp-support/analysis-kernels",
+    ] {
         let source = cli.join("..").join(name);
         let destination = extracted.path().join(name);
         copy_sources(&source.join("src"), &destination.join("src"));

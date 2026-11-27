@@ -6,8 +6,8 @@ as published by the Free Software Foundation, either version 3 of the License
 or, at your option, any later version. See LICENSE for the license text and
 its warranty disclaimer.
 
-The original code in crates/audio-analysis, crates/timestretch and
-crates/timestretch-cli, including the latter's companion scripts, is
+The original code in crates/audio-analysis,
+crates/dsp-support/analysis-kernels, crates/timestretch and crates/timestretch-cli, including the latter's companion scripts, is
 available under BSD-2-Clause. Each package carries its own LICENSE.
 Other files with explicit license grants retain those grants. Third-party
 code and assets carry their own terms and notices.

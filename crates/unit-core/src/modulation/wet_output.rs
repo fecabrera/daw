@@ -1,21 +1,7 @@
 use super::ModulationRamp as Ramp;
 use super::*;
 use crate::{ModulationParameter as P, ProcessingContext};
-
-fn gain(db: f32) -> f32 {
-    if db <= crate::SILENT_GAIN_DB {
-        0.0
-    } else {
-        10_f32.powf(db / 20.0)
-    }
-}
-fn db(v: f32) -> f32 {
-    if v == 0.0 {
-        crate::SILENT_GAIN_DB
-    } else {
-        20.0 * v.log10()
-    }
-}
+use daw_dsp_support::gain::{amplitude as gain, wet_controls};
 
 #[derive(Clone)]
 pub struct WetOutput {
@@ -75,14 +61,7 @@ impl ModulationDestination for WetOutput {
             .external
             .process(m.offsets([P::Level, P::DryWet]))
             .map(|v| v as f32);
-        self.effective = [
-            if b[0] == 0.0 {
-                crate::SILENT_GAIN_DB
-            } else {
-                (db(b[0]) + o[0]).clamp(crate::SILENT_GAIN_DB, 12.0)
-            },
-            (b[1] + o[1]).clamp(0.0, 1.0),
-        ];
+        self.effective = wet_controls(b, o);
         input
     }
 }

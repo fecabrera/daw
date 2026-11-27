@@ -1,8 +1,5 @@
 //! Parallel harmonic residuals over phase-matched fourth-order crossover bands.
-use daw_dsp_support::{
-    oversampling::{LATENCY, Oversampling},
-    waveshaping::{biased_tanh, shape},
-};
+use daw_dsp_support::{delay::FixedDelay, exciter::ExciterResidual, oversampling::LATENCY};
 use daw_filter::crossover::CrossoverBank;
 use daw_unit_core::{
     EffectUnit, ExciterBand, ExciterMode, ExciterSettings, LevelMonitor, ModulationContext,
@@ -48,16 +45,8 @@ struct Band {
     power: Ramp,
     external: ModulationSmoother<3>,
     effective: [f32; 3],
-    oversampling: Oversampling,
-    dry: [[f32; 2]; LATENCY],
-    cursor: usize,
-    tape: [f64; 2],
-    dc_x: [f64; 2],
-    dc_y: [f64; 2],
-    tube_bias: f64,
-    tube_slope: f64,
-    tape_coefficient: f64,
-    dc_coefficient: f64,
+    residual: ExciterResidual,
+    dry: FixedDelay<[f32; 2], LATENCY>,
     solo: Option<Arc<AtomicBool>>,
     audible: Ramp,
 }
@@ -70,16 +59,8 @@ impl Clone for Band {
             power: self.power,
             external: self.external.clone(),
             effective: self.effective,
-            oversampling: self.oversampling.clone(),
+            residual: self.residual.clone(),
             dry: self.dry,
-            cursor: self.cursor,
-            tape: self.tape,
-            dc_x: self.dc_x,
-            dc_y: self.dc_y,
-            tube_bias: self.tube_bias,
-            tube_slope: self.tube_slope,
-            tape_coefficient: self.tape_coefficient,
-            dc_coefficient: self.dc_coefficient,
             solo: None,
             audible: Ramp::new(1.0),
         }
@@ -87,7 +68,6 @@ impl Clone for Band {
 }
 impl Band {
     fn new(c: ProcessingContext, s: &ExciterBand) -> Self {
-        let tube_bias = 0.35_f64.tanh();
         Self {
             id: s.id,
             base: [s.drive_db, gain(s.level_db), s.mix].map(Ramp::new),
@@ -95,18 +75,8 @@ impl Band {
             power: Ramp::new(f32::from(s.enabled)),
             external: ModulationSmoother::new(c),
             effective: [s.drive_db, s.level_db, s.mix],
-            oversampling: Oversampling::new(),
-            dry: [[0.0; 2]; LATENCY],
-            cursor: 0,
-            tape: [0.0; 2],
-            dc_x: [0.0; 2],
-            dc_y: [0.0; 2],
-            tube_bias,
-            tube_slope: 1.0 - tube_bias.powi(2),
-            tape_coefficient: 1.0
-                - (-std::f64::consts::TAU * 8000.0 / (f64::from(c.sample_rate_hz) * 4.0)).exp(),
-            dc_coefficient: (-std::f64::consts::TAU * 10.0 / (f64::from(c.sample_rate_hz) * 4.0))
-                .exp(),
+            residual: ExciterResidual::new(c.sample_rate_hz),
+            dry: FixedDelay::default(),
             solo: None,
             audible: Ramp::new(1.0),
         }
@@ -131,54 +101,18 @@ impl Band {
         self.power.reset();
         self.audible.reset();
         self.external.reset();
-        self.oversampling.reset();
-        self.dry.fill([0.0; 2]);
-        self.cursor = 0;
-        self.tape = [0.0; 2];
-        self.dc_x = [0.0; 2];
-        self.dc_y = [0.0; 2];
+        self.residual.reset();
+        self.dry.reset();
     }
     fn audio(&mut self, input: [f32; 2]) -> ([f32; 2], [f64; 2]) {
-        let dry = self.dry[self.cursor];
-        self.dry[self.cursor] = input;
-        self.cursor = (self.cursor + 1) % LATENCY;
+        let dry = self.dry.sample(input);
         let mut w = self.mode.each_mut().map(Ramp::next_value).map(f64::from);
         let total = w.iter().sum::<f64>();
         for v in &mut w {
             *v /= total.max(1e-12);
         }
         let drive = f64::from(gain(self.effective[0]));
-        let residual = self.oversampling.process(input, |up| {
-            std::array::from_fn(|ch| {
-                let x = up[ch] * drive;
-                let mut value = 0.0;
-                if w[0] > 0.0 {
-                    value += w[0]
-                        * (shape(daw_unit_core::SaturatorShape::AnalogClip, x) / drive - up[ch]);
-                }
-                if w[1] > 0.0 {
-                    // Shifted tanh is centered at zero with unity small-signal gain.
-                    value += w[1]
-                        * (biased_tanh(x, 0.35, self.tube_bias) / self.tube_slope / drive - up[ch]);
-                }
-                if w[2] > 0.0 {
-                    let tape = x.tanh() / drive - up[ch];
-                    self.tape[ch] += self.tape_coefficient * (tape - self.tape[ch]);
-                    value += w[2] * self.tape[ch];
-                } else {
-                    self.tape[ch] *= 1.0 - self.tape_coefficient;
-                }
-                if w[3] > 0.0 {
-                    value += w[3]
-                        * (shape(daw_unit_core::SaturatorShape::HardCurve, x) / drive - up[ch]);
-                }
-                // Remove DC introduced by asymmetric shaping on the residual path.
-                let blocked = value - self.dc_x[ch] + self.dc_coefficient * self.dc_y[ch];
-                self.dc_x[ch] = value;
-                self.dc_y[ch] = blocked;
-                blocked
-            })
-        });
+        let residual = self.residual.sample(input, drive, w);
         let enabled = f64::from(self.power.next_value());
         let level = f64::from(gain(self.effective[1]));
         let mix = f64::from(self.effective[2]);
@@ -225,8 +159,7 @@ pub struct Exciter {
     bands: Vec<RoutedDestination<Band>>,
     output: RoutedDestination<daw_unit_core::WetOutput>,
     crossover: CrossoverBank,
-    dry: [[f32; 2]; LATENCY],
-    cursor: usize,
+    dry: FixedDelay<[f32; 2], LATENCY>,
     bypass: Ramp,
     fade_frames: u32,
     monitor: LevelMonitor<3>,
@@ -252,15 +185,14 @@ impl Exciter {
                 c.sample_rate_hz,
             ),
             crossover: CrossoverBank::new(c.sample_rate_hz, &frequencies, s.bands.len()),
-            dry: [[0.0; 2]; LATENCY],
-            cursor: 0,
+            dry: FixedDelay::default(),
             bypass: Ramp::new(f32::from(s.enabled)),
             fade_frames: (c.sample_rate_hz / 200).max(1),
             monitor: LevelMonitor::new(c.sample_rate_hz, s.enabled),
         }
     }
     pub fn set_output_peak_meter(&mut self, meter: Arc<daw_unit_core::BandMeter<3>>) {
-        self.monitor.attach_peak(meter);
+        self.monitor.attach_peak_prepared(meter);
     }
     /// Live monitoring only. Offline processors never receive these handles.
     pub fn set_band_solo(&mut self, id: ModulationTargetId, solo: Arc<AtomicBool>) {
@@ -322,7 +254,6 @@ impl Exciter {
             .destination
             .inherit(&mut previous.output.destination, self.fade_frames);
         self.dry = previous.dry;
-        self.cursor = previous.cursor;
         let target = self.bypass.target();
         self.bypass = previous.bypass;
         self.bypass.set(target, self.fade_frames);
@@ -339,9 +270,7 @@ impl Exciter {
         context: ModulationContext,
     ) -> [f32; 2] {
         let input = input.map(clean);
-        let dry = self.dry[self.cursor];
-        self.dry[self.cursor] = input;
-        self.cursor = (self.cursor + 1) % LATENCY;
+        let dry = self.dry.sample(input);
         let any_solo = self.bands.iter().any(|b| {
             b.destination
                 .solo
@@ -413,8 +342,7 @@ impl EffectUnit for Exciter {
     }
     fn reset(&mut self) {
         self.monitor.reset();
-        self.dry.fill([0.0; 2]);
-        self.cursor = 0;
+        self.dry.reset();
         self.bypass.reset();
         for b in &mut self.bands {
             b.reset_routes();

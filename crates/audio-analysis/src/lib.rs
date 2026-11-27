@@ -10,7 +10,7 @@ pub mod response;
 pub mod signal;
 #[cfg(feature = "detectors")]
 mod spectral_attacks;
-pub mod spectrum;
+pub use daw_analysis_kernels::spectrum;
 #[cfg(feature = "detectors")]
 pub mod tempo;
 #[cfg(feature = "detectors")]
@@ -23,8 +23,7 @@ use std::ops::ControlFlow;
 #[cfg(feature = "detectors")]
 pub use transients::TransientDetector;
 
-/// Initially supported processing rates. No project or device is required.
-pub const SAMPLE_RATES: [u32; 6] = [44100, 48000, 88200, 96000, 176400, 192000];
+pub use daw_analysis_kernels::SAMPLE_RATES;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {

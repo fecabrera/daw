@@ -1,17 +1,17 @@
 //! Three-band upward/downward compression with private FunDSP crossovers and detectors.
+use daw_dsp_support::ott::OttBand;
+#[cfg(test)]
+use daw_dsp_support::ott::gain_curve;
 use daw_filter::crossover::LinkwitzRileySplit as Split;
 use daw_unit_core::ramps::ExactRamp32 as Ramp;
 use daw_unit_core::{
     BandMeter, CompressorDetection, EffectUnit, LevelMonitor, OTT_TYPE_ID, OttBandSettings,
     OttSettings, PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
 };
-use fundsp::dynamics::{Meter, MeterState};
 use std::sync::{Arc, atomic::AtomicU32};
 
 #[cfg(test)]
 use std::sync::atomic::Ordering;
-
-const RMS: Meter = Meter::Rms(0.01);
 
 fn amplitude(db: f32) -> f64 {
     10_f64.powf(f64::from(db) / 20.0)
@@ -20,29 +20,12 @@ fn finite(value: f64) -> f32 {
     value.clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
 }
 
-// Fixed 6 dB soft knees, upward 4:1 below −36 dBFS and downward 10:1 above −18 dBFS.
-fn soft_over(over: f32) -> f32 {
-    if over <= -3.0 {
-        0.0
-    } else if over < 3.0 {
-        (over + 3.0).powi(2) / 12.0
-    } else {
-        over
-    }
-}
-fn gain_curve(level_db: f32) -> f32 {
-    (0.75 * soft_over(-36.0 - level_db)).min(24.0) - (0.9 * soft_over(level_db + 18.0)).min(60.0)
-}
 #[derive(Clone)]
 struct Band {
     // Depth, input/output dB, log attack/release milliseconds, enabled.
     parameters: [Ramp; 6],
     effective: [f32; 6],
-    rms: [MeterState; 2],
-    gain_db: f64,
-    configured_times: [f32; 2],
-    coefficients: [f64; 2],
-    rate: f64,
+    kernel: OttBand,
 }
 impl Band {
     fn values(s: OttBandSettings) -> [f32; 6] {
@@ -59,15 +42,7 @@ impl Band {
         Self {
             parameters: Self::values(settings).map(Ramp::new),
             effective: Self::values(settings),
-            rms: std::array::from_fn(|_| {
-                let mut state = MeterState::new(RMS);
-                state.set_sample_rate(RMS, f64::from(rate));
-                state
-            }),
-            gain_db: 0.0,
-            configured_times: [f32::NAN; 2],
-            coefficients: [0.0; 2],
-            rate: f64::from(rate),
+            kernel: OttBand::new(rate),
         }
     }
     fn retarget(&mut self, settings: OttBandSettings, frames: u32) {
@@ -76,7 +51,7 @@ impl Band {
         }
     }
     fn change_db(&self) -> f32 {
-        self.gain_db as f32 * self.effective[0] * self.effective[5]
+        self.kernel.change_db(self.effective[0], self.effective[5])
     }
     fn sample(&mut self, input: [f32; 2], rms_weight: f32, offsets: [f32; 5]) -> [f32; 2] {
         for p in &mut self.parameters {
@@ -90,48 +65,14 @@ impl Band {
         p[3] = (p[3] + offsets[3] * std::f32::consts::LN_2).clamp(0.1_f32.ln(), 200_f32.ln());
         p[4] = (p[4] + offsets[4] * std::f32::consts::LN_2).clamp(10_f32.ln(), 2000_f32.ln());
         self.effective = p;
-        for index in 0..2 {
-            let time = p[index + 3];
-            if self.configured_times[index] != time {
-                self.configured_times[index] = time;
-                self.coefficients[index] =
-                    (-1.0 / (f64::from(time).exp() * 0.001 * self.rate)).exp();
-            }
-        }
-        let input = input.map(|x| finite(f64::from(x) * amplitude(p[1])));
-        let peak = input[0].abs().max(input[1].abs());
-        let mut rms: f32 = 0.0;
-        for (state, sample) in self.rms.iter_mut().zip(input) {
-            state.tick(RMS, sample.clamp(-1e15, 1e15));
-            let level = state.level(RMS);
-            if level < 1e-15 {
-                state.reset(RMS);
-            } else {
-                rms = rms.max(level);
-            }
-        }
-        let detected = peak * (1.0 - rms_weight) + rms * rms_weight;
-        // Silence generates no audio. Remove hidden boost when the detector is silent.
-        let target = if detected < 1e-15 {
-            0.0
-        } else {
-            f64::from(gain_curve(20.0 * detected.log10()))
-        };
-        let relaxing = target.abs() < self.gain_db.abs() && target * self.gain_db >= 0.0;
-        let coefficient = self.coefficients[usize::from(relaxing)];
-        self.gain_db = target + coefficient * (self.gain_db - target);
-        let gain = amplitude(self.change_db() + p[2]);
-        input.map(|x| finite(f64::from(x) * gain))
+        self.kernel.sample(input, rms_weight, p)
     }
     fn reset(&mut self) {
         for p in &mut self.parameters {
             p.reset();
         }
         self.effective = self.parameters.each_ref().map(|p| p.value());
-        for state in &mut self.rms {
-            state.reset(RMS);
-        }
-        self.gain_db = 0.0;
+        self.kernel.reset();
     }
 }
 
@@ -210,7 +151,7 @@ impl Ott {
     }
     /// Attach final-output current and held sample peaks on a control thread.
     pub fn set_output_peak_meter(&mut self, meter: Arc<BandMeter<3>>) {
-        self.output_monitor.attach_peak(meter);
+        self.output_monitor.attach_peak_prepared(meter);
     }
     fn publish(&self) {
         self.meter.publish(self.gain_change_db());

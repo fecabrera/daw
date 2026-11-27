@@ -50,21 +50,9 @@ impl ModulationDestination for Envelope {
         }
         self.offsets = self.modulation.process(offsets).map(|v| v as f32);
         let settings = self.modulated_settings();
-        if settings == self.effective {
-            return;
-        }
-        let progress = if self.duration == 0 {
-            0.0
-        } else {
-            (self.elapsed as f64 + self.fractional_elapsed) / self.duration as f64
-        };
-        self.effective = settings;
-        let duration = self.stage_duration();
-        if duration != self.duration {
-            let elapsed = progress * duration as f64;
-            self.elapsed = elapsed as u64;
-            self.fractional_elapsed = elapsed.fract();
-            self.duration = duration;
+        if settings != self.effective {
+            self.effective = settings;
+            self.kernel.modulate(parameters(settings));
         }
     }
 }

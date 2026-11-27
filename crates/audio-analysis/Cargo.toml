@@ -11,5 +11,6 @@ default = ["detectors"]
 detectors = ["dep:rustfft"]
 
 [dependencies]
+daw-analysis-kernels = { path = "../dsp-support/analysis-kernels", version = "0.1.0" }
 # Explicit version keeps this package usable outside the DAW workspace.
 rustfft = { version = "=6.4.1", optional = true }

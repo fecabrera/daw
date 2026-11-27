@@ -1,9 +1,9 @@
 //! Transparent stereo loudness analysis. Prepare and retire workers outside audio.
 mod statistics;
-use audio_analysis::loudness::RollingLoudness;
-#[cfg(test)]
-use audio_analysis::loudness::TruePeak;
 pub use audio_analysis::loudness::{MeasureMode, OfflineAnalyzer};
+use daw_dsp_support::analysis::loudness::RollingLoudness;
+#[cfg(test)]
+use daw_dsp_support::analysis::loudness::TruePeak;
 use daw_unit_core::{
     BandMeter, EffectUnit, LevelMonitor, LoudnessMeter, LoudnessReading, LoudnessSettings,
     PortKind, ProcessingContext, UnitDescriptor, UnitMeter,
@@ -33,7 +33,7 @@ use std::sync::{
 #[derive(Clone, Copy)]
 struct Observation {
     epoch: u64,
-    measurement: audio_analysis::loudness::Observation,
+    measurement: daw_dsp_support::analysis::loudness::Observation,
     incomplete: bool,
 }
 const WORKER_STACK: usize = 256 * 1024;
@@ -150,7 +150,7 @@ impl Loudness {
         self.meter.clone()
     }
     pub fn set_output_peak_meter(&mut self, meter: Arc<BandMeter<3>>) {
-        self.output.attach_peak(meter);
+        self.output.attach_peak_prepared(meter);
     }
     pub fn retarget(&mut self, s: &LoudnessSettings) {
         if self.settings.enabled != s.enabled

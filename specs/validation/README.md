@@ -16541,3 +16541,52 @@ glide estimator. See the [revision-8 specification](../audio/timestretch.md#long
   passed with the default release profile.
 - Both runs excluded native macOS Audio Unit registration. Native host and
   device listening checks and Windows and Linux runs remain open.
+
+## Built-in DSP migration — 2026-11-27
+
+- Focused tests used the existing unit entry points and covered DSP responses,
+  latency, reset, retarget, modulation, and seek behavior. Strict workspace
+  Clippy, formatting, and the CLI smoke suite passed on macOS arm64.
+- Compared float32 WAV renders using the pre-migration CLI and the rebuilt CLI.
+  A fixed 48 kHz demo edit installed each of the 23 built-in effects by itself
+  on Master. All 23 files matched byte for byte when both CLIs used the
+  optimized test profile. Comparing the optimized reference to the
+  unoptimized build produced four different Plate Reverb tail samples,
+  with a maximum absolute difference of `6.94 × 10⁻¹⁸` in linear amplitude.
+- The spectrum and loudness source split built in a separate directory outside
+  the DAW workspace. Audio analysis tests passed with and without detectors.
+  The BSD kernel tests and standalone Timestretch check passed. The
+  detector-free dependency tree contains only the two BSD packages.
+- Corresponding-source packaging fixture tests passed, including the
+  relocated kernels' license. Workspace and native validation are listed
+  separately below.
+- The debug workspace run reached all test targets and doctests. Its only
+  failures were the two Timestretch CLI standalone tests. Both extracted source
+  fixtures lacked the new BSD kernel directory. The corrected fixtures passed
+  in `cargo test --locked --offline -p timestretch-cli --test standalone`.
+- The release workspace suite passed all 3,866 enabled tests and doctests.
+  This run used `CARGO_PROFILE_RELEASE_LTO=off` and
+  `CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16` with `cargo test --workspace --release`.
+  Workspace profile settings were retained.
+- Both workspace runs skipped the 22 native Audio Unit registration checks.
+  Native host and device listening and Windows and Linux runs remain open.
+
+## Oscillator strip reordering and gap meters — 2026-11-27
+
+- The egui regression passed 288 drag cases. It covers all six starting
+  orders for three oscillators, each source and insertion slot, and expanded
+  and compact layouts in the Layer and Sources views. It checks the insertion
+  preview, stable IDs and pitch routes, and clean no-op drops.
+- The audio regression reproduced a meter reading of zero during preparation
+  before the fix. It now checks repeated Gain edits across source, Amplitude,
+  layer effect, and Master effect meters. Current levels and held peaks stay
+  continuous through preparation and compatible handoff. The handoff uses no
+  callback heap operations. All 119 enabled `daw-output` library tests passed.
+- Formatting and strict workspace Clippy passed on macOS arm64.
+- `cargo test --workspace --locked --offline --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`
+  passed all 3,868 enabled checks in the debug profile.
+- `cargo test --workspace --release --locked --offline --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`
+  passed all 3,868 enabled checks with `CARGO_PROFILE_RELEASE_LTO=off` and
+  `CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16`.
+- Both workspace runs skipped 22 native Audio Unit registration checks. Native
+  mouse gestures, audio devices, and Windows and Linux remain unverified.

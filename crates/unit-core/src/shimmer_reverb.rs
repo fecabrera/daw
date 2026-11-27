@@ -3,11 +3,7 @@ use serde::{Deserialize, Serialize};
 pub const SHIMMER_REVERB_TYPE_ID: &str = "daw.shimmer-reverb";
 pub const SHIMMER_REVERB_STATE_VERSION: u32 = 1;
 
-/// Thirty-one intervals: quarter-semitone steps near zero, integer semitones outside ±1 st.
-pub fn shimmer_pitch(index: i8) -> f32 {
-    let n = f32::from(index.clamp(-15, 15));
-    n.signum() * (n.abs() * 0.25).max(n.abs() - 3.0)
-}
+pub use daw_dsp_support::reverb::shimmer::pitch::shimmer_pitch;
 
 #[cfg(test)]
 mod tests {
