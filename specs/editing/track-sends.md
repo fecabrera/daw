@@ -127,7 +127,7 @@ adjustable in workspace UI state without creating project history entries.
 With no Returns, the Return area occupies no space; Master keeps its normal
 pinned position.
 
-Timeline and the shared Tracks browser show Returns as root-level bus rows with
+Track headers show Returns as root-level bus rows with
 a Return icon and no clip content. Use the existing invalid-drop behavior for
 clips, samples, instruments and group membership. Selecting a Return targets its
 effects chain. Shared Track/Plus menus include Add Return, which creates an empty

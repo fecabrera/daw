@@ -17,7 +17,7 @@ model validation and busy/error guards. A page change must not invoke a hidden
 control or change a preference. Changes to actual preferences still apply and
 persist through the established app settings path.
 
-Use the same shared catalog body as Instrument’s Tracks panel
+Use the same shared catalog body as Instrument’s Components panel
 for sidebar padding and row spacing.
 
 Keep the sidebar and Close action visible. Add an edge-to-edge divider above the

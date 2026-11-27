@@ -360,7 +360,7 @@ fn saving_and_reopening_restores_timeline_display_without_audio_edits() {
         app.timeline_track_size = size;
         app.zoom = 150.0;
         app.scroll = 8.0;
-        app.timeline_vertical_scroll = 180.0;
+        app.track_scroll_offset = 180.0;
         let editor_height = 360.0 + index as f32 * 10.5;
         app.timeline_editor.restore_height(editor_height);
         assert!(!app.timeline_editor_visible());
@@ -393,17 +393,13 @@ fn saving_and_reopening_restores_timeline_display_without_audio_edits() {
         assert_eq!(reopened.timeline_track_size, size);
         assert_eq!(reopened.track_row_height(), expected);
         assert_eq!(
-            (
-                reopened.zoom,
-                reopened.scroll,
-                reopened.timeline_vertical_scroll
-            ),
+            (reopened.zoom, reopened.scroll, reopened.track_scroll_offset),
             (150.0, 8.0, 180.0)
         );
         let ctx = context();
         frame(&mut reopened, &ctx, vec![]);
         frame(&mut reopened, &ctx, vec![]);
-        assert!((reopened.timeline_vertical_scroll - 180.0).abs() < 1.0);
+        assert!((reopened.track_scroll_offset - 180.0).abs() < 1.0);
         assert_eq!(reopened.session.project.tracks, original.tracks);
         assert!(!reopened.dirty);
     }

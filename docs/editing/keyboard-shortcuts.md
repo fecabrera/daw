@@ -65,6 +65,7 @@ Space works from any DAW view when playback controls are available. Use
 | Ungroup the selected group | Cmd+Shift+G | Ctrl+Shift+G |
 | Delete selected tracks in Timeline or Mixer | Cmd+Delete | Ctrl+Delete or Ctrl+Backspace |
 | Delete selected beat subtracks in Timeline, Beat Editor, or Mixer | Cmd+Delete | Ctrl+Delete or Ctrl+Backspace |
+| Duplicate the selected layer in Instrument | Cmd+D | Ctrl+D |
 | Delete selected regular layers in Instrument | Cmd+Delete | Ctrl+Delete or Ctrl+Backspace |
 | Toggle Mute | M | M |
 | Toggle Solo | S | S |

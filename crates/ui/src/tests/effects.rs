@@ -4677,7 +4677,7 @@ fn instrument_has_independent_catalog_and_shared_effects_lane_visibility() {
         let rail = app.effects_bounds.toolbar;
         let catalog = app.effects_bounds.library;
         let lane = app.effects_bounds.strip;
-        let header = app.midi_editor.instrument_header_bounds;
+        let header = app.instrument_catalog_bounds.track_column;
         assert_eq!(rail.width(), 38.0);
         assert_eq!(app.effects_bounds.library_toggle.size(), Vec2::splat(24.0));
         assert_eq!(app.effects_bounds.lane_toggle.size(), Vec2::splat(24.0));
@@ -4688,13 +4688,13 @@ fn instrument_has_independent_catalog_and_shared_effects_lane_visibility() {
         assert_eq!(lane.top(), catalog.bottom());
         assert_eq!(lane.bottom(), rail.bottom());
         assert_eq!(app.effects_bounds.drive_units.len(), 1);
-        assert!(app.timeline_bounds == Rect::NOTHING && app.lane_bounds.is_empty());
+        assert!(app.timeline_bounds == Rect::NOTHING && !app.lane_bounds.is_empty());
         assert!(app.file_drop_target.is_none());
         let library = app.effects_bounds.library_toggle.center();
         click(&mut app, &ctx, library);
         frame(&mut app, &ctx, vec![]);
         assert_eq!(
-            app.midi_editor.instrument_header_bounds.left(),
+            app.instrument_catalog_bounds.track_column.left(),
             rail.right()
         );
         assert_eq!(app.effects_bounds.library, Rect::NOTHING);
@@ -4713,7 +4713,7 @@ fn instrument_has_independent_catalog_and_shared_effects_lane_visibility() {
         frame(&mut app, &ctx, vec![]);
         assert_eq!(app.effects_bounds.library, catalog);
         assert_eq!(app.effects_bounds.strip, lane);
-        assert_eq!(app.midi_editor.instrument_header_bounds, header);
+        assert_eq!(app.instrument_catalog_bounds.track_column, header);
         assert_eq!(
             serde_json::to_value(&app.session.project).unwrap(),
             original

@@ -122,6 +122,7 @@ struct BeatDrag {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum BeatDragPane {
     Editor,
+    #[cfg(test)]
     Tracks,
 }
 impl DawUi {
@@ -150,6 +151,7 @@ impl DawUi {
             self.beat_ui.drag = None;
         }
     }
+    #[cfg(test)]
     pub(super) fn beat_reorder_in(&self, pane: BeatDragPane) -> bool {
         self.beat_ui
             .drag
@@ -366,6 +368,7 @@ impl DawUi {
     pub(super) fn beat_subtrack_selected(&self, id: Id) -> bool {
         self.beat_ui.selected.contains(&id)
     }
+    #[cfg(test)]
     pub(super) fn focus_beat_header(&mut self, ui: &egui::Ui, rect: Rect, focus: egui::Id) {
         self.beat_ui.focused_header = Some(focus);
         ui.ctx().memory_mut(|memory| memory.request_focus(focus));

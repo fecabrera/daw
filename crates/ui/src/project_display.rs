@@ -13,7 +13,7 @@ impl DawUi {
             track_height: daw_core::TrackHeight::from_value(self.timeline_track_size),
             horizontal_zoom: self.zoom,
             horizontal_scroll_seconds: self.scroll,
-            vertical_scroll_points: self.timeline_vertical_scroll,
+            vertical_scroll_points: self.track_scroll_offset,
             arrangement_expanded: !self.arrangement.collapsed,
             timeline_editor_height_points: self.timeline_editor.saved_height(),
         }
@@ -25,8 +25,8 @@ impl DawUi {
         self.timeline_track_size = display.track_height.value();
         self.zoom = display.horizontal_zoom;
         self.scroll = display.horizontal_scroll_seconds;
-        self.timeline_vertical_scroll = display.vertical_scroll_points;
-        self.timeline_vertical_restore = Some(display.vertical_scroll_points);
+        self.track_scroll_offset = display.vertical_scroll_points;
+        self.track_scroll_restore = Some(display.vertical_scroll_points);
         self.timeline_editor
             .restore_height(display.timeline_editor_height_points);
     }

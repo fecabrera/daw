@@ -6,6 +6,7 @@ use daw_core::{InstrumentLayerSettings, TrackKind};
 pub(super) struct InstrumentUi {
     pub(super) track: Option<Id>,
     pub(super) selected_layer: Option<Id>,
+    pub(super) layer_page: Option<Id>,
     pub(super) selected_layers: HashSet<Id>,
     pub(super) track_effects_target: bool,
     pub(super) effects_layer: Option<Id>,
@@ -196,6 +197,7 @@ impl DawUi {
             number += 1;
         }
         self.instrument_ui.select_layer(layer.id);
+        self.instrument_ui.layer_page = Some(layer.id);
         self.instrument_ui.track_effects_target = false;
         settings.layers.push(layer);
     }
@@ -206,8 +208,11 @@ impl DawUi {
         panel: &panels::ControlPanel,
         enabled: bool,
     ) -> egui::InnerResponse<Option<egui::Response>> {
-        let add = (self.instrument_subview != InstrumentSubview::Modulation)
-            .then_some(("Add layer", enabled));
+        let add = matches!(
+            self.instrument_subview,
+            InstrumentSubview::Sources | InstrumentSubview::Effects
+        )
+        .then_some(("Add layer", enabled));
         self.instrument_lanes_header(ui, panel, "Layers", add)
     }
     pub(super) fn instrument_lanes_header(
@@ -238,6 +243,23 @@ impl DawUi {
     }
 
     pub(super) fn empty_instrument_panel(&mut self, ui: &mut egui::Ui, message: &str) {
+        if self.instrument_subview.uses_track_column() {
+            egui::Frame::new()
+                .inner_margin(egui::Margin {
+                    left: theme::TOOLBAR_PADDING,
+                    top: theme::TOOLBAR_PADDING,
+                    right: 0,
+                    bottom: 0,
+                })
+                .show(ui, |ui| {
+                    ui.label(
+                        egui::RichText::new(message)
+                            .text_style(egui::TextStyle::Small)
+                            .color(theme::palette(ui.ctx()).secondary),
+                    );
+                });
+            return;
+        }
         let panel = panels::ControlPanel::begin(ui, ui.max_rect());
         ui.spacing_mut().item_spacing.y = -1.0;
         let header = self.layers_header(ui, &panel, false);
@@ -314,6 +336,7 @@ impl DawUi {
         if self.instrument_ui.track != Some(track.id) {
             self.instrument_ui.cancel();
             self.instrument_ui.track = Some(track.id);
+            self.instrument_ui.layer_page = None;
             self.instrument_ui.effects_layer = None;
             self.instrument_ui.track_effects_target = false;
             self.instrument_ui.selected_layers.clear();
@@ -381,9 +404,19 @@ impl DawUi {
         children.set_clip_rect(children.max_rect().intersect(ui.clip_rect()));
         let ui = if group { &mut children } else { ui };
         let column_bounds = ui.max_rect();
-        let control_panel = panels::ControlPanel::with_width(ui, column_bounds, layer_header_width);
+        let track_column = subview.uses_track_column();
+        let control_panel = panels::ControlPanel::with_width(
+            ui,
+            column_bounds,
+            if track_column {
+                0.0
+            } else {
+                layer_header_width
+            },
+        );
         ui.spacing_mut().item_spacing.y = -1.0;
-        let header = (!group).then(|| self.layers_header(ui, &control_panel, true));
+        let header =
+            (!group && !track_column).then(|| self.layers_header(ui, &control_panel, true));
         if header
             .as_ref()
             .and_then(|h| h.inner.as_ref())
@@ -392,7 +425,9 @@ impl DawUi {
             self.append_instrument_layer(&mut settings);
         }
         let count = settings.layers.len();
-        let placing_macros = subview == InstrumentSubview::Modulation
+        let layer_page = subview == InstrumentSubview::Layer;
+        let active_layer = self.visible_instrument_layer(&settings);
+        let placing_macros = subview.shows(daw_core::InstrumentComponent::Macros)
             && self
                 .component_drag
                 .as_ref()
@@ -432,30 +467,47 @@ impl DawUi {
                         );
                         lane_rows.push((bus.id, rect));
                     };
-                    if subview == InstrumentSubview::Modulation {
+                    if subview == InstrumentSubview::Lfos || subview.combined_modulation() {
                         render_bus(self, ui, &mut settings.lfo_lane, Some(daw_core::ModulationLaneKind::Lfo));
+                    }
+                    if subview == InstrumentSubview::Envelopes || subview.combined_modulation() {
                         render_bus(self, ui, &mut settings.envelope_lane, Some(daw_core::ModulationLaneKind::Envelope));
+                    }
+                    if subview.shows(daw_core::InstrumentComponent::Macros) {
                         render_bus(self, ui, &mut settings.main, None);
                     }
-                    let mut layer_indices: Vec<_> = (0..settings.layers.len()).collect();
+                    let mut layer_rows: Vec<_> = if layer_page {
+                        settings.layers.iter().position(|layer| Some(layer.id) == active_layer)
+                            .into_iter().flat_map(|index| [
+                                (index, InstrumentSubview::Sources, false),
+                                (index, InstrumentSubview::Effects, false),
+                                (index, InstrumentSubview::Sources, true),
+                            ]).collect()
+                    } else {
+                        (0..settings.layers.len()).map(|index| (index, subview, false)).collect()
+                    };
                     if placing_macros {
-                        // Extra drop targets follow all installed modulation rows.
-                        layer_indices.sort_by_key(|&index| !settings.layers[index]
-                            .visible_units().into_iter().any(|unit| subview.shows(unit)));
+                        layer_rows.sort_by_key(|&(index, mode, _)| !settings.layers[index]
+                            .visible_units().into_iter().any(|unit| mode.shows(unit)));
                     }
-                    for index in layer_indices {
+                    for (index, subview, mix_only) in layer_rows {
                         let layer = &mut settings.layers[index];
-                        let units: Vec<_> = layer.visible_units().into_iter()
-                            .filter(|unit| subview.shows(*unit)).collect();
-                        if subview == InstrumentSubview::Modulation && units.is_empty() && !placing_macros {
+                        let units: Vec<_> = if mix_only { Vec::new() } else {
+                            layer.visible_units().into_iter().filter(|unit| subview.shows(*unit)).collect()
+                        };
+                        if subview.is_modulation() && units.is_empty() && !placing_macros {
                             continue;
                         }
-                        ui.scope_builder(egui::UiBuilder::new().id_salt((track.id, layer.id)).ui_stack_info(
+                        if mix_only {
+                            ui.add_space(12.0);
+                        }
+                        ui.scope_builder(egui::UiBuilder::new().id_salt((track.id, layer.id, subview, mix_only)).ui_stack_info(
                             egui::UiStackInfo::default().with_tag(panels::SHARED_LEFT_BORDER_TAG)
                         ), |ui| {
                             // Use one presentation snapshot for the entire frame.
                             let compact = layer.collapsed;
-                            let height = panels::unit_height(compact);
+                            let height = if mix_only { ROW_HEIGHT } else { panels::unit_height(compact) };
+                            let show_mix = !layer_page || mix_only;
                             let mut layer_click_allowed = false;
                             let row = ui
                                 .add_enabled_ui(self.component_drag.as_ref().is_none_or(|d| !d.active), |ui| {
@@ -468,16 +520,17 @@ impl DawUi {
                                             ui.painter().rect_filled(lane, 0.0, theme::selected_track_background(ui.ctx()));
                                         }
                                         let toolbar = lane_toolbar::bounds(lane);
-                                        let collapse = lane_toolbar::show(
+                                        let collapse = (!mix_only).then(|| lane_toolbar::show(
                                             ui, toolbar, &mut layer.collapsed,
                                             !self.instrument_ui.has_layer_gesture() && !self.instrument_ui.editing_name()
                                                 && self.editing_enabled() && ui.input(|input| input.focused),
                                             [icons::Lucide::ArrowDownFromLine, icons::Lucide::ArrowUpFromLine],
                                             ["Expand layer", "Collapse layer"],
-                                        );
-                                        if collapse.clicked() { ui.ctx().request_repaint(); }
+                                        ));
+                                        let collapse_bounds = collapse.as_ref().map_or(Rect::NOTHING, |response| response.rect);
+                                        if collapse.is_some_and(|response| response.clicked()) { ui.ctx().request_repaint(); }
                                         let (label, response) = ui.allocate_exact_size(
-                                            Vec2::new(layer_header_width, height),
+                                            Vec2::new(if track_column && !show_mix { 64.0 } else { layer_header_width }, height),
                                             Sense::click_and_drag(),
                                         );
                                         ui.painter().rect_filled(
@@ -485,6 +538,12 @@ impl DawUi {
                                             0.0,
                                             if selected { theme::selected_track_header_background(ui.ctx()) } else { theme::palette(ui.ctx()).panel },
                                         );
+                                        let mut controls = (Rect::NOTHING, Rect::NOTHING);
+                                        let mut mixing_bounds = [Rect::NOTHING; 4];
+                                        if show_mix {
+                                        if self.instrument_ui.name_edit.as_ref().is_some_and(|edit| edit.layer == layer.id && edit.focus) {
+                                            ui.scroll_to_rect(label, None);
+                                        }
                                         let mut header_ui = ui.new_child(
                                             egui::UiBuilder::new()
                                                 .max_rect(Rect::from_min_size(
@@ -501,8 +560,6 @@ impl DawUi {
                                         header_ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                                         let mixing_enabled = !self.instrument_ui.dragging()
                                             && !self.instrument_ui.editing_name();
-                                        let mut controls = (Rect::NOTHING, Rect::NOTHING);
-                                        let mut mixing_bounds = [Rect::NOTHING; 4];
                                         let meter_bounds = Rect::from_min_size(Pos2::new(header_ui.max_rect().right() - (meters::STEREO_WIDTH - meters::SCALE_WIDTH), header_ui.max_rect().top()), Vec2::new(meters::STEREO_WIDTH - meters::SCALE_WIDTH, ROW_HEIGHT - 14.0));
                                         let (levels, held) = self.output.as_ref().and_then(|o| o.layer_meter(track.id, layer.id)).map_or(([(0.0, false); 2], [0.0; 2]), |m| (m.levels(), m.held_peaks()));
                                         let cleared = meters::stereo_panel_held(&mut header_ui, ROW_HEIGHT - 14.0, levels, held, |header_ui| {
@@ -516,7 +573,7 @@ impl DawUi {
                                                     .max(1.0);
                                                 let icon = icons::header_icon(ui, icons::Lucide::AudioWaveform, Sense::click_and_drag());
                                                 icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument layer"));
-                                                if subview != InstrumentSubview::Modulation {
+                                                if !layer_page && !subview.is_modulation() {
                                                     self.start_layer_drag(ui, &icon, layer.id);
                                                     icon.clone().on_hover_text("Move layer").on_hover_cursor(egui::CursorIcon::Grab);
                                                 }
@@ -532,7 +589,7 @@ impl DawUi {
                                                         |ui| {
                                                             // Short names must still reserve the full name column.
                                                             ui.set_min_width(name_width);
-                                                            self.layer_name(ui, layer)
+                                                            self.layer_name(ui, layer, !layer_page)
                                                         },
                                                     )
                                                     .inner;
@@ -565,7 +622,7 @@ impl DawUi {
                                         // controls at the press origin, even when the pointer leaves them.
                                         let control_press = ui.input(|input| {
                                             input.pointer.press_origin().or(input.pointer.interact_pos()).is_some_and(|point| {
-                                                collapse.rect.contains(point)
+                                                collapse_bounds.contains(point)
                                                     || meter_bounds.contains(point)
                                                     || mixing_bounds
                                                         .iter()
@@ -573,7 +630,7 @@ impl DawUi {
                                             })
                                         });
                                         layer_click_allowed = !control_press;
-                                        if !control_press {
+                                        if !control_press && !layer_page {
                                             self.start_layer_drag(ui, &response, layer.id);
                                         }
                                         response.widget_info(|| {
@@ -615,6 +672,11 @@ impl DawUi {
                                                 ui.close();
                                             }
                                         });
+                                        } else {
+                                            let title = if subview == InstrumentSubview::Effects { "Effects" } else { "Layer" };
+                                            ui.painter().text(label.min + Vec2::new(8.0, 16.0), egui::Align2::LEFT_CENTER, title,
+                                                crate::fonts::semibold(rows::NAME_FONT_SIZE), theme::palette(ui.ctx()).text);
+                                        }
                                         #[cfg(test)]
                                         let mut amplitude_bounds = (Rect::NOTHING, Rect::NOTHING);
                                         let mut oscillator_panel = None;
@@ -641,7 +703,8 @@ impl DawUi {
                                                 self.scroll_effect_drag(ui);
                                                 crate::strip_reorder::scroll(ui);
                                                 panels::unit_row(ui, true, |ui| {
-                                                        if subview != InstrumentSubview::Sources || layer.oscillators.is_empty() {
+                                                        if (!layer_page || (!mix_only && subview == InstrumentSubview::Sources))
+                                                            && (subview != InstrumentSubview::Sources || layer.oscillators.is_empty()) {
                                                             #[cfg(test)] {
                                                                 self.midi_editor.oscillator_bounds.clear();
                                                                 self.midi_editor.oscillator_strip_bounds.clear();
@@ -759,18 +822,28 @@ impl DawUi {
                                             });
                                         let viewport = Rect::from_min_size(components.inner_rect.min, Vec2::new(components.inner_rect.width(), height)).intersect(components.inner_rect).intersect(ui.clip_rect());
                                         if subview == InstrumentSubview::Effects {
+                                            self.effects_lane_menu(ui, lane, Some(daw_core::EffectChainTarget::Layer { track: track.id, layer: layer.id }), &mut layer.effects,
+                                                &self.instrument_ui.effect_slots.iter().filter(|(id, _, _)| *id == layer.id).map(|(_, id, rect)| (*id, *rect)).collect::<Vec<_>>(), self.effects_editing_enabled(ui));
                                             self.finish_inline_layer_effects(ui, track.id, crate::layer_effects::InlineEffects { id: layer.id, effects: &mut layer.effects }, viewport);
                                         }
-                                        self.instrument_ui.component_viewports.push((layer.id,viewport));
+                                        if !layer_page || (!mix_only && subview == InstrumentSubview::Sources) {
+                                            self.instrument_ui.component_viewports.push((layer.id,viewport));
+                                        }
                                         #[cfg(test)]
                                         {
-                                            self.midi_editor.envelope_panel_bounds = envelope_rect;
-                                            self.midi_editor.envelope_stage_bounds =
-                                                envelope_stages;
-                                            if oscillator_panel.is_none() {
-                                                self.midi_editor.add_oscillator_bounds =
-                                                    Rect::NOTHING;
+                                            if !layer_page || (!mix_only && subview == InstrumentSubview::Sources) {
+                                                self.midi_editor.envelope_panel_bounds = envelope_rect;
+                                                self.midi_editor.envelope_stage_bounds = envelope_stages;
+                                                if oscillator_panel.is_none() {
+                                                    self.midi_editor.add_oscillator_bounds = Rect::NOTHING;
+                                                }
                                             }
+                                            if mix_only && let Some(bounds) = self.midi_editor.layer_bounds.get_mut(&layer.id) {
+                                                bounds.label = label;
+                                                bounds.icon = controls.0;
+                                                bounds.name = controls.1;
+                                                bounds.mix_controls = mixing_bounds;
+                                            } else if !layer_page || subview == InstrumentSubview::Sources {
                                             self.midi_editor.layer_bounds.insert(
                                                 layer.id,
                                                 LayerUiBounds {
@@ -779,7 +852,7 @@ impl DawUi {
                                                     icon: controls.0,
                                                     name: controls.1,
                                                     mix_controls: mixing_bounds,
-                                                    collapse: collapse.rect,
+                                                    collapse: collapse_bounds,
                                                     toolbar,
                                                     oscillator_panel: oscillator_panel
                                                         .unwrap_or(Rect::NOTHING),
@@ -805,6 +878,7 @@ impl DawUi {
                                                     filter_envelope_stages: filter_envelope.3,
                                                 },
                                             );
+                                            }
                                         }
                                         #[cfg(not(test))]
                                         {
@@ -854,10 +928,14 @@ impl DawUi {
                                 self.instrument_ui.track_effects_target = false;
                                 ui.ctx().request_repaint();
                             }
-                            reorder_rows.push((layer.id, row.response.rect));
+                            if !layer_page || (!mix_only && subview == InstrumentSubview::Sources) {
+                                reorder_rows.push((layer.id, row.response.rect));
+                            } else {
+                                lane_rows.push((layer.id, row.response.rect));
+                            }
                             panels::ControlPanel::row_dividers(ui, row.response.rect, true, false);
                             #[cfg(test)]
-                            {
+                            if !layer_page || (!mix_only && subview == InstrumentSubview::Sources) {
                                 self.midi_editor
                                     .layer_bounds
                                     .get_mut(&layer.id)
@@ -874,7 +952,10 @@ impl DawUi {
                     }
                 });
             });
-        if subview == InstrumentSubview::Sources {
+        if matches!(
+            subview,
+            InstrumentSubview::Sources | InstrumentSubview::Layer
+        ) {
             self.instrument_ui.source_drop_rows = reorder_rows
                 .iter()
                 .map(|(id, rect)| (*id, rect.intersect(scroll.inner_rect)))
@@ -891,7 +972,7 @@ impl DawUi {
         });
         let layer_rows: Vec<_> = reorder_rows
             .iter()
-            .chain(&lane_rows)
+            .chain(lane_rows.iter().filter(|_| !layer_page))
             .map(|(id, rect)| {
                 (
                     *id,
@@ -931,25 +1012,72 @@ impl DawUi {
         let previous_layer_selection = (
             self.instrument_ui.selected_layer,
             self.instrument_ui.selected_layers.clone(),
+            self.instrument_ui.layer_page,
         );
-        if subview != InstrumentSubview::Modulation {
-            self.layer_reorder(ui, &mut settings, &reorder_rows, reorder_viewport);
+        if !layer_page && !subview.is_modulation() {
+            self.layer_reorder(
+                ui,
+                &mut settings,
+                &reorder_rows,
+                reorder_viewport,
+                drag::Axis::Vertical,
+            );
         }
-        if let Some(index) = duplicate_layer.and_then(|id| {
-            settings
-                .layers
-                .iter()
-                .position(|l| l.id == id && l.can_duplicate_hosted())
-        }) {
-            let copy = InstrumentLayerSettings::duplicate_group(&[&settings.layers[index]])
-                .pop()
-                .unwrap();
-            self.instrument_ui.selected_layer = Some(copy.id);
-            self.instrument_ui.selected_layers = HashSet::from([copy.id]);
-            self.instrument_ui.track_effects_target = false;
-            settings.layers.insert(index + 1, copy);
+        if let Some(layer) = duplicate_layer {
+            self.copy_layer(&mut settings, layer);
         }
         self.commit_instrument_panel(&track, settings, previous_layer_selection, remove_layer);
+    }
+
+    fn copy_layer(&mut self, settings: &mut daw_core::InstrumentSettings, layer: Id) {
+        let Some(index) = settings
+            .layers
+            .iter()
+            .position(|entry| entry.id == layer && entry.can_duplicate_hosted())
+        else {
+            return;
+        };
+        let copy = InstrumentLayerSettings::duplicate_group(&[&settings.layers[index]])
+            .pop()
+            .unwrap();
+        self.instrument_ui.layer_page = Some(copy.id);
+        self.instrument_ui.select_layer(copy.id);
+        self.instrument_ui.track_effects_target = false;
+        settings.layers.insert(index + 1, copy);
+    }
+
+    pub(super) fn perform_layer_tab_action(&mut self, layer: Id, action: TrackAction) {
+        let Some(track) = self
+            .selected_instrument_owner()
+            .and_then(|owner| self.session.project.instrument_track(owner))
+        else {
+            return;
+        };
+        let Some(mut settings) = track.instrument.clone() else {
+            return;
+        };
+        let can_delete = settings.layers.len() > 1;
+        let Some(target) = settings.layers.iter_mut().find(|entry| entry.id == layer) else {
+            return;
+        };
+        let selection = (
+            self.instrument_ui.selected_layer,
+            self.instrument_ui.selected_layers.clone(),
+            self.instrument_ui.layer_page,
+        );
+        let mut remove = None;
+        match action {
+            TrackAction::Duplicate => self.copy_layer(&mut settings, layer),
+            TrackAction::Mute => target.muted = !target.muted,
+            TrackAction::Solo => target.soloed = !target.soloed,
+            TrackAction::Delete if can_delete => remove = Some(layer),
+            _ => return,
+        }
+        if action == TrackAction::Duplicate && self.instrument_subview.is_modulation() {
+            // A copy selected from a layer tab opens that layer's page.
+            self.instrument_subview = InstrumentSubview::Layer;
+        }
+        self.commit_instrument_panel(&track, settings, selection, remove);
     }
 
     /// Finish all installed/library gestures even when a beat group hides its child rows.
@@ -1003,7 +1131,7 @@ impl DawUi {
         &mut self,
         track: &daw_core::Track,
         mut settings: daw_core::InstrumentSettings,
-        previous_layer_selection: (Option<Id>, HashSet<Id>),
+        previous_layer_selection: (Option<Id>, HashSet<Id>, Option<Id>),
         remove_layer: Option<Id>,
     ) {
         let mut edits = Vec::new();
@@ -1046,12 +1174,18 @@ impl DawUi {
                 (
                     self.instrument_ui.selected_layer,
                     self.instrument_ui.selected_layers,
+                    self.instrument_ui.layer_page,
                 ) = previous_layer_selection;
             }
         }
     }
 
-    fn layer_name(&mut self, ui: &mut egui::Ui, layer: &mut InstrumentLayerSettings) -> Rect {
+    fn layer_name(
+        &mut self,
+        ui: &mut egui::Ui,
+        layer: &mut InstrumentLayerSettings,
+        can_drag: bool,
+    ) -> Rect {
         if self
             .instrument_ui
             .name_edit
@@ -1102,13 +1236,15 @@ impl DawUi {
                     focus: true,
                 });
             }
-            self.start_layer_drag(ui, &response, layer.id);
+            if can_drag {
+                self.start_layer_drag(ui, &response, layer.id);
+            }
             response.rect
         }
     }
 
-    fn start_layer_drag(&mut self, ui: &egui::Ui, response: &egui::Response, layer: Id) {
-        if self.instrument_subview != InstrumentSubview::Modulation
+    pub(super) fn start_layer_drag(&mut self, ui: &egui::Ui, response: &egui::Response, layer: Id) {
+        if !self.instrument_subview.is_modulation()
             && self.instrument_ui.drag.is_none()
             && self.edit_environment_available()
             && !self.instrument_ui.editing_name()
@@ -1136,12 +1272,50 @@ impl DawUi {
         }
     }
 
+    pub(super) fn reorder_layer_tabs(
+        &mut self,
+        ui: &egui::Ui,
+        rows: &[(Id, Rect)],
+        viewport: Rect,
+    ) {
+        if !self.instrument_ui.has_layer_gesture() || rows.is_empty() {
+            return;
+        }
+        let Some(track_id) = self.selected_instrument_owner() else {
+            return;
+        };
+        let Some(mut settings) = self.session.project.instrument_snapshot(track_id) else {
+            return;
+        };
+        let selection = (
+            self.instrument_ui.selected_layer,
+            self.instrument_ui.selected_layers.clone(),
+            self.instrument_ui.layer_page,
+        );
+        self.layer_reorder(ui, &mut settings, rows, viewport, drag::Axis::Horizontal);
+        if self.session.project.instrument_settings(track_id) != Some(&settings) {
+            self.instrument_ui.layer_page = self.instrument_ui.selected_layer;
+            self.edit(Edit::SetInstrument {
+                track_id,
+                instrument: Some(settings),
+            });
+            if self.job.is_some() {
+                (
+                    self.instrument_ui.selected_layer,
+                    self.instrument_ui.selected_layers,
+                    self.instrument_ui.layer_page,
+                ) = selection;
+            }
+        }
+    }
+
     fn layer_reorder(
         &mut self,
         ui: &egui::Ui,
         settings: &mut daw_core::InstrumentSettings,
         rows: &[(Id, Rect)],
         viewport: Rect,
+        axis: drag::Axis,
     ) {
         let Some(gesture) = self.instrument_ui.drag.as_ref() else {
             return;
@@ -1175,7 +1349,10 @@ impl DawUi {
             .map(|pointer| {
                 let slot = rows
                     .iter()
-                    .position(|(_, row)| pointer.y < row.center().y)
+                    .position(|(_, row)| match axis {
+                        drag::Axis::Horizontal => pointer.x < row.center().x,
+                        drag::Axis::Vertical => pointer.y < row.center().y,
+                    })
                     .unwrap_or(rows.len());
                 let (index, changed) = if duplicate {
                     (slot, true)
@@ -1185,15 +1362,24 @@ impl DawUi {
                 (slot, index, changed)
             });
         if let Some((slot, _, true)) = target {
-            let y = rows
-                .get(slot)
-                .map_or_else(|| rows.last().unwrap().1.bottom(), |(_, row)| row.top())
-                .clamp(viewport.top(), viewport.bottom());
-            ui.painter_at(viewport).hline(
-                viewport.x_range(),
-                y,
-                Stroke::new(2.0, theme::accent(ui.ctx())),
-            );
+            let row = rows.get(slot).map(|(_, row)| *row);
+            let last = rows.last().unwrap().1;
+            let painter = ui.painter_at(viewport);
+            let stroke = Stroke::new(2.0, theme::accent(ui.ctx()));
+            match axis {
+                drag::Axis::Horizontal => {
+                    let x = row
+                        .map_or(last.right(), |row| row.left())
+                        .clamp(viewport.left(), viewport.right());
+                    painter.vline(x, viewport.y_range(), stroke);
+                }
+                drag::Axis::Vertical => {
+                    let y = row
+                        .map_or(last.bottom(), |row| row.top())
+                        .clamp(viewport.top(), viewport.bottom());
+                    painter.hline(viewport.x_range(), y, stroke);
+                }
+            }
         }
         ui.ctx().set_cursor_icon(if target.is_some() {
             if duplicate {

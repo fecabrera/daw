@@ -38,7 +38,7 @@ impl DawUi {
             && self.media_ready()
             && self.regular_save.is_none()
             && self.file_hover.is_none()
-            && !self.track_browser.has_gesture()
+            && !self.compact_tracks_gesture_active()
             && !self.instrument_ui.has_layer_gesture()
             && (mode != BounceMode::Clips
                 || (self.portion.is_none() && self.view_mode.has_clip_lanes()))

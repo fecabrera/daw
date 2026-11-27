@@ -46,7 +46,7 @@ see [beat subtrack strips](mixer.md#beat-subtrack-strips).
 | B29 | The Timeline editor pane and Instrument add, select one/several, delete, rename and reorder subtracks. | Share stable IDs, selection, transactions and release-only reorder behavior. |
 | B30 | The Timeline editor pane and Instrument expose the same subtrack gain and pan. | Bind shared controls to one canonical bus stage. |
 | B31 | Each subtrack instrument owns independent LFO and Envelope lanes. | Restrict additions to the matching child lane and isolate provider ownership/routes between subtracks. |
-| B32 | A subtrack has a compact Tracks row and its own instrument Output controls. | Reuse the shared Tracks row and normal instrument body. Both presentations bind to the same subtrack settings. |
+| B32 | A subtrack has a row in the full Tracks panel and its own instrument Output controls. | Reuse the shared track headers and normal instrument body. Both presentations bind to the same subtrack settings. |
 | B33 | Beat subtracks are instruments, not audio tracks or separate audio/MIDI lane types. | Add one instrument subtrack directly. Choose Sampler/Oscillator/other supported sources inside its layers; preserve the same subtrack identity when sources change. |
 | B34 | Reject beat clip moves, copies and paste between different beat tracks for now. | Preserve stable subtrack bindings; do not match rows by name or position or silently copy instruments. Same-track operations remain allowed. |
 | B35 | Retain steps hidden by a shorter or coarser grid. | Hidden steps are silent and return at their original tick and velocity when the grid includes them again. |
@@ -207,9 +207,9 @@ project data, add hits, or start subtrack reordering.
 
 ## Selected subtrack and final Output
 
-Instrument uses the [Tracks hierarchy](instrument-tracks.md). Beat parents disclose compact subtrack rows. A selected subtrack uses the standard MIDI instrument body without group indentation or a surrounding group header: Layers title and Plus, source layers, local LFO/Envelope lanes, and Output in one vertical scroll area. Cache presentation state by owner, but expose drop geometry only for the visible owner. Selecting another owner clears hidden layer selection. Keep all processing state in the shared project.
+Instrument uses the [Tracks hierarchy](instrument-tracks.md). Beat parents disclose subtrack headers. A selected subtrack uses the standard MIDI instrument body without group indentation or a surrounding group header. Cache presentation state by owner, but expose drop geometry only for the visible owner. Selecting another owner clears hidden layer selection. Keep all processing state in the shared project.
 
-Selecting the beat parent shows the standard empty Layers pane in every retained tab. Use the parent Effects Lane for catalog effects and keep the parent as the arrangement target. Saved Output mix and Macro settings remain in the processing graph. Source and sample navigation select the matching subtrack when opening a nested instrument. Parent disclosure only changes Tracks browser visibility.
+Selecting the beat parent shows the standard empty instrument pane. Use the parent Effects Lane for catalog effects and keep the parent as the arrangement target. Saved Output mix and Macro settings remain in the processing graph. Source and sample navigation select the matching subtrack when opening a nested instrument. Parent disclosure shows or hides its subtrack headers.
 
 Layer selection belongs to the Instrument view, even though per-subtrack UI state
 is cached separately. A plain primary interaction within a subtrack clears
@@ -451,9 +451,9 @@ Edit::SetGroupCollapsed transaction, just like track groups. Disclosure changes
 participate in save revisions, dirty state and Undo/Redo. This supersedes the
 initial view-only state. Accept the collapse field only on Group and Beat tracks;
 keep actual project-track parenting restricted to Group buses. Legacy beat
-manifests with no field use the existing serde default (expanded). Keep Timeline
-expansion independent of the shared Tracks browser. Hiding an enclosing track group hides all beat children and retains the
-beat parent's expansion choice.
+manifests with no field use the existing serde default (expanded). Timeline and
+Instrument share disclosure. Hiding an enclosing track group hides all beat
+children and retains the beat parent's expansion choice.
 
 Show one child row per subtrack in canonical order. Reuse GroupPanel indentation,
 shared row heights and dividers, and the enclosing parent panel bounds,

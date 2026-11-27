@@ -7,6 +7,7 @@ use drag::Gesture;
 #[derive(Default)]
 pub(super) struct State {
     pub visible: bool,
+    pub fixture_enabled: bool,
     #[cfg(test)]
     editor_visible: bool,
     open: HashSet<Id>,
@@ -137,6 +138,12 @@ impl State {
     }
 }
 impl DawUi {
+    pub(super) fn compact_tracks_available(&self) -> bool {
+        self.view_mode.has_track_overview()
+            || (self.view_mode == ViewMode::Instrument
+                && (self.track_browser.fixture_enabled || self.track_browser.visible))
+    }
+
     pub(super) fn tracks_panel_visible(&self) -> bool {
         match self.view_mode {
             ViewMode::Instrument => self.track_browser.visible,

@@ -23,7 +23,10 @@ fn each_lane_keeps_its_toolbar_fixed_outside_scrolling_components() {
         settings::ColorTheme::Mist,
     ] {
         for scale in [1.0, 1.5] {
-            let mut app = DawUi::default();
+            let mut app = DawUi {
+                instrument_subview: crate::instrument_workspace::InstrumentSubview::Sources,
+                ..Default::default()
+            };
             let track = app.session.project.add_midi_track().unwrap();
             let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
             instrument.layers[0]

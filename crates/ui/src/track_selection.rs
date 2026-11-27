@@ -361,10 +361,23 @@ impl DawUi {
     }
 
     pub(super) fn track_shortcuts(&mut self, ctx: &egui::Context) {
+        let duplicate_layer = self
+            .selected_rename_layer()
+            .filter(|layer| layer.can_duplicate_hosted())
+            .map(|layer| layer.id)
+            .filter(|_| {
+                self.selection_shortcut_environment_available(ctx)
+                    && !self.instrument_ui.has_layer_gesture()
+                    && !ctx.text_edit_focused()
+                    && ctx.dragged_id().is_none()
+            });
         let enabled = TrackAction::ALL.map(|action| self.track_action_enabled(action, ctx));
-        if !enabled.iter().any(|enabled| *enabled) || ctx.input(|input| input.pointer.any_down()) {
+        if (duplicate_layer.is_none() && !enabled.iter().any(|enabled| *enabled))
+            || ctx.input(|input| input.pointer.any_down())
+        {
             return;
         }
+        let mut duplicate = None;
         let pressed = ctx.input_mut(|input| {
             let mut pressed = [false; TrackAction::ALL.len()];
             input.events.retain(|event| {
@@ -376,6 +389,14 @@ impl DawUi {
                     ..
                 } = event
                 {
+                    let shortcut = crate::instrument_workspace::DUPLICATE_LAYER_SHORTCUT;
+                    if let Some(layer) = duplicate_layer
+                        && *key == shortcut.logical_key
+                        && modifiers.matches_exact(shortcut.modifiers)
+                    {
+                        duplicate = Some(layer);
+                        return false;
+                    }
                     for (index, action) in TrackAction::ALL.iter().enumerate() {
                         if enabled[index] && action.matches_shortcut(*key, *modifiers) {
                             pressed[index] = true;
@@ -387,6 +408,9 @@ impl DawUi {
             });
             pressed
         });
+        if let Some(layer) = duplicate {
+            self.perform_layer_tab_action(layer, TrackAction::Duplicate);
+        }
         for (index, action) in TrackAction::ALL.into_iter().enumerate() {
             if pressed[index] {
                 self.perform_track_action(action, ctx);
@@ -502,6 +526,7 @@ impl DawUi {
         }
         self.reconcile_beat(parent);
         self.add_beat_subtrack(parent);
+        #[cfg(test)]
         self.track_browser.show_children(parent);
     }
 
@@ -529,6 +554,7 @@ impl DawUi {
                 } else {
                     self.select_track(id, false);
                 }
+                #[cfg(test)]
                 self.track_browser.show_children(group);
                 self.changed();
             }

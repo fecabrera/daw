@@ -1,6 +1,7 @@
 use super::*;
 fn fixture() -> (DawUi, egui::Context, [Id; 6]) {
     let mut app = DawUi::default();
+    app.track_browser.fixture_enabled = true;
     let p = &mut app.session.project;
     let a = p.add_track().unwrap();
     let m = p.add_midi_track().unwrap();
@@ -1312,7 +1313,7 @@ fn timeline_beat_context_uses_clicked_parent_when_audio_is_primary_in_a_group_se
     let (mut app, ctx, parent, _, other, _) = beat_fixture();
     let audio = app.session.project.tracks[0].id;
     app.view_mode = ViewMode::Timeline;
-    app.timeline_vertical_restore = Some(300.0);
+    app.track_scroll_restore = Some(300.0);
     app.select_track(audio, false);
     app.selected_tracks.insert(parent);
     frame(&mut app, &ctx, vec![]);

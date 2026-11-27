@@ -3,6 +3,7 @@ use super::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ViewPanel {
+    #[cfg(test)]
     Tracks,
     Components,
     EffectsCatalog,
@@ -16,7 +17,8 @@ pub enum ViewPanel {
 }
 
 impl ViewPanel {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 9 + cfg!(test) as usize] = [
+        #[cfg(test)]
         Self::Tracks,
         Self::Components,
         Self::EffectsCatalog,
@@ -31,6 +33,7 @@ impl ViewPanel {
 
     pub fn label(self) -> &'static str {
         match self {
+            #[cfg(test)]
             Self::Tracks => "Tracks",
             Self::Components => "Components",
             Self::EffectsCatalog => "Effects Catalog",
@@ -46,6 +49,7 @@ impl ViewPanel {
 
     pub fn available_in(self, view: ViewMode) -> bool {
         match self {
+            #[cfg(test)]
             Self::Tracks => view == ViewMode::Instrument || view.has_track_overview(),
             Self::Components => view == ViewMode::Instrument,
             Self::EffectsCatalog | Self::EffectsLane => true,
@@ -59,6 +63,10 @@ impl ViewPanel {
 
 impl DawUi {
     pub fn view_panel_enabled(&self, panel: ViewPanel, ctx: &egui::Context) -> bool {
+        #[cfg(test)]
+        if panel == ViewPanel::Tracks && !self.compact_tracks_available() {
+            return false;
+        }
         let changes_instrument_layout =
             self.view_mode == ViewMode::Instrument && panel == ViewPanel::TrackMixer;
         panel.available_in(self.view_mode)
@@ -73,6 +81,7 @@ impl DawUi {
     pub fn view_panel_selected(&self, panel: ViewPanel) -> bool {
         panel.available_in(self.view_mode)
             && match panel {
+                #[cfg(test)]
                 ViewPanel::Tracks => self.tracks_panel_visible(),
                 ViewPanel::Components => self.instrument_catalog_visible,
                 ViewPanel::EffectsCatalog => self.effects_catalog_visible(),
@@ -100,6 +109,7 @@ impl DawUi {
             return;
         }
         match panel {
+            #[cfg(test)]
             ViewPanel::Tracks => {
                 self.set_tracks_panel_visible(!self.tracks_panel_visible());
                 if self.tracks_panel_visible() {
@@ -117,6 +127,7 @@ impl DawUi {
                 self.set_chords_visible(!self.chords_visible());
                 self.chords.catalog.clear();
                 if self.chords_visible() {
+                    #[cfg(test)]
                     self.set_tracks_panel_visible(false);
                     self.set_effects_catalog_visible(false);
                     self.effects_catalog.clear();
@@ -126,6 +137,7 @@ impl DawUi {
                 self.set_effects_catalog_visible(!self.effects_catalog_visible());
                 self.effects_catalog.clear();
                 if self.effects_catalog_visible() {
+                    #[cfg(test)]
                     self.set_tracks_panel_visible(false);
                     self.set_chords_visible(false);
                     self.chords.catalog.clear();
@@ -136,7 +148,10 @@ impl DawUi {
                 self.instrument_catalog_visible = !self.instrument_catalog_visible;
                 self.instrument_catalog.clear();
                 if self.instrument_catalog_visible {
-                    self.track_browser.visible = false;
+                    #[cfg(test)]
+                    {
+                        self.track_browser.visible = false;
+                    }
                     self.set_effects_catalog_visible(false);
                     self.effects_catalog.clear();
                 }

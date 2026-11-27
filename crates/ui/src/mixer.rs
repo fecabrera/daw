@@ -148,9 +148,13 @@ impl DawUi {
         if !self.view_switch_enabled() || self.view_mode == mode {
             return;
         }
+        #[cfg(test)]
         self.cancel_browser_interactions();
         self.cancel_beat_reorder(None);
         self.view_mode = mode;
+        if matches!(mode, ViewMode::Timeline | ViewMode::Instrument) {
+            self.track_scroll_restore = Some(self.track_scroll_offset);
+        }
         self.playhead_follow = Default::default();
         if mode.has_track_overview() || self.timeline_editor_visible() {
             self.midi_editor.delete_clips = true;
@@ -195,6 +199,10 @@ impl DawUi {
         }
         menus::separator(ui);
         for panel in ViewPanel::ALL {
+            #[cfg(test)]
+            if panel == ViewPanel::Tracks && !self.compact_tracks_available() {
+                continue;
+            }
             let selected = self.view_panel_selected(panel);
             let enabled = self.view_panel_enabled(panel, ui.ctx());
             if ui

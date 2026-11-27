@@ -248,6 +248,7 @@ fn pattern(app: &DawUi) -> &MidiPattern {
 pub(super) fn layer_header_fixture()
 -> (DawUi, egui::Context, Vec<daw_core::InstrumentLayerSettings>) {
     let (mut app, _, _, _) = fixture();
+    app.instrument_subview = crate::instrument_workspace::InstrumentSubview::Sources;
     // Leave room for direct gestures on multiple rows above the pinned Main bus.
     app.effects_lane_open = false;
     let settings = app.session.project.tracks[0].instrument.as_mut().unwrap();
@@ -318,6 +319,7 @@ fn layer_key(key: egui::Key) -> egui::Event {
 fn layer_headers_share_track_geometry_and_leave_the_header_workspace_dark() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, mut layers) = layer_header_fixture();
+        app.instrument_subview = crate::instrument_workspace::InstrumentSubview::Sources;
         let envelope_only = daw_core::InstrumentLayerSettings {
             name: "Envelope only".into(),
             envelopes: vec![daw_core::EnvelopeInstance::default()],
@@ -422,6 +424,7 @@ fn unit_power_controls_toggle_on_release_and_remain_visible_when_collapsed() {
         ] {
             for oscillator in [true, false] {
                 let (mut app, ctx, layers) = layer_header_fixture();
+                app.instrument_subview = crate::instrument_workspace::InstrumentSubview::Sources;
                 if !oscillator {
                     app.set_instrument_subview(
                         crate::instrument_workspace::InstrumentSubview::Modulation,
@@ -660,6 +663,7 @@ fn unit_power_controls_toggle_on_release_and_remain_visible_when_collapsed() {
 #[test]
 fn saved_unit_collapse_restores_in_a_fresh_ui_and_project_replacement_uses_its_own_state() {
     let (mut app, ctx, layers) = layer_header_fixture();
+    app.instrument_subview = crate::instrument_workspace::InstrumentSubview::Sources;
     frame(&mut app, &ctx, vec![]);
     let expanded = app.session.project.clone();
     let track = expanded.tracks[0].id;
@@ -679,7 +683,10 @@ fn saved_unit_collapse_restores_in_a_fresh_ui_and_project_replacement_uses_its_o
     double_click_unit_header(&mut app, &ctx, unit_title_point(header));
     assert!(app.dirty);
     let saved = serde_json::to_vec(&app.session.project).unwrap();
-    let mut reopened = DawUi::default();
+    let mut reopened = DawUi {
+        instrument_subview: crate::instrument_workspace::InstrumentSubview::Sources,
+        ..Default::default()
+    };
     reopened.session.project = serde_json::from_slice(&saved).unwrap();
     reopened.selected_track = Some(track);
     let fresh_ctx = context();
@@ -718,6 +725,7 @@ fn saved_unit_collapse_restores_in_a_fresh_ui_and_project_replacement_uses_its_o
 fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layers) = layer_header_fixture();
+        app.instrument_subview = crate::instrument_workspace::InstrumentSubview::Sources;
         app.set_settings(
             &ctx,
             settings::AppSettings {
@@ -1577,7 +1585,7 @@ fn dragging_layers_scrolls_the_rows_while_the_instrument_header_stays_fixed() {
     let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
     let viewport = shapes
         .iter()
-        .find(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Lead"))
+        .find(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Lead" && t.pos.y >= app.midi_editor.layer_bounds[&layers[0].id].row.top()))
         .unwrap()
         .clip_rect;
     let header = app.midi_editor.instrument_header_bounds;
@@ -1636,7 +1644,7 @@ fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
         );
         app.set_view_mode(ViewMode::Instrument, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        for text in ["Layers", "Layer 1"] {
+        for text in ["Layer", "Layer 1"] {
             assert!(shapes.iter().any(|s| matches!(&s.shape,
                 egui::Shape::Text(t) if t.galley.text() == text)));
         }
@@ -1665,15 +1673,7 @@ fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
         assert_eq!(app.midi_editor.add_oscillator_bounds, Rect::NOTHING);
         assert!(bounds.oscillators.is_empty());
         assert!(bounds.envelope_stages.iter().all(|r| *r == Rect::NOTHING));
-        assert!(
-            app.midi_editor
-                .instrument_header_bounds
-                .contains_rect(app.midi_editor.add_layer_bounds)
-        );
-        assert_eq!(
-            app.midi_editor.add_layer_bounds.size(),
-            Vec2::new(30.0, toolbars::CONTROL_HEIGHT)
-        );
+        assert!(app.instrument_catalog_bounds.layer_add_tab.is_positive());
         let blank = Rect::from_min_max(
             Pos2::new(bounds.label.right(), bounds.row.top()),
             Pos2::new(bounds.toolbar.left(), bounds.row.bottom()),
@@ -3029,6 +3029,8 @@ fn instrument_and_editor_tracks_panels_switch_tracks_without_changing_the_projec
         } else {
             assert!(current_name.is_none_or(|point| point.y >= app.effects_bounds.toolbar.top()));
         }
+        app.track_browser.fixture_enabled = true;
+        frame(&mut app, &ctx, vec![]);
         let target = app.track_browser.bounds.toggle.center();
         click_note_or_lane(&mut app, &ctx, target);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
@@ -3075,6 +3077,7 @@ fn unit_headers_stay_neutral_and_toolbar_dividers_keep_their_geometry() {
     let (mut app, _, _, _) = fixture();
     let ctx = context();
     frame(&mut app, &ctx, vec![]);
+    app.instrument_subview = crate::instrument_workspace::InstrumentSubview::Sources;
     app.set_view_mode(ViewMode::Instrument, &ctx);
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for accent in [
@@ -6650,6 +6653,7 @@ fn midi_clip_context_menus_split_and_delete_in_both_views() {
 fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, mut layers) = layer_header_fixture();
+        app.instrument_subview = crate::instrument_workspace::InstrumentSubview::Sources;
         layers[0].oscillators.resize_with(12, Default::default);
         layers.push(daw_core::InstrumentLayerSettings {
             name: "Envelope only".into(),
@@ -6827,7 +6831,10 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
                 .present
         );
         let saved = serde_json::to_vec(&app.session.project).unwrap();
-        let mut reopened = DawUi::default();
+        let mut reopened = DawUi {
+            instrument_subview: crate::instrument_workspace::InstrumentSubview::Sources,
+            ..Default::default()
+        };
         reopened.session.project = serde_json::from_slice(&saved).unwrap();
         reopened.selected_track = Some(expanded.tracks[0].id);
         let fresh = context();
@@ -6863,6 +6870,7 @@ fn layer_collapse_keeps_two_rows_track_height_and_restores_saved_presentation() 
 #[test]
 fn compact_layer_collapse_is_guarded_and_preserves_independent_unit_states_and_order() {
     let (mut app, ctx, mut layers) = layer_header_fixture();
+    app.instrument_subview = crate::instrument_workspace::InstrumentSubview::Sources;
     layers[0].oscillator_collapsed = true;
     layers[0].envelopes[0].collapsed = true;
     layers[0].collapsed = true;

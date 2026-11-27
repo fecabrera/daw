@@ -4,13 +4,13 @@ A track group is a stereo processing bus. Its children send their output to the 
 
 ## Create and arrange a group
 
-Choose **Add group** from the Track menubar, the Tracks Plus menu or its blank-space context menu to create an empty group. Existing tracks keep their positions and group membership. The new group becomes selected. Right-click a group to add an audio, MIDI or beat track or a nested empty group inside it. The Tracks browser expands the parent to show its new child.
+Choose **Add group** from the Track menubar, the Tracks Plus menu or its blank-space context menu to create an empty group. Existing tracks keep their positions and group membership. The new group becomes selected. Right-click a group to add an audio, MIDI or beat track or a nested empty group inside it. The Tracks panel expands the parent to show its new child.
 
 To group existing tracks:
 
 1. Select track headers. Shift-click or Command/Ctrl-click toggles selection.
 2. Choose **Track > Group selected tracks**, press Command+G on macOS or Ctrl+G on Windows/Linux, or use the track context menu.
-3. Use the borderless arrow beside the group name to hide or show its children in Timeline and Mixer. Hidden tracks continue to play.
+3. Use the borderless arrow beside the group name to hide or show its children in Timeline, Instrument, and Mixer. Hidden tracks continue to play.
 
 In Timeline, child track panels sit inside their group with a left margin that increases for the first three nesting levels. The group panel encloses all visible children. Selection uses background highlights without an outline. Their right edges line up, and the last child shares the group's bottom border. Nested groups use the same layout.
 

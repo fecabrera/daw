@@ -707,7 +707,7 @@ fn collection_saves_live_display_for_copy_and_zero_copy_without_history_edits() 
         {
             app.zoom = zoom;
             app.scroll = scroll;
-            app.timeline_vertical_scroll = vertical;
+            app.track_scroll_offset = vertical;
             app.timeline_editor.restore_height(editor_height);
             app.perform_file_action(FileAction::CollectSources);
             assert!(app.job.is_some());

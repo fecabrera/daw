@@ -9,7 +9,6 @@ in-app menu sends the equivalent viewport command.
 
 | Panel | Available views |
 | --- | --- |
-| Tracks | Instrument |
 | Components | Instrument |
 | Effects Catalog | All |
 | Chords | Timeline |
@@ -31,7 +30,7 @@ placeholders; menu availability matches the corresponding toolbar panel.
 The Effects Lane starts open and shares one visibility setting across Timeline,
 Instrument, and Mixer. In Timeline, the editor and Effects Lane share the
 lower slot. Opening one hides the other. Each view remembers its own
-catalog choice.
+catalog choice. Instrument’s full Tracks panel is always visible.
 
 ## Shared state and dispatch
 
@@ -117,21 +116,39 @@ the lane-specific collapse buttons.
 
 ## Instrument subviews
 
-Use the shared joined control style for Sources, Effects and Modulation at the
-top of the Instrument canvas. Place the group beside the Layers heading when
-there is room. Use the same Layers heading in Modulation and omit its Add
-button. Sources is the initial selection. Remember the active tab and vertical
-scroll position while the application is open. Tab selection
-has no project data or history entry and is guarded during active edits.
+Show two joined control groups at the top of Instrument. The first group lists
+the selected instrument’s layers by stable ID and saved name, followed by its
+Add layer button. Round the two outer edges of the group. The second group
+contains LFOs, Envelopes, and Macros and stays visible. When the layer group
+does not fit, scroll only its named tabs. Pin the Add layer button to the
+right edge of the Layer group, beside the modulation group.
+Use the toolbar's 8-point padding between the two groups.
+At narrow widths, put the Track Mixer below the tab bar when it would cover
+the modulation group or leave too little room to scroll the layer tabs.
+Place the groups beside the shared Timeline track headers. Disable the
+modulation buttons for audio tracks, groups, and beat parents.
 
-- Sources shows regular layers with audio sources and processors. The
-  Instrument components catalog shows source and processor folders.
-- Effects shows regular layers with their serial effect chains. The bottom
-  Effects Lane retains the shared visibility setting.
-- Modulation shows LFO, Envelope, an instrument-wide Macros row, and the
-  regular layers that own modulation controls. It shows the Modulators folder.
-  Beat subtracks expose their own instrument-wide provider lanes. A beat parent
-  uses the same empty Layers pane as audio tracks and groups in every tab.
+- The first layer opens by default. Show the selected layer’s source row, then
+  its Effects row, then a gap and its mix controls. The bottom Effects Lane
+  continues to show the track or beat-subtrack chain.
+- LFOs and Envelopes each open their fixed provider lane. Macros opens the
+  instrument Output controls and any groups of layer-owned Macros. Show only
+  the matching type in the Instrument components catalog.
+
+Instrument uses the Timeline track header controls, including a pinned Master,
+with shared vertical scroll. Both views use the same track height in the
+transport toolbar. The horizontal slider and Fit All Clips remain visible and
+disabled in Instrument.
+
+Tab switches change presentation state. Use layer tabs for group selection
+and reordering and as cross-layer drop targets.
+
+The layer tab context menu targets the clicked layer. Show Duplicate, a
+divider, Mute and Solo, another divider, and Delete. Use the platform shortcut
+hints for Command/Ctrl+D, M, S, and Command/Ctrl+Delete. Opening the menu
+preserves selection. Disable deletion on the final layer. The duplicate
+shortcut targets the primary selected layer and uses the normal layer copy
+transaction.
 
 Only geometry in the active tab participates in selection and drops. Reuse the
 existing lane editors, collapse state, owner IDs and edit transactions. Keep

@@ -117,7 +117,9 @@ pub(super) struct ControlPanel {
 enum CatalogIcon {
     None,
     Folder(bool),
+    #[cfg(test)]
     Track(crate::icons::Lucide),
+    #[cfg(test)]
     Group(bool),
 }
 
@@ -195,6 +197,7 @@ impl ControlPanel {
     }
 
     /// Project navigation shares catalog painting while retaining dynamic IDs/names.
+    #[cfg(test)]
     pub(super) fn project_track(
         &self,
         ui: &mut Ui,
@@ -321,7 +324,9 @@ impl ControlPanel {
         trailing_width: f32,
     ) -> Response {
         let folder = match leading {
-            CatalogIcon::Folder(open) | CatalogIcon::Group(open) => Some(open),
+            CatalogIcon::Folder(open) => Some(open),
+            #[cfg(test)]
+            CatalogIcon::Group(open) => Some(open),
             _ => None,
         };
         let padding = f32::from(crate::menus::ITEM_PADDING);
@@ -393,6 +398,7 @@ impl ControlPanel {
         };
         let slots = match leading {
             CatalogIcon::None => 0.,
+            #[cfg(test)]
             CatalogIcon::Track(icon) => {
                 icon.size(icon_size)
                     .color(color)
@@ -400,6 +406,7 @@ impl ControlPanel {
                     .paint_at(ui, icon_rect(0));
                 1.
             }
+            #[cfg(test)]
             CatalogIcon::Group(open) => {
                 crate::icons::paint_disclosure(ui, icon_rect(0), open, color);
                 1.

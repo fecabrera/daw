@@ -114,7 +114,12 @@ fn timeline_size_does_not_change_regular_editor_overviews_or_project_data() {
             for view in [ViewMode::Mixer, ViewMode::Instrument] {
                 app.set_view_mode(view, &ctx);
                 frame(&mut app, &ctx, vec![]);
-                assert_eq!(app.track_rows_bounds, Rect::NOTHING);
+                if view == ViewMode::Instrument {
+                    assert!(app.track_rows_bounds.is_positive());
+                    assert_eq!(app.lane_bounds[&audio].height(), MASTER_HEIGHT);
+                } else {
+                    assert_eq!(app.track_rows_bounds, Rect::NOTHING);
+                }
             }
         }
     }
@@ -452,6 +457,7 @@ fn header_mute_solo_align_with_knobs_and_stay_on_the_left() {
     for scope in ["timeline", "layer", "editor"] {
         for scale in [1.0, 1.5] {
             let (mut app, audio) = fixture();
+            app.instrument_subview = crate::instrument_workspace::InstrumentSubview::Sources;
             let midi = app.session.project.add_midi_track().unwrap();
             let ctx = context();
             ctx.set_pixels_per_point(scale);
@@ -754,7 +760,10 @@ fn blank_header_selection_is_blocked_during_jobs_and_dialogs() {
 fn tracks_and_layers_share_the_control_panel_surface_header_and_final_border() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for height in [400.0, 1300.0] {
-            let mut app = DawUi::default();
+            let mut app = DawUi {
+                instrument_subview: crate::instrument_workspace::InstrumentSubview::Sources,
+                ..Default::default()
+            };
             let midi = app.session.project.add_midi_track().unwrap();
             let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
             for index in 2..=4 {

@@ -4,7 +4,10 @@ use daw_core::InstrumentComponent;
 const ORDER_SIZE: Vec2 = Vec2::new(1600.0, 800.0);
 
 fn setup(theme: settings::ColorTheme, compact: bool) -> (DawUi, egui::Context, [Id; 2]) {
-    let mut app = DawUi::default();
+    let mut app = DawUi {
+        instrument_subview: crate::instrument_workspace::InstrumentSubview::Sources,
+        ..Default::default()
+    };
     let track = app.session.project.add_midi_track().unwrap();
     let i = app.session.project.tracks[0].instrument.as_mut().unwrap();
     compact_instrument_buses(i);

@@ -319,7 +319,7 @@ fn selected_subtrack_reuses_the_midi_layers_body_and_parent_uses_empty_panel() {
     frame_shapes(&mut app, &ctx, vec![], size);
     let modulation = app.instrument_catalog_bounds.subviews[2];
     click(&mut app, &ctx, modulation.center());
-    assert_eq!(app.instrument_subview, InstrumentSubview::Modulation);
+    assert_eq!(app.instrument_subview, InstrumentSubview::Macros);
 }
 
 #[test]
@@ -989,13 +989,23 @@ fn empty_beat_track_has_no_placeholder_pattern_and_keeps_mix_controls() {
 }
 
 #[test]
-fn selected_subtrack_adds_layers_through_the_standard_layers_plus() {
+fn selected_subtrack_adds_layers_from_its_layer_tabs() {
     let (mut app, ctx, track, row, _) = setup();
     app.navigate_beat_owner(track, Some(row), false);
     app.view_mode = ViewMode::Instrument;
     frame(&mut app, &ctx, vec![]);
-    let plus = app.midi_editor.add_layer_bounds;
-    assert!(app.midi_editor.instrument_header_bounds.contains_rect(plus));
+    let plus = app.instrument_catalog_bounds.layer_add_tab;
+    assert!(plus.is_positive());
+    assert!(
+        plus.left()
+            > app
+                .instrument_catalog_bounds
+                .layer_tabs
+                .values()
+                .next()
+                .unwrap()
+                .right()
+    );
     click(&mut app, &ctx, plus.center());
     assert_eq!(
         app.session
@@ -1381,12 +1391,9 @@ fn editor_subtrack_headers_live_in_the_left_panel_and_share_the_instrument_plus(
     app.navigate_beat_owner(track, Some(added), false);
     app.view_mode = ViewMode::Instrument;
     frame(&mut app, &ctx, vec![]);
-    let instrument_plus = app.midi_editor.add_layer_bounds;
-    assert_eq!(instrument_plus.size(), plus.size());
-    assert!(
-        (app.midi_editor.instrument_header_bounds.right() - instrument_plus.right() - inset).abs()
-            < 0.1
-    );
+    let instrument_plus = app.instrument_catalog_bounds.layer_add_tab;
+    assert_eq!(instrument_plus.height(), plus.height());
+    assert!(instrument_plus.left() > app.instrument_catalog_bounds.track_column.right());
 }
 
 #[test]
@@ -2286,6 +2293,7 @@ fn editor_subtrack_selection_opens_layers_from_the_beat_parent() {
 fn nested_layer_group_drag_moves_copies_and_cancels_without_early_edits() {
     for action in ["move", "copy", "escape", "focus", "outside"] {
         let (mut app, ctx, _, row, _) = setup();
+        app.instrument_subview = crate::instrument_workspace::InstrumentSubview::Sources;
         let instrument = app.session.project.instrument_settings_mut(row).unwrap();
         instrument.layers.extend([
             daw_core::InstrumentLayerSettings::default(),

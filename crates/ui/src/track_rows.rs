@@ -134,13 +134,32 @@ pub(super) const REGULAR_HEIGHT: f32 = 2.0 * knobs::SIZE + 14.0;
 pub(super) const LARGE_HEIGHT: f32 = 3.0 * knobs::SIZE + 14.0;
 
 impl DawUi {
+    pub(super) fn track_scroll_area(&mut self, ui: &egui::Ui, bottom: f32) -> egui::ScrollArea {
+        const SCROLL_ID: &str = "track-rows-scroll";
+        let scroll_area = egui::ScrollArea::vertical()
+            .id_salt(SCROLL_ID)
+            .max_height((bottom - ui.cursor().top()).max(0.0))
+            .auto_shrink([false, false]);
+        if let Some(offset) = self.track_scroll_restore.take() {
+            // Drop momentum and pending scroll targets from the previous visit.
+            let id = ui.make_persistent_id(egui::IdSalt::new(SCROLL_ID));
+            egui::scroll_area::State::default().store(ui.ctx(), id);
+            scroll_area.vertical_scroll_offset(offset)
+        } else {
+            scroll_area
+        }
+    }
+
     pub(super) fn track_rows_collapsed(&self) -> bool {
         self.timeline_track_size < 2.0
     }
     pub(super) fn track_row_height(&self) -> f32 {
         if self.view_mode.has_track_overview() {
             ROW_HEIGHT
-        } else if self.view_mode == mixer::ViewMode::Timeline {
+        } else if matches!(
+            self.view_mode,
+            mixer::ViewMode::Timeline | mixer::ViewMode::Instrument
+        ) {
             self.timeline_track_size * knobs::SIZE + 14.0
         } else if self.track_rows_collapsed() {
             MASTER_HEIGHT

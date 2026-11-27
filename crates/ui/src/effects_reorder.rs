@@ -334,7 +334,11 @@ impl DawUi {
         let pointer = ui
             .input(|i| i.pointer.latest_pos())
             .filter(|p| viewport.contains(*p))?;
-        let slot = drag::insertion_slot(pointer, slots.iter().map(|(_, r)| *r));
+        let slot = if slots.is_empty() {
+            self.effect_chain(destination)?.0.len()
+        } else {
+            drag::insertion_slot(pointer, slots.iter().map(|(_, r)| *r))
+        };
         drag::unit_insertion_line(
             ui,
             &slots.iter().map(|(_, r)| *r).collect::<Vec<_>>(),

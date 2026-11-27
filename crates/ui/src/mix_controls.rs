@@ -294,8 +294,11 @@ pub(super) fn named_row<R>(
 }
 
 /// Fixed-width M/S controls for the catalog-height Tracks row.
+#[cfg(test)]
 pub(super) const BROWSER_BUTTON_SIZE: f32 = 16.0;
+#[cfg(test)]
 pub(super) const BROWSER_WIDTH: f32 = 2.0 * BROWSER_BUTTON_SIZE + rows::GROUP_DIVIDER_WIDTH;
+#[cfg(test)]
 pub(super) fn browser_row(
     ui: &mut Ui,
     muted: &mut bool,

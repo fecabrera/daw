@@ -264,6 +264,8 @@ pub(super) fn power_label_with(
 /// Center a standard unit footer label in its reserved row.
 pub use daw_unit_ui::rows::unit_label;
 
+const INPUT_GROUP_RADIUS: u8 = 5;
+
 /// Join related inputs inside one standard frame, retaining each widget's interaction.
 pub fn input_group<R>(ui: &mut Ui, content: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
     input_group_with_height(ui, crate::toolbars::CONTROL_HEIGHT, content)
@@ -277,7 +279,7 @@ pub fn input_group_with_height<R>(
 ) -> InnerResponse<R> {
     let frame = egui::Frame::new()
         .fill(crate::theme::unit_separator(ui.ctx()))
-        .corner_radius(5);
+        .corner_radius(INPUT_GROUP_RADIUS);
     frame.show(ui, |ui| {
         ui.spacing_mut().interact_size.y = height;
         ui.spacing_mut().item_spacing.x = GROUP_DIVIDER_WIDTH;
@@ -300,20 +302,17 @@ pub fn input_group_with_height<R>(
 
 /// Give the first/last joined control only the group's outside corners.
 pub(super) fn input_group_edge(ui: &mut Ui, last: bool) {
-    let radius = if last {
-        egui::CornerRadius {
-            nw: 0,
-            sw: 0,
-            ne: 5,
-            se: 5,
-        }
-    } else {
-        egui::CornerRadius {
-            nw: 5,
-            sw: 5,
-            ne: 0,
-            se: 0,
-        }
+    input_group_corners(ui, !last, last);
+}
+
+pub(super) fn input_group_corners(ui: &mut Ui, left: bool, right: bool) {
+    let left = if left { INPUT_GROUP_RADIUS } else { 0 };
+    let right = if right { INPUT_GROUP_RADIUS } else { 0 };
+    let radius = egui::CornerRadius {
+        nw: left,
+        sw: left,
+        ne: right,
+        se: right,
     };
     let widgets = &mut ui.visuals_mut().widgets;
     for widget in [

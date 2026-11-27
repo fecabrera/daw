@@ -8,15 +8,19 @@ pub(super) struct InlineEffects<'a> {
 impl DawUi {
     pub(super) fn effect_catalog_target(&self) -> Option<EffectTarget> {
         if self.view_mode == ViewMode::Instrument
-            && self.instrument_subview == crate::instrument_workspace::InstrumentSubview::Effects
             && let Some(track) = self.selected_instrument_owner()
             && !self.instrument_ui.track_effects_target
-            && let Some(layer) = self.instrument_ui.selected_layer
-            && self
-                .session
-                .project
-                .instrument_settings(track)
-                .is_some_and(|i| i.layers.iter().any(|l| l.id == layer))
+            && let Some(settings) = self.session.project.instrument_settings(track)
+            && let Some(layer) = match self.instrument_subview {
+                crate::instrument_workspace::InstrumentSubview::Layer => {
+                    self.visible_instrument_layer(settings)
+                }
+                crate::instrument_workspace::InstrumentSubview::Effects => self
+                    .instrument_ui
+                    .selected_layer
+                    .filter(|id| settings.layers.iter().any(|layer| layer.id == *id)),
+                _ => None,
+            }
         {
             return Some(EffectTarget::Layer { track, layer });
         }
@@ -160,7 +164,7 @@ impl DawUi {
             .instrument_ui
             .component_slots
             .iter()
-            .find(|(id, u, _)| *id == layer.id && u.is_source())
+            .find(|(id, u, rect)| *id == layer.id && u.is_source() && rect.intersects(viewport))
             .map_or(viewport.left(), |(_, _, r)| r.right());
         let effects_bounds = Rect::from_min_max(
             Pos2::new(source_right.max(viewport.left()), viewport.top()),
@@ -225,7 +229,11 @@ impl DawUi {
         if ui.input(|i| i.pointer.latest_pos().is_some_and(|p| viewport.contains(p))) {
             self.retarget_library_effect_drag(target, layer.effects);
         }
-        let units = self.inline_unit_slots(layer.id);
+        let units: Vec<_> = self
+            .inline_unit_slots(layer.id)
+            .into_iter()
+            .filter(|(_, rect)| rect.y_range().intersects(viewport.y_range()))
+            .collect();
         if let Some(transfer) =
             self.finish_inline_effect_drag(ui, target, &units, effects_bounds, allowed)
         {

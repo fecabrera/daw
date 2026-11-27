@@ -106,7 +106,7 @@ Deleting a subtrack removes its stop links. Its old pattern steps remain dormant
 
 ## Instrument layers and Output
 
-Select a subtrack in **Tracks** to open its **Layers** page. It uses the same layout as a MIDI instrument, with source layers, individual layer effects, and local modulation lanes. Find the subtrack’s Output controls in **Modulation**. To process all layers of the selected subtrack, use the bottom Effects Lane. The Layers Plus button adds a source layer to that subtrack. Each subtrack's modulation sources stay local to its instrument. Selecting another subtrack replaces the visible instrument and its layer selection.
+Select a subtrack in **Tracks** to open its **Layers** page. It uses the same layout as a MIDI instrument, with source layers, individual layer effects, and local modulation lanes. Find the subtrack’s Output controls in **Macros**. To process all layers of the selected subtrack, use the bottom Effects Lane. The Layers Plus button adds a source layer to that subtrack. Each subtrack's modulation sources stay local to its instrument. Selecting another subtrack replaces the visible instrument and its layer selection.
 
 Drag selected source-layer headers to reorder them within the selected subtrack. Hold Option on macOS or Ctrl on Windows/Linux to copy them. Release inside the layer list to apply; Escape, focus loss or an outside release cancels the drag.
 

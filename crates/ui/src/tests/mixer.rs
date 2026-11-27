@@ -1228,6 +1228,8 @@ fn instrument_and_timeline_use_their_track_scope_without_project_changes() {
         };
         assert!(has(&shapes, "Select an instrument track"));
         assert!(!has(&shapes, "Add source"));
+        app.track_browser.fixture_enabled = true;
+        frame(&mut app, &ctx, vec![]);
         let point = app.track_browser.bounds.toggle.center();
         click(&mut app, &ctx, point);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
@@ -1238,7 +1240,7 @@ fn instrument_and_timeline_use_their_track_scope_without_project_changes() {
         assert_eq!(app.selected_track, Some(midi));
         assert_eq!(app.selected_clip, Some(clip));
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        assert!(has(&shapes, "Layers"));
+        assert!(has(&shapes, "Layer"));
         assert!(!has(&shapes, "Add source"));
         assert!(!has(&shapes, "Add envelope"));
         assert!(app.instrument_catalog_bounds.toggle.is_positive());
@@ -1288,8 +1290,8 @@ fn instrument_empty_states_disable_editor_controls_until_midi_selection() {
             app.select_track(midi, false);
             app.set_view_mode(ViewMode::Instrument, &ctx);
             frame(&mut app, &ctx, vec![]);
-            let header = app.midi_editor.instrument_header_bounds;
-            let add = app.midi_editor.add_layer_bounds;
+            let header = app.instrument_catalog_bounds.track_column;
+            let add = app.instrument_catalog_bounds.layer_add_tab;
             assert!(!app.midi_editor.layer_bounds.is_empty());
             match target {
                 "audio" => app.select_track(audio, false),
@@ -1303,11 +1305,9 @@ fn instrument_empty_states_disable_editor_controls_until_midi_selection() {
             let before = app.session.project.clone();
             let selected_clip = app.selected_clip;
             let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            assert_eq!(app.midi_editor.instrument_header_bounds, header);
-            assert_eq!(app.midi_editor.add_layer_bounds, add);
+            assert_eq!(app.instrument_catalog_bounds.track_column, header);
+            assert_eq!(app.instrument_catalog_bounds.layer_add_tab, Rect::NOTHING);
             assert!(app.midi_editor.layer_bounds.is_empty());
-            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
-                egui::Shape::Text(t) if t.galley.text() == "Layers")));
             let text = shapes
                 .iter()
                 .find_map(|shape| match &shape.shape {
@@ -1318,9 +1318,8 @@ fn instrument_empty_states_disable_editor_controls_until_midi_selection() {
                 })
                 .expect("empty layer message");
             let bounds = text.galley.rect.translate(text.pos.to_vec2());
-            assert!(bounds.left() >= header.left() + f32::from(theme::TOOLBAR_PADDING));
-            assert!(bounds.right() < header.right());
-            assert!(bounds.top() >= header.bottom());
+            assert!(bounds.left() >= header.right());
+            assert!(bounds.top() > header.top());
             assert!(
                 text.galley
                     .job
@@ -1332,10 +1331,6 @@ fn instrument_empty_states_disable_editor_controls_until_midi_selection() {
                                 == egui::TextStyle::Small.resolve(&ctx.global_style()).size
                     )
             );
-            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
-                egui::Shape::Rect(rect) if rect.fill == theme::palette(&ctx).panel
-                    && rect.rect.left() == header.left() && rect.rect.width() == TRACK_WIDTH
-                    && rect.rect.contains(bounds.center()) && rect.rect.height() > header.height())));
             for _ in 0..2 {
                 frame(
                     &mut app,
@@ -1349,7 +1344,7 @@ fn instrument_empty_states_disable_editor_controls_until_midi_selection() {
             }
             for tab in app.instrument_catalog_bounds.subviews {
                 super::instrument_catalog::click(&mut app, &ctx, tab.center(), false);
-                assert_eq!(app.instrument_subview, InstrumentSubview::Sources);
+                assert_eq!(app.instrument_subview, InstrumentSubview::Layer);
             }
             assert_eq!(app.session.project, before);
             assert_eq!(app.selected_clip, selected_clip);
@@ -1392,9 +1387,9 @@ fn instrument_empty_states_disable_editor_controls_until_midi_selection() {
             );
             assert_eq!(app.session.project.tracks[0], before.tracks[0]);
             assert!(app.dirty);
-            let effects = app.instrument_catalog_bounds.subviews[1];
-            super::instrument_catalog::click(&mut app, &ctx, effects.center(), false);
-            assert_eq!(app.instrument_subview, InstrumentSubview::Effects);
+            let envelopes = app.instrument_catalog_bounds.subviews[1];
+            super::instrument_catalog::click(&mut app, &ctx, envelopes.center(), false);
+            assert_eq!(app.instrument_subview, InstrumentSubview::Envelopes);
         }
     }
 }

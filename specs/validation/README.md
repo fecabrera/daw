@@ -2,6 +2,164 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Pinned Add layer button — 2026-11-27
+
+The UI test used 24 layers at the 900-point window width. Scrolling moved the
+named layer tabs while the Add layer and modulation buttons held their
+positions. The test also opened the Track Mixer, clicked each modulation tab,
+and used the pinned button to add and select a new layer.
+
+Formatting and strict workspace Clippy passed. The macOS debug app rebuilt and
+passed signature verification. Interactive native UI checks remain open.
+
+Debug and release each passed 3,864 tests. Both runs ignored 25 tests and
+excluded 22 native Audio Unit registration cases.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+## Instrument tab overflow — 2026-11-27
+
+The UI test used 24 layers in a 900-point window. It verified that the layer
+group scrolls to the Add layer button, all three modulation tabs stay fixed and
+accept clicks, and opening the Track Mixer keeps the tabs visible.
+Formatting and strict workspace Clippy passed. The macOS debug app rebuilt and
+passed signature verification. Interactive native UI checks remain open.
+
+Debug and release each passed 3,864 tests, with 25 ignored and 22 native Audio
+Unit registration cases excluded.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+## Instrument tab group spacing — 2026-11-27
+
+The Instrument layout test checked that the 8-point gap between the Layer and
+Modulation groups matches the top and left toolbar padding with one or two
+layers. Formatting and strict workspace Clippy passed. The macOS debug app
+rebuilt and passed signature verification. Interactive native UI checks remain
+open.
+
+Debug and release each passed 3,863 tests, with 25 ignored and 22 native Audio
+Unit registration cases excluded.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+## Instrument placeholder padding — 2026-11-27
+
+The Instrument layout test checked the 8-point top and left inset of the
+empty-state label relative to the canvas. Formatting and strict workspace
+Clippy passed. The macOS debug app rebuilt and passed signature verification.
+Interactive native UI checks remain open.
+
+Debug and release each passed 3,863 tests, with 25 ignored and 22 native Audio
+Unit registration cases excluded.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+## Shared track scroll and Instrument dividers — 2026-11-27
+
+Automated UI tests scrolled in Timeline and Instrument, switched between the
+views and through Mixer, and checked the visible row positions. They verified
+that saving from Instrument captures the shared offset. They also checked the
+expanded beat track's colored gutter and the divider below the tabs with a beat
+parent selected.
+
+Debug and release workspace suites each passed 3,863 tests, with 25 ignored and
+22 native Audio Unit registration cases excluded.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+Formatting and strict workspace Clippy passed. The macOS debug app rebuilt and
+passed signature verification. Interactive native UI checks remain open.
+
+## Instrument Tracks panel divider — 2026-11-26
+
+UI tests verified that Instrument has one Tracks panel with a full-width divider
+below its buttons. They also checked that the Components and Effects buttons
+remain available and that the View menu has no Tracks toggle.
+
+The debug workspace suite passed 3,861 tests. The release workspace suite also
+passed 3,861 tests. Each ignored 25 tests and excluded 22 native Audio Unit
+registration cases.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+Formatting and strict workspace Clippy passed. The macOS debug app rebuilt and
+passed signature verification. Interactive native UI checks remain open.
+
+## Instrument track column and tab sizing — 2026-11-26
+
+UI tests checked the rounded outer corners and grouped Plus button for one
+and two layer tabs. They verified the full track headers in Instrument,
+track and effects selection, and synchronized row heights through both the
+compact button and the vertical slider. The Instrument horizontal zoom
+control did not change Timeline zoom. Formatting and strict workspace
+Clippy passed.
+
+Both workspace profiles passed 3,860 tests. Each ignored 25 tests and excluded 22 native Audio Unit registration cases.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+The macOS debug app built and passed signature verification. Interactive
+native UI checks remain open.
+
+## Layer tab menu — 2026-11-26
+
+The focused UI test opened the menu on a different layer tab and verified the
+item order, the macOS duplicate hint, and the four actions on the clicked
+layer. It also verified that Cmd+D duplicates the selected layer and that
+holding the shortcut does not create repeated copies.
+
+Formatting and strict workspace Clippy passed. The debug and release
+workspace suites each passed 3,858 tests, with 25 ignored and 22 native
+Audio Unit registration cases excluded.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+The macOS debug app built and passed signature verification. Native pointer
+and keyboard delivery remain unverified.
+
+## Layer and modulation tabs — 2026-11-26
+
+Focused UI tests verified layer tab selection, row order, the gap before
+the selected layer’s mix controls, and the independent track Effects Lane.
+They checked the three separate modulation tabs, layer reordering on
+release, and effect transfer to another layer tab. Formatting and strict
+workspace Clippy passed.
+
+Both workspace test profiles passed 3,857 tests. Each ignored 25 tests and excluded 22 native Audio Unit registration cases.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+The macOS debug app built and passed signature verification. Interactive
+native UI checks remain open.
+
 ## Beat parent Instrument layout — 2026-11-26
 
 Automated UI checks compared the beat parent, audio track, and group layouts

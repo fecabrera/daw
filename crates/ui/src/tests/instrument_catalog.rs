@@ -72,7 +72,10 @@ pub(super) fn key(app: &mut DawUi, ctx: &egui::Context, key: egui::Key, shift: b
 }
 
 fn fixture(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id, [Id; 2]) {
-    let mut app = DawUi::default();
+    let mut app = DawUi {
+        instrument_subview: crate::instrument_workspace::InstrumentSubview::Sources,
+        ..Default::default()
+    };
     app.instrument_catalog.expand_folders();
     let track = app.session.project.add_midi_track().unwrap();
     let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();

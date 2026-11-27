@@ -126,17 +126,17 @@ impl DawUi {
         {
             return;
         }
-        let Some((track, owner)) = self
-            .session
-            .project
-            .instrument_owners()
-            .find(|(_, _, instrument)| {
-                instrument
-                    .layers
-                    .iter()
-                    .any(|layer| layer.sampler.is_some())
-            })
-            .map(|(parent, owner, _)| (parent, owner))
+        let Some((track, owner, layer)) =
+            self.session
+                .project
+                .instrument_owners()
+                .find_map(|(track, owner, instrument)| {
+                    instrument
+                        .layers
+                        .iter()
+                        .find(|layer| layer.sampler.is_some())
+                        .map(|layer| (track, owner, layer.id))
+                })
         else {
             return;
         };
@@ -148,6 +148,11 @@ impl DawUi {
             } else {
                 self.select_track(track, false);
             }
+            self.set_instrument_subview(crate::instrument_workspace::InstrumentSubview::Layer, ctx);
+            self.instrument_ui.cancel();
+            self.instrument_ui.track = Some(owner);
+            self.instrument_ui.layer_page = Some(layer);
+            self.instrument_ui.select_layer(layer);
         }
         self.drag = drag;
     }

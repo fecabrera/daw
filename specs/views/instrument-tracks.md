@@ -1,60 +1,50 @@
-# Instrument project track browser
+# Instrument track column
 
 ## Scope and composition
 
-Instrument has a List Tree **Tracks** toggle above Instrument components and Effects in the left toolbar. Instrument components opens by default. Tracks, components and effects share one 250-point `ControlPanel`. Opening one closes the others. Browser visibility starts closed. Timeline uses its arrangement track headers for navigation. The shared workspace retains its single top border and bottom effects lane.
-
-[`track_browser.rs`](../../crates/ui/src/track_browser.rs) owns dynamic tree rows, browser-only expansion, cursor and focus. Reuse `ControlPanel::catalog_body` and the common catalog row painter for small text, rounded selected fill, row padding/margins, four-point gaps and keyboard focus appearance. Root audio/MIDI rows use the existing Audio Lines/Keyboard Music icons. Group and beat-parent rows use the shared Chevron Right/Down disclosure without a folder icon. Each nesting level adds one icon slot of label indentation; rows keep full shared hit/selection bounds. Keep dynamic names and stable project/track UUIDs separate from static catalog registration.
+Instrument uses the full Timeline track headers beside the instrument pages.
+The header buttons and scrolling tracks share the 250-point column. Draw one
+divider directly below the buttons. Use the Timeline hierarchy gutter for
+expanded groups and beat tracks. Pin Master below the scrolling rows.
+The left toolbar opens either Instrument components or Effects.
+Keep the divider below the instrument tabs visible when no instrument is selected.
+Inset the placeholder text 8 points from the top and left of the canvas.
 
 ## Navigation and state
 
-Read all project tracks in validated parent-before-child order, including unused/empty tracks and groups. Derive visible rows from browser expansion, independently of saved `group_collapsed`. Preserve sibling order and arbitrary nested groups. Groups start closed; beat parents start open; retain choices through panel/view toggles. Reconcile deleted group IDs and clear expansion/cursor/focus when the project identity changes. Do not serialize navigation or create history edits.
-
-Clicking a group or beat-parent chevron toggles its children without changing selection or saved collapse state. Clicking the name selects that project track. Clicking an audio/MIDI row uses shared single-track selection, leaves the view and clip selection unchanged, and retires stale layer/component gestures and targets. MIDI rows show that track's existing instrument. Audio rows keep the existing no-MIDI-instrument presentation and use their shared track effects lane. Use the Tracks panel for pointer-based track selection in Instrument. Reuse the effects workspace's same-frame target refresh before painting the bottom chain.
-
-For audio, group, Master, beat parent, or no track selection, disable the
-Sources, Effects, and Modulation tabs and suppress the active tab highlight.
-Retain the last tab for when the user selects a MIDI track or beat subtrack.
-Show the same Layers placeholder and disabled Add layer button for audio tracks, groups, and beat parents. Keep the bottom Effects Lane targeted to the selected project track.
-
-Use Up/Down for bounded visible-row navigation, selecting track rows and focusing group rows. Enter selects tracks or toggles groups. Right opens a group; Left closes it or focuses the parent of a child. Retain egui arrow focus filtering through the shared `selection_focus` helper, as catalogs do. Scroll keyboard-focused rows into view. Keyboard handling requires list focus, no text edit, a focused/enabled application, settled gestures and an idle job/dialog path. Track selection and disclosure are disabled under the existing workspace guards. The header Plus menu and blank-panel context menu share `track_creation_menu` for audio, MIDI, beat and empty-group creation in Instrument. `TrackAction::AddGroup` appends a validated empty root through `Project::add_group_track`, preserving existing rows and membership. Only the Plus wrapper `add_track_menu` adds Add subtrack for the selected/displayed beat parent; blank-panel menus omit it. Group-row menus use the four creation choices to add inside the clicked group through one staged core change, then expand its browser children and select the new child. Separate Add beat track from Add group through the shared `starts_menu_group` boundary in popup and native menus. `TrackAction::ALL` exposes Add group and Add subtrack in native and egui Track menubars. The latter stays disabled without a beat target. Beat-row context menus include Rename and Add subtrack; capture the clicked parent independently of current/multiple selection. Timeline and Mixer context menus retain explicit beat/group targets, including multi-selection where another track is primary. Opening or dismissing any menu remains clean; commit creation only on release. New subtracks select the child and expand the parent’s browser children. The parent remains editor context. Project-track and group names reuse the shared track-name input on double-click or the full-row Rename menu. Subtrack names reuse their existing inline rename and full-row context menu. All inputs select the full Unicode name, commit on Enter, and cancel on Escape/focus loss or view/panel/project changes. Clamp input indentation to retain usable width in deeply nested groups; never overlap the pinned controls. The browser owns no audio processing.
+Click a project track or subtrack to select it. A MIDI track or beat subtrack
+shows its editable instrument. An audio track, group, or beat parent shows
+the instrument placeholder and keeps its own bottom Effects Lane.
 
 ## Compact output controls and beat navigation
 
-Keep the existing catalog row height, Small name text, margins and four-point row gaps. Reserve a fixed right-aligned 33-point control area for Mute and Solo: two 16-point square buttons with 9-point labels and a 1-point divider. Do not show Pan or Gain knobs in Instrument Tracks rows. Retain saved gain and pan values when editing M/S. Names truncate before the controls. Control presses must not select rows, disclose children or arm reorder gestures. Project rows edit their existing mix stage; subtracks use `BeatEdit::SetMix` and their canonical Main bus. Do not add a gain stage.
-
-On MIDI rows, place the separate 16-point R button to the right of Mute and Solo.
-Center all three buttons on the same row and reserve space for R and its gap.
-
-Show expanded beat subtracks in saved order, indented under the parent. Selecting a child uses its stable ID for the active instrument and keeps the parent as the beat editor context. The child opens the standard MIDI Layers body with its Layers header, Plus button and local providers. Selecting the parent opens the empty Layers pane and targets the parent Effects Lane. Disclosure retains the current owner and leaves project settings intact.
+Use the shared Timeline row height and header controls. The transport
+vertical slider and compact button update the same setting in both views.
+A beat parent's disclosure uses the Timeline state. Selecting a beat
+subtrack uses its stable ID and keeps the parent as the beat editor context.
+Both views share the vertical offset of the track list. Apply it when entering
+either view and clamp it to that view's scroll range. Save the shared offset in
+the existing project display field.
 
 ## Reordering and group membership
 
-Arm name/icon/background drags at the initial primary press; preserve control and rename gestures. Use the shared movement threshold, focus/cancellation primitives and edge scrolling. Keep a normal press armed only in browser state; activate the global track drag after crossing the movement threshold. A selection click must not flash disabled workspace controls. Armed gestures still guard selection/edit shortcuts; leaving the view, hiding the panel or replacing the project cancels them. Preview insertion during the drag and commit only on release. Project rows use `Project::track_subtree`, `can_move_track` and `Edit::MoveTrack`; preserve IDs and entire group subtrees. The middle half of a group row targets its child list, including collapsed groups. Row edges target before/after the subtree; the left gutter selects an outer parent. A release below the final row returns to Master. Reject cycles and invalid destinations.
-
-Subtrack gestures reuse beat multi-selection, group insertion and `BeatEdit::Reorder`. Limit the allowed release area to the original parent's visible subtrack rows, intersected with the viewport. Reject another beat parent, project group, Master or outside drop. Cancel on Escape, focus loss, disabled editing, revision changes or lost gesture ownership. Same-position releases and selection/disclosure stay clean. Do not construct or publish project edits before release.
-
-Only primary-button release completes a primary reorder. Secondary and middle
-button releases retain its preview and leave project data and history unchanged.
-
-Record the originating pane and view for each beat reorder. When Tracks and the
-step editor display the same parent, only the originating pane paints the preview,
-scrolls and completes or cancels its release. Another pane's outside bounds cannot
-clear that drag. Shared Escape, focus and revision guards still cancel it.
-The Tracks scroll-area prepass must also check the reorder origin. Beat editor
-reorders leave the Tracks scroll position unchanged. Tracks-origin beat reorders
-and ordinary track drags retain edge scrolling.
-Closing Tracks cancels its own drag. View switching retains the active-gesture
-guard and clears beat reorder state when a view change is accepted.
+Reuse track header selection, rename, and drag actions. Tracks move on
+release with one shared transaction. Drop on the middle of a group to
+change membership. Group and beat hierarchy use the same track identities
+in Timeline and Instrument.
 
 ## Acceptance
 
-[`track_browser/tests.rs`](../../crates/ui/src/track_browser/tests.rs) covers saved order, all track kinds, nested groups, independent saved collapse state, toolbar/panel switching, same-frame MIDI/audio effects targets, unchanged project/clip state, bounded keyboard navigation, rename/removal, disabled input and shared row geometry in Dark/Light/Mist at 1×/1.5× scale. Additional cases cover canonical output controls, fixed row size/right alignment and M/S-only controls in every theme at 1×/1.5×/2×, selected-subtrack Layers parity, parent-only Output, release-only project/group moves and subtrack reorder, rejected cross-beat drops, and cancellation. Existing catalog paint/focus and workspace suites remain required. Native app/device and Windows/Linux checks are separate from automated egui tests; executed results belong in [validation history](../validation/README.md).
+Verify that the left toolbar shows both catalog buttons and that opening
+a catalog preserves the full track column. Check the divider at the toolbar
+boundary and that selecting a track targets its effects in the same frame.
+See the [validation history](../validation/README.md) for executed checks.
 
 ## Panel action button presentation
 
-Tracks-browser Add, Layers Add, Timeline editor Beat-subtracks Add, and Timeline Tracks
-Add/Duplicate use `icons::panel_button` and the shared `rows::panel_button_style`.
+The Add and Duplicate buttons in the full Tracks panel and the Add button in
+the Timeline beat editor use `icons::panel_button` and the shared
+`rows::panel_button_style`.
 Reuse the M/S idle unit-content fill, unit-header hover fill and existing active
 colors. Use 5-point corners and explicit empty strokes in every interaction state,
 without an internal divider. Preserve existing button minimum size (28 by 22

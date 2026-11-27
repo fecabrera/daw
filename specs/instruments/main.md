@@ -12,7 +12,7 @@ Output hosts shared Macro controls. Envelope and LFO components belong to the fi
 
 ## Layout and interaction
 
-In Instrument, a MIDI track or beat subtrack shows its Output controls on the Macros row in Modulation, below LFO and Envelope. The Effects tab shows the regular layer chains. The beat parent uses the standard empty Layers pane. Its saved Output gain, pan, and Macro settings stay in the processing graph. The bottom Effects Lane shows the selected track or beat subtrack chain.
+In Instrument, a MIDI track or beat subtrack shows its Output controls in the Macros tab. Each Layer tab shows its own effect chain. The beat parent uses the standard empty Layers pane. Its saved Output gain, pan, and Macro settings stay in the processing graph. The bottom Effects Lane shows the selected track or beat subtrack chain.
 
 Output uses the shared Layers column width. Its Merge icon and name occupy the first header row. The compact gain knob and shared stereo meter occupy the second row. A beat subtrack also exposes its canonical mute, solo and pan there. The rails span the 54-point inner header height and reuse the [layer meter contract](layer-effects.md#layer-bus-level-meters). The Output meter measures before the track or subtrack effect chain. Output stays fixed while regular layers can be reordered within the shared viewport.
 

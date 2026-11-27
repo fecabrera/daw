@@ -144,10 +144,15 @@ impl DawUi {
                 Vec2::new(ui.available_width(), height),
             );
             let panel = panels::GroupPanel::bounds(bounds, TRACK_WIDTH, depth);
-            let lane = Rect::from_min_max(
-                Pos2::new(bounds.left() + TIMELINE_HEADER_SPAN, bounds.top()),
-                bounds.max,
-            );
+            let header_only = self.view_mode == ViewMode::Instrument;
+            let lane = if header_only {
+                panel
+            } else {
+                Rect::from_min_max(
+                    Pos2::new(bounds.left() + TIMELINE_HEADER_SPAN, bounds.top()),
+                    bounds.max,
+                )
+            };
             self.timeline_beats
                 .rows
                 .insert(row.id, (parent, panel, lane));
@@ -158,17 +163,19 @@ impl DawUi {
                 continue;
             }
             let selected = self.timeline_beat_child_selected(row.id);
-            let painter = ui.painter_at(lane);
-            painter.rect_filled(
-                lane,
-                0.0,
-                if selected {
-                    theme::selected_track_background(ui.ctx())
-                } else {
-                    theme::palette(ui.ctx()).background
-                },
-            );
-            self.paint_grid(&painter, lane);
+            if !header_only {
+                let painter = ui.painter_at(lane);
+                painter.rect_filled(
+                    lane,
+                    0.0,
+                    if selected {
+                        theme::selected_track_background(ui.ctx())
+                    } else {
+                        theme::palette(ui.ctx()).background
+                    },
+                );
+                self.paint_grid(&painter, lane);
+            }
             let mut header = ui.new_child(
                 egui::UiBuilder::new()
                     .id_salt(("timeline-beat", row.id))

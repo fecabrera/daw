@@ -228,6 +228,9 @@ impl DawUi {
             return Some(EffectTarget::Track(row.id));
         }
         if self.view_mode == ViewMode::Instrument {
+            if self.master_selected {
+                return Some(EffectTarget::Master);
+            }
             return self
                 .selected_track
                 .filter(|id| {
@@ -367,11 +370,12 @@ impl DawUi {
             && self.instrument_catalog_visible
             && !clip_settings_visible;
         let chords_visible = self.chords_visible();
+        #[cfg(test)]
         let tracks_visible = self.tracks_panel_visible();
-        let catalog_visible = self.effects_catalog_visible()
-            || components_visible
-            || chords_visible
-            || tracks_visible;
+        let catalog_visible =
+            self.effects_catalog_visible() || components_visible || chords_visible;
+        #[cfg(test)]
+        let catalog_visible = catalog_visible || tracks_visible;
         if !clip_settings_visible && !self.lower_editor_visible() {
             self.clear_clip_settings_edits();
         }
@@ -413,9 +417,12 @@ impl DawUi {
                         ui.set_min_height(upper.height());
                         let catalog_rect =
                             Rect::from_min_size(bounds.min, Vec2::new(TRACK_WIDTH, upper.height()));
+                        #[cfg(test)]
                         if tracks_visible {
                             self.project_tracks_panel(ui, library, catalog_rect, allowed);
-                        } else if chords_visible {
+                            return;
+                        }
+                        if chords_visible {
                             self.chords_catalog_panel(ui, library, catalog_rect);
                         } else if components_visible {
                             self.instrument_catalog_panel(
@@ -913,7 +920,7 @@ impl DawUi {
         None
     }
 
-    fn effects_lane_menu(
+    pub(super) fn effects_lane_menu(
         &mut self,
         ui: &egui::Ui,
         bounds: Rect,
@@ -964,9 +971,11 @@ impl DawUi {
                         action = Some(LaneMenuAction::SetCollapsed(collapsed));
                     }
                 }
-                menus::separator(ui);
-                if ui.add(menus::action_button("Hide effects lane")).clicked() {
-                    action = Some(LaneMenuAction::Hide);
+                if !matches!(target, Some(EffectTarget::Layer { .. })) {
+                    menus::separator(ui);
+                    if ui.add(menus::action_button("Hide effects lane")).clicked() {
+                        action = Some(LaneMenuAction::Hide);
+                    }
                 }
                 action
             })

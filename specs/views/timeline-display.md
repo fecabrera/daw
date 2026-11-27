@@ -70,6 +70,8 @@ and collapsed arrangement lanes. Validation rejects nonfinite heights and
 heights outside 1…3, nonfinite or non-positive zoom, and nonfinite or negative
 offsets.
 Fit all can produce positive zoom outside manual slider limits; retain it.
+The saved vertical offset applies to the shared track list in Timeline and
+Instrument.
 
 Store the preferred lower editor height in `timeline_editor_height_points`,
 in logical points. The default is 300 points for new projects and old

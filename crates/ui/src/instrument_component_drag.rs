@@ -180,7 +180,11 @@ impl DawUi {
             if same_move && pointer.x < row.left() + TRACK_WIDTH {
                 return false;
             }
-            let slots = self.inline_unit_slots(*owner);
+            let slots: Vec<_> = self
+                .inline_unit_slots(*owner)
+                .into_iter()
+                .filter(|(unit, _)| !matches!(unit, daw_core::InstrumentComponent::Effect(_)))
+                .collect();
             let first = slots
                 .iter()
                 .take_while(|(unit, _)| unit.is_source())

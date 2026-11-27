@@ -25,6 +25,7 @@ pub(super) fn paint_right_rail(ui: &Ui, bounds: Rect) {
 }
 
 pub(super) struct Buttons {
+    #[cfg(test)]
     pub tracks: Option<egui::Response>,
     pub library: egui::Response,
     pub components: Option<egui::Response>,
@@ -34,6 +35,7 @@ pub(super) struct Buttons {
 }
 
 pub(super) struct Catalogs {
+    #[cfg(test)]
     pub tracks: Option<bool>,
     pub effects: bool,
     pub components: Option<bool>,
@@ -58,6 +60,9 @@ pub(super) fn show(
     let padding = (WIDTH - BUTTON_SIZE) * 0.5;
     let top = bounds.min + Vec2::splat(padding);
     let step = BUTTON_SIZE + padding;
+    #[cfg(not(test))]
+    let catalog_top = top;
+    #[cfg(test)]
     let catalog_top = top + Vec2::new(0., if catalogs.tracks.is_some() { step } else { 0. });
     let effects_at = catalog_top
         + Vec2::new(
@@ -76,6 +81,7 @@ pub(super) fn show(
     );
     rail.set_clip_rect(bounds.intersect(ui.clip_rect()));
     Buttons {
+        #[cfg(test)]
         tracks: catalogs.tracks.map(|selected| {
             toggle_at(
                 &mut rail,

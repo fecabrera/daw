@@ -1838,6 +1838,7 @@ fn native_mix_dispatch_blocks_held_knobs_and_works_after_release() {
 fn fast_layer_drag_escape_retains_group_and_mix_target() {
     for group in [[0, 1], [0, 2]] {
         let (mut app, ctx, layers) = super::midi::layer_header_fixture();
+        app.instrument_subview = crate::instrument_workspace::InstrumentSubview::Sources;
         // Keep all three headers inside the scroll viewport for sparse groups.
         for layer in &mut app.session.project.tracks[0]
             .instrument

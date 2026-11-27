@@ -38,9 +38,9 @@ same fills as its outlines. Paint the lane background before controls/units and
 the selection outline after shared borders. Unselected rows retain their normal
 surfaces. Do not recolor unit bodies/headers or change selection, data or gestures.
 
-In the Effects subview, only regular layers expose inline chains. The bottom Effects Lane shows effects for the selected track or beat subtrack. Instrument Output controls stay available in Modulation. The saved mixed order remains readable and round-trippable.
+Each Layer tab shows the selected layer’s effects in a separate row below its sources. The bottom Effects Lane shows effects for the selected track or beat subtrack. Instrument Output controls stay available in Macros. The saved mixed order remains readable and round-trippable.
 
-The Effects catalog adds to the selected regular layer in the Effects subview. Clicking the bottom Effects Lane targets the selected track or beat subtrack chain. Library drag targets resolve from layer geometry and reuse the common insertion preview, release-only commit, and cancellation. Empty layers and a hidden bottom lane remain valid destinations. Previewing does not construct effect instances.
+The Effects catalog adds to the layer on its Layer tab. Clicking the bottom Effects Lane targets the selected track or beat subtrack chain. Library drag targets resolve from layer geometry and reuse the common insertion preview, release-only commit, and cancellation. Empty layers and a hidden bottom lane remain valid destinations. Previewing does not construct effect instances.
 
 `effects_panel::effect_units` paints installed effects for both the bottom lane and inline layers. The target supplies the chain, source inventory, and edit command. Catalog registration, unit panels, power/collapse, modulation controls, selection borders, Select All, deletion, group reorder/duplication, previews, edge scrolling, and cancellation reuse the same effects code. No effect type allowlist or parallel panel implementation is added. Paint shared unit dividers after inline fills on regular layers. Component and effect selection are scoped to their respective subviews; effect keyboard focus stays on its chain after deletion.
 

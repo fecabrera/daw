@@ -13,6 +13,7 @@ pub(super) struct Catalog {
     pub selection: HashSet<&'static str>,
     folders: Vec<Folder>,
     folder_filter: Option<usize>,
+    entry_filter: Option<&'static str>,
     excluded_folder: Option<usize>,
     cursor: Row,
     anchor: Row,
@@ -222,6 +223,13 @@ impl Catalog {
         }
     }
 
+    pub fn filter_entry(&mut self, entry: Option<&'static str>) {
+        if self.entry_filter != entry {
+            self.entry_filter = entry;
+            self.clear();
+        }
+    }
+
     fn visible_rows(&self) -> Vec<Row> {
         if self.folders.is_empty() {
             return (0..self.entries.len()).map(Row::Entry).collect();
@@ -239,7 +247,12 @@ impl Catalog {
                         .entries
                         .iter()
                         .copied()
-                        .filter(|_| folder.open)
+                        .filter(|&index| {
+                            folder.open
+                                && self.entry_filter.is_none_or(|id| {
+                                    self.entries.get(index).is_some_and(|entry| entry.0 == id)
+                                })
+                        })
                         .map(Row::Entry),
                 )
             })

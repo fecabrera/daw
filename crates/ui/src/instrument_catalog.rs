@@ -240,6 +240,9 @@ fn can_add_registered(
 pub(crate) struct Bounds {
     pub toggle: Rect,
     pub subviews: [Rect; 3],
+    pub layer_tabs: HashMap<Id, Rect>,
+    pub layer_add_tab: Rect,
+    pub track_column: Rect,
     pub library: Rect,
     pub header: Rect,
     pub entries: [Rect; ENTRIES.len()],
@@ -256,6 +259,9 @@ impl Default for Bounds {
         Self {
             toggle: Rect::NOTHING,
             subviews: [Rect::NOTHING; 3],
+            layer_tabs: HashMap::new(),
+            layer_add_tab: Rect::NOTHING,
+            track_column: Rect::NOTHING,
             library: Rect::NOTHING,
             header: Rect::NOTHING,
             entries: [Rect::NOTHING; ENTRIES.len()],
@@ -279,13 +285,19 @@ impl DawUi {
         let subview = self.instrument_subview;
         let modulators = Category::Modulators.index();
         self.instrument_catalog
-            .exclude_folder((subview == InstrumentSubview::Sources).then_some(modulators));
+            .exclude_folder((!subview.is_modulation()).then_some(modulators));
         self.instrument_catalog
-            .filter_folder((subview == InstrumentSubview::Modulation).then_some(modulators));
+            .filter_folder(subview.is_modulation().then_some(modulators));
+        self.instrument_catalog.filter_entry(match subview {
+            InstrumentSubview::Lfos => Some("daw.lfo"),
+            InstrumentSubview::Envelopes => Some("daw.envelope"),
+            InstrumentSubview::Macros => Some("daw.macro"),
+            _ => None,
+        });
         let target = self.instrument_catalog_target();
         let enabled = allowed && self.effects_drag.is_none() && target.is_some();
         self.instrument_catalog.enable_external(
-            subview == InstrumentSubview::Sources
+            !subview.is_modulation()
                 && target.is_some_and(|(track, owner)| {
                     self.session
                         .project
@@ -364,7 +376,7 @@ impl DawUi {
             let mut settings = self.session.project.instrument_snapshot(track_id).unwrap();
             let original = settings.clone();
             let types: Vec<_> = self.instrument_catalog.selected_types();
-            if subview == InstrumentSubview::Modulation {
+            if subview.is_modulation() {
                 let has_provider_lanes =
                     self.session.project.instrument_settings(track_id).is_some();
                 for entry in ENTRIES
@@ -404,17 +416,25 @@ impl DawUi {
             .project
             .instrument_track(self.selected_instrument_owner()?)?;
         let instrument = track.instrument.as_ref()?;
-        match self.instrument_subview {
+        let subview = self.instrument_subview;
+        if subview.shows(daw_core::InstrumentComponent::Macros) {
+            let owner = self.instrument_ui.selected_layer.filter(|owner| {
+                self.instrument_ui.track == Some(track.id)
+                    && (instrument.bus(*owner).is_some()
+                        || instrument.layers.iter().any(|layer| layer.id == *owner))
+            });
+            return Some((track.id, owner.unwrap_or(instrument.main.id)));
+        }
+        match subview {
             InstrumentSubview::Effects => return None,
-            InstrumentSubview::Modulation => {
-                let owner = self.instrument_ui.selected_layer.filter(|owner| {
-                    self.instrument_ui.track == Some(track.id)
-                        && (instrument.bus(*owner).is_some()
-                            || instrument.layers.iter().any(|layer| layer.id == *owner))
-                });
-                return Some((track.id, owner.unwrap_or(instrument.main.id)));
+            InstrumentSubview::Lfos => return Some((track.id, instrument.lfo_lane.id)),
+            InstrumentSubview::Envelopes => return Some((track.id, instrument.envelope_lane.id)),
+            InstrumentSubview::Layer => {
+                return self
+                    .visible_instrument_layer(instrument)
+                    .map(|layer| (track.id, layer));
             }
-            InstrumentSubview::Sources => {}
+            _ => {}
         }
         let layer = instrument
             .layers
