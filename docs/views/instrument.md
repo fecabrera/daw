@@ -36,7 +36,7 @@ horizontal slider and Fit All Clips are available in Timeline.
 
 ## Instrument tabs
 
-Click a named layer tab to show its sources and processors, its Effects row, and its mix controls in that order. The first layer opens by default. Scroll the layer tabs horizontally when they do not fit. The Add layer button stays visible at the right edge of the Layer group.
+**All** is the first tab in the layer group. Its workspace is empty. Click a layer tab to show its sources and processors, its Effects row, and its mix controls in that order. Layer tabs show numbers for default names such as Layer 1 and show custom names in full. The first layer opens by default. Scroll the layer group horizontally when its tabs do not fit. The Add layer button stays visible at the right edge.
 
 **LFOs**, **Envelopes**, and **Macros** stay visible beside the layer tabs. Each opens its own controls. The Macros tab shows shared Output Macros and any layer-owned Macros. All layers continue to process audio and modulation as you switch tabs.
 

@@ -240,6 +240,7 @@ fn can_add_registered(
 pub(crate) struct Bounds {
     pub toggle: Rect,
     pub subviews: [Rect; 3],
+    pub all_tab: Rect,
     pub layer_tabs: HashMap<Id, Rect>,
     pub layer_add_tab: Rect,
     pub track_column: Rect,
@@ -259,6 +260,7 @@ impl Default for Bounds {
         Self {
             toggle: Rect::NOTHING,
             subviews: [Rect::NOTHING; 3],
+            all_tab: Rect::NOTHING,
             layer_tabs: HashMap::new(),
             layer_add_tab: Rect::NOTHING,
             track_column: Rect::NOTHING,
@@ -426,7 +428,7 @@ impl DawUi {
             return Some((track.id, owner.unwrap_or(instrument.main.id)));
         }
         match subview {
-            InstrumentSubview::Effects => return None,
+            InstrumentSubview::All | InstrumentSubview::Effects => return None,
             InstrumentSubview::Lfos => return Some((track.id, instrument.lfo_lane.id)),
             InstrumentSubview::Envelopes => return Some((track.id, instrument.envelope_lane.id)),
             InstrumentSubview::Layer => {

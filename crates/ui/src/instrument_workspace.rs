@@ -6,6 +6,7 @@ pub(super) const DUPLICATE_LAYER_SHORTCUT: egui::KeyboardShortcut =
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(super) enum InstrumentSubview {
+    All,
     #[default]
     Layer,
     Sources,
@@ -23,7 +24,7 @@ impl InstrumentSubview {
     pub(super) fn uses_track_column(self) -> bool {
         matches!(
             self,
-            Self::Layer | Self::Lfos | Self::Envelopes | Self::Macros
+            Self::All | Self::Layer | Self::Lfos | Self::Envelopes | Self::Macros
         )
     }
 
@@ -42,6 +43,7 @@ impl InstrumentSubview {
     pub(super) fn shows(self, component: InstrumentComponent) -> bool {
         use InstrumentComponent::*;
         match self {
+            Self::All => false,
             Self::Layer | Self::Sources => component.is_source() || component == Amplitude,
             Self::Effects => matches!(component, Effect(_)),
             #[cfg(test)]
@@ -94,6 +96,7 @@ impl DawUi {
         let show_add = has_instrument && self.instrument_subview.uses_track_column();
         #[cfg(test)]
         {
+            self.instrument_catalog_bounds.all_tab = Rect::NOTHING;
             self.instrument_catalog_bounds.layer_tabs.clear();
             self.instrument_catalog_bounds.layer_add_tab = Rect::NOTHING;
         }
@@ -253,22 +256,48 @@ impl DawUi {
         show_add: bool,
     ) {
         let group = ui.horizontal(|ui| {
-            layers
+            let count = 1 + layers.len() + usize::from(show_add);
+            let all = ui
+                .push_id("all-layers", |ui| {
+                    Self::instrument_tab(
+                        ui,
+                        "All",
+                        enabled,
+                        self.instrument_subview == InstrumentSubview::All,
+                        0,
+                        count,
+                    )
+                })
+                .inner;
+            #[cfg(test)]
+            {
+                self.instrument_catalog_bounds.all_tab = all.rect;
+            }
+            if all.clicked() {
+                self.set_instrument_subview(InstrumentSubview::All, ui.ctx());
+            }
+            let tabs = layers
                 .iter()
                 .enumerate()
                 .map(|(index, (layer, name))| {
+                    let label = name
+                        .strip_prefix("Layer ")
+                        .filter(|number| {
+                            !number.is_empty() && number.bytes().all(|digit| digit.is_ascii_digit())
+                        })
+                        .unwrap_or(name);
                     let result = ui
                         .push_id(*layer, |ui| {
                             Self::instrument_tab(
                                 ui,
-                                name,
+                                label,
                                 enabled,
                                 matches!(
                                     self.instrument_subview,
                                     InstrumentSubview::Layer | InstrumentSubview::Sources
                                 ) && current == Some(*layer),
-                                index,
-                                layers.len() + usize::from(show_add),
+                                index + 1,
+                                count,
                             )
                         })
                         .inner;
@@ -311,17 +340,20 @@ impl DawUi {
                     }
                     result
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            (all, tabs)
         });
-        for response in group.inner.iter().skip(1) {
+        let (all, tabs) = group.inner;
+        for response in &tabs {
             rows::group_separator(ui, group.response.rect, response.rect.left());
         }
         let rows: Vec<_> = layers
             .iter()
-            .zip(&group.inner)
+            .zip(&tabs)
             .map(|((id, _), response)| (*id, response.rect))
             .collect();
-        let viewport = group.response.rect.intersect(ui.clip_rect());
+        let mut viewport = group.response.rect.intersect(ui.clip_rect());
+        viewport.min.x = viewport.min.x.max(all.rect.right());
         if self.instrument_subview == InstrumentSubview::Layer {
             self.reorder_layer_tabs(ui, &rows, viewport);
             self.finish_layer_tab_drops(ui, &rows, viewport);
@@ -488,7 +520,10 @@ impl DawUi {
         self.instrument_ui.cancel();
         if matches!(
             subview,
-            InstrumentSubview::Lfos | InstrumentSubview::Envelopes | InstrumentSubview::Macros
+            InstrumentSubview::All
+                | InstrumentSubview::Lfos
+                | InstrumentSubview::Envelopes
+                | InstrumentSubview::Macros
         ) {
             self.instrument_ui.clear_layer_selection();
         }

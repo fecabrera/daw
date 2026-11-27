@@ -117,10 +117,11 @@ the lane-specific collapse buttons.
 ## Instrument subviews
 
 Show two joined control groups at the top of Instrument. The first group lists
-the selected instrument’s layers by stable ID and saved name, followed by its
-Add layer button. Round the two outer edges of the group. The second group
+All, the selected instrument’s layers by stable ID, and the Add layer button.
+Show only the number for saved names of the form “Layer N”. Show other saved
+names in full. Round the two outer edges of the group. The second group
 contains LFOs, Envelopes, and Macros and stays visible. When the layer group
-does not fit, scroll only its named tabs. Pin the Add layer button to the
+does not fit, scroll All and the layer tabs. Pin the Add layer button to the
 right edge of the Layer group, beside the modulation group.
 Use the toolbar's 8-point padding between the two groups.
 At narrow widths, put the Track Mixer below the tab bar when it would cover
@@ -128,6 +129,8 @@ the modulation group or leave too little room to scroll the layer tabs.
 Place the groups beside the shared Timeline track headers. Disable the
 modulation buttons for audio tracks, groups, and beat parents.
 
+- All shows an empty instrument workspace. Keep the shared track controls and
+  bottom Effects Lane available.
 - The first layer opens by default. Show the selected layer’s source row, then
   its Effects row, then a gap and its mix controls. The bottom Effects Lane
   continues to show the track or beat-subtrack chain.

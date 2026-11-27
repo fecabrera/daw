@@ -2,6 +2,26 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## All instrument tab and layer labels, 2026-11-27
+
+The Instrument UI checks cover tab order and spacing, numeric labels for
+default layer names, the empty All workspace, and switching back to a layer.
+They also check that the Track Mixer and bottom Effects Lane remain available
+and that tab switches preserve project settings.
+
+Formatting and strict workspace Clippy passed. The local macOS debug app
+rebuilt and passed signature verification. Interactive native UI checks
+remain open.
+
+The debug workspace suite passed 3,864 tests, including 1,125 UI tests. The
+release workspace suite also passed 3,864 tests. Each run ignored 25 tests
+and excluded 22 native Audio Unit registration cases.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
 ## Pinned Add layer button — 2026-11-27
 
 The UI test used 24 layers at the 900-point window width. Scrolling moved the

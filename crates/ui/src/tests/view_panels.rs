@@ -143,11 +143,24 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
     assert_eq!(app.instrument_subview, InstrumentSubview::Layer);
     assert_eq!(app.instrument_ui.effect_slots[0].0, layer);
 
+    let all = app.instrument_catalog_bounds.all_tab;
+    click(&mut app, all);
+    assert_eq!(app.instrument_subview, InstrumentSubview::All);
+    assert!(app.midi_editor.layer_bounds.is_empty());
+    assert!(app.instrument_ui.component_slots.is_empty());
+    assert!(app.instrument_ui.effect_slots.is_empty());
+    assert!(app.instrument_ui.source_drop_rows.is_empty());
+    assert_eq!(app.instrument_catalog_target(), None);
+    assert_eq!(app.effects_bounds.track_mixer, panel);
+
     app.toggle_view_panel(ViewPanel::EffectsLane, &ctx);
     frame(&mut app, &ctx, vec![]);
     assert!(app.effects_bounds.strip.is_positive());
     assert_eq!(app.effects_bounds.chain.len(), 1);
     assert_eq!(app.effects_bounds.track_mixer_toggle, mixer_toggle);
+    click(&mut app, second);
+    assert_eq!(app.instrument_subview, InstrumentSubview::Layer);
+    assert_eq!(app.instrument_ui.effect_slots[0].0, other);
     app.set_view_mode(ViewMode::Timeline, &ctx);
     assert!(!app.view_panel_selected(ViewPanel::TrackMixer));
     app.set_view_mode(ViewMode::Instrument, &ctx);
@@ -734,10 +747,28 @@ fn instrument_tab_groups_match_toolbar_spacing_and_round_outer_corners() {
         let lfos = app.instrument_catalog_bounds.subviews[0];
         let column = app.instrument_catalog_bounds.track_column;
         let tab = app.instrument_catalog_bounds.layer_tabs[&layer];
+        let all = app.instrument_catalog_bounds.all_tab;
         let gap = lfos.left() - plus.right();
         assert_eq!(gap, f32::from(theme::TOOLBAR_PADDING));
-        assert_eq!(gap, tab.left() - column.right());
+        assert_eq!(gap, all.left() - column.right());
+        assert_eq!(tab.left() - all.right(), crate::rows::GROUP_DIVIDER_WIDTH);
         assert_eq!(gap, tab.top() - column.top());
+        for (label, bounds) in [("All", all), ("1", tab)] {
+            assert!(
+                shapes
+                    .iter()
+                    .any(|item| matches!(&item.shape, egui::Shape::Text(text)
+                        if text.galley.text() == label && bounds.contains(text.pos)))
+            );
+        }
+        assert!(
+            shapes
+                .iter()
+                .any(|item| matches!(&item.shape, egui::Shape::Rect(shape)
+            if shape.rect == all && shape.fill != egui::Color32::TRANSPARENT
+                && [shape.corner_radius.nw, shape.corner_radius.ne,
+                    shape.corner_radius.sw, shape.corner_radius.se] == [5, 0, 5, 0]))
+        );
         assert!(
             shapes
                 .iter()
@@ -752,7 +783,7 @@ fn instrument_tab_groups_match_toolbar_spacing_and_round_outer_corners() {
                 if shape.rect == tab
                     && shape.fill == ctx.global_style().visuals.selection.bg_fill
                     && [shape.corner_radius.nw, shape.corner_radius.ne,
-                        shape.corner_radius.sw, shape.corner_radius.se] == [5, 0, 5, 0])
+                        shape.corner_radius.sw, shape.corner_radius.se] == [0, 0, 0, 0])
             }),
             "{count} layer tabs"
         );

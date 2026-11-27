@@ -340,14 +340,18 @@ impl DawUi {
             self.instrument_ui.effects_layer = None;
             self.instrument_ui.track_effects_target = false;
             self.instrument_ui.selected_layers.clear();
-            self.instrument_ui.selected_layer = if group
-                && (self.beat_ui.primary != Some(track.id) || self.beat_ui.output_selected)
+            self.instrument_ui.selected_layer = if self.instrument_subview == InstrumentSubview::All
+                || (group
+                    && (self.beat_ui.primary != Some(track.id) || self.beat_ui.output_selected))
             {
                 None
             } else {
                 settings.layers.first().map(|l| l.id)
             };
             self.instrument_catalog.clear();
+        }
+        if self.instrument_subview == InstrumentSubview::All {
+            return;
         }
         self.instrument_ui.reconcile_layers(&settings);
         if self
@@ -1073,7 +1077,10 @@ impl DawUi {
             TrackAction::Delete if can_delete => remove = Some(layer),
             _ => return,
         }
-        if action == TrackAction::Duplicate && self.instrument_subview.is_modulation() {
+        if action == TrackAction::Duplicate
+            && (self.instrument_subview == InstrumentSubview::All
+                || self.instrument_subview.is_modulation())
+        {
             // A copy selected from a layer tab opens that layer's page.
             self.instrument_subview = InstrumentSubview::Layer;
         }
