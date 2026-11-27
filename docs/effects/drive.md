@@ -10,7 +10,7 @@ Use **Drive** for soft-clipping saturation with simple tone shaping and pre-clip
 | --- | --- | --- | --- |
 | Volume | Exact silence to +12 dB | 0 dB | Output level after saturation and tone. |
 | Gain | 0–100% | 20% | Soft-clipping intensity. Zero is clean; full gain provides approximately 36 dB of drive. |
-| Tone | 0–100% | 50% | Post-clipping high shelf at 2.5 kHz; −12 to +12 dB, neutral at center. |
+| Tone | 0–100% | 50% | Adjusts high frequencies before clipping. The 2.5 kHz shelf ranges from −12 to +12 dB and is neutral at center. |
 | Color shape | Off, Mid scoop, Mid hump, Mid hump + bass cut | Off | Pre-clipping voicing. Off leaves saturation active. |
 | Color strength | 0–100% | 50% | Depth of the selected curve. Zero leaves a flat color response. |
 | Color frequency | 250 Hz–2 kHz, logarithmic | 750 Hz | Mid center and linked bass-cut position. |
@@ -19,7 +19,7 @@ Mid scoop lowers the middle frequencies. Mid hump raises them. Mid hump + bass c
 
 Volume accepts a numeric dB value or `−∞` for exact silence. Very low finite values retain their numeric readout, even when their output is too small to hear.
 
-Gain zero keeps the signal clean apart from the selected Color and Tone. Tone is neutral at 50%. Volume adjusts the output after the other controls. Header power bypasses the whole effect.
+Gain zero keeps the signal clean apart from the selected Color and Tone. The signal passes through Color and Tone before clipping. Raising Tone can make high frequencies clip sooner. Existing settings with Tone away from 50% can sound different after this change. Volume adjusts the output after the other controls. Header power bypasses the whole effect.
 
 ## Modulation and limits
 

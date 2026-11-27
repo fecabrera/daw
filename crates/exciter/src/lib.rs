@@ -1,6 +1,9 @@
 //! Parallel harmonic residuals over phase-matched fourth-order crossover bands.
+use daw_dsp_support::{
+    oversampling::{LATENCY, Oversampling},
+    waveshaping::{biased_tanh, shape},
+};
 use daw_filter::crossover::CrossoverBank;
-use daw_saturator::oversampling::{LATENCY, Oversampling};
 use daw_unit_core::{
     EffectUnit, ExciterBand, ExciterMode, ExciterSettings, LevelMonitor, ModulationContext,
     ModulationDestination, ModulationInputs, ModulationParameter as P, ModulationRamp as Ramp,
@@ -151,14 +154,12 @@ impl Band {
                 let mut value = 0.0;
                 if w[0] > 0.0 {
                     value += w[0]
-                        * (daw_saturator::shape(daw_unit_core::SaturatorShape::AnalogClip, x)
-                            / drive
-                            - up[ch]);
+                        * (shape(daw_unit_core::SaturatorShape::AnalogClip, x) / drive - up[ch]);
                 }
                 if w[1] > 0.0 {
                     // Shifted tanh is centered at zero with unity small-signal gain.
                     value += w[1]
-                        * (((x + 0.35).tanh() - self.tube_bias) / self.tube_slope / drive - up[ch]);
+                        * (biased_tanh(x, 0.35, self.tube_bias) / self.tube_slope / drive - up[ch]);
                 }
                 if w[2] > 0.0 {
                     let tape = x.tanh() / drive - up[ch];
@@ -169,9 +170,7 @@ impl Band {
                 }
                 if w[3] > 0.0 {
                     value += w[3]
-                        * (daw_saturator::shape(daw_unit_core::SaturatorShape::HardCurve, x)
-                            / drive
-                            - up[ch]);
+                        * (shape(daw_unit_core::SaturatorShape::HardCurve, x) / drive - up[ch]);
                 }
                 // Remove DC introduced by asymmetric shaping on the residual path.
                 let blocked = value - self.dc_x[ch] + self.dc_coefficient * self.dc_y[ch];

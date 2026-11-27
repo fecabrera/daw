@@ -2,6 +2,22 @@
 
 Keep dependencies flowing from applications toward shared libraries. Do not introduce dependency cycles.
 
+## Unit DSP ownership
+
+Put new DSP functions and stateful DSP building blocks for built-in sources,
+effects and modulators in `crates/dsp-support`, including algorithms with one
+caller. Check for an existing building block first. When changing an existing
+algorithm, move it to this crate if it still lives in a unit crate.
+
+Unit crates map settings and modulation to parameters, own prepared instances,
+and call the building blocks in signal order. Keep unit lifecycle, bypass,
+monitoring and latency reporting in the unit. Keep backend types private and
+follow the [shared unit DSP decision](../../../specs/architecture/modular-audio-units.md#shared-unit-dsp).
+
+## Crate responsibilities
+
+The table includes existing unit implementations at their current locations.
+
 | Location | Responsibility |
 | --- | --- |
 | `crates/unit-core` | Portable unit descriptors, port types, processing context, source lifecycle, curve definitions, and versioned oscillator/instrument/envelope/effect settings. No DAW, UI, or device dependencies. |
@@ -19,6 +35,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 | `crates/bitcrusher` | Portable stereo quantization, whole-ratio sample holding, and shared modulation; no DAW, UI, media, or device dependencies. |
 | `crates/stereo-spread` | Portable spectral stereo widening with private FunDSP filter banks and shared modulation; no DAW, UI, media, or device dependencies. |
 | `crates/direction-mixer` | Portable stereo direction/width and M/S decoding through the shared effect and modulation APIs; no DAW, UI, or device dependencies. |
+| `crates/dsp-support` | Home for unit DSP algorithms and building blocks. Currently provides waveshaping and fixed 4× oversampling. |
 | `crates/drive` | Reusable stereo soft-clipping drive with color/tone filters behind the shared effect API; keep FunDSP types private. |
 | `crates/saturator-plugin`, `crates/bitcrusher-plugin` | Typed plugin identities, parameters, bounded state and prepared adapters over the portable DSP. Share format/editor infrastructure; no DAW or SDK ownership. |
 | `crates/saturator-editor`, `crates/bitcrusher-editor` | Shared headerless body bindings, bounded host gestures, appearance and output telemetry. |
@@ -70,7 +87,7 @@ Keep dependencies flowing from applications toward shared libraries. Do not intr
 - Put behavior in the crate that owns it. Do not duplicate rendering or validation in the UI or CLI.
 - Follow the accepted [source-container architecture](../../../specs/architecture/modular-audio-units.md#one-source-container-per-track): one processing root per track, with reusable source units inside MIDI instruments and independent lanes inside beat instruments. Keep immutable clip content separate from processing state.
 - Use focused modules for new cohesive behavior. Keep application composition and public entry points in `lib.rs` or `main.rs`; avoid adding unrelated responsibilities to large files.
-- Every modulation provider and destination must use the [shared modulation contract](../../../specs/modulation/contract.md) in `unit-core`. Reuse its source publication, metadata/discovery, scope checks, typed destination entry point, route validation/resolution, and additive offset smoother. Do not implement unit-specific routing loops or source lookup in consumers. Continuous providers must use shared context, dynamic range metadata, and `Continuous` behavior; they cannot own note release. Reuse the contour/continuous resolver composition for amplitude. See [LFO](../../../specs/instruments/lfo.md). Keep note scheduling and concrete unit construction in the host; keep audio DSP and final parameter bounds in each portable unit.
+- Every modulation provider and destination must use the [shared modulation contract](../../../specs/modulation/contract.md) in `unit-core`. Reuse its source publication, metadata/discovery, scope checks, typed destination entry point, route validation/resolution, and additive offset smoother. Do not implement unit-specific routing loops or source lookup in consumers. Continuous providers must use shared context, dynamic range metadata, and `Continuous` behavior; they cannot own note release. Reuse the contour/continuous resolver composition for amplitude. See [LFO](../../../specs/instruments/lfo.md). Keep note scheduling and concrete unit construction in the host. Apply final parameter bounds in the portable unit before running the DSP building blocks.
 - Layer effect chains follow [per-layer effects](../../../specs/instruments/layer-effects.md). Reuse the existing effect chain, catalog, panels, modulation, monitoring, and drag helpers; keep DSP per bus rather than per voice, align layer latency before summing, and validate changes through `Edit::SetLayerEffects`. Cross-layer effect groups use `Project::transfer_effects` for atomic moves/copies and `EffectInstance::duplicate` for fresh copy identities.
 - Prefer composition through structs and functions. Use traits when implementations need to vary; avoid a universal panel or engine interface.
 - Share dependency versions in the workspace when multiple crates use them. Keep native dependencies behind target-specific configuration. Retain `Cargo.lock` for reproducible application builds.

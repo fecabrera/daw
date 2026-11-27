@@ -1,4 +1,4 @@
-//! Redesigned Drive, composed with the original color/clipping/tone kernel.
+//! Redesigned Drive, composed with the original color/tone/clipping kernel.
 use super::{Drive, Ramp, amplitude};
 use daw_unit_core::{
     DRIVE_V2_TYPE_ID, DriveColorShape, DriveSettings, DriveV2Clip, DriveV2Settings, EffectUnit,
@@ -182,7 +182,7 @@ impl ModulationDestination for DriveV2 {
         let level = gain(self.level.value(), offsets[1]);
         let blend = (self.blend.value() + offsets[2]).clamp(0.0, 1.0);
         let dry = input.map(|v| v * input_gain);
-        let wet = self.core.process_tone(
+        let wet = self.core.process_wet(
             dry,
             [
                 0.0,

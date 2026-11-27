@@ -7,4 +7,4 @@ license.workspace = true
 
 [dependencies]
 daw-unit-core.workspace = true
-daw-saturator.workspace = true
+daw-dsp-support.workspace = true

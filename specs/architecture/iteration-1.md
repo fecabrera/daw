@@ -569,7 +569,7 @@ Follow the [EQ specification](../effects/equalizer.md). Reuse the unit shell, ba
 
 ## Drive — 2026-10-13
 
-Follow the [Drive specification](../effects/drive.md). Show two equal strips labeled Drive and Color, with Volume/Gain/Tone and Shape/Strength/Frequency respectively. Include four color shapes and a 250 Hz–2 kHz Color frequency range with 750 Hz default. Color runs before soft clipping, Tone and Volume afterward. Color Off leaves saturation active; zero Strength leaves neutral voicing. Header off bypasses the whole unit. Reuse shared controls, effects catalog insertion/removal, saved settings/presentation, validation, callback-safe parameter ramps, and playback/export processing. Keep independent instance and stereo state. Compact mode retains the header and strip labels. Preserve existing EQ behavior and legacy/future manifest handling.
+Follow the [Drive specification](../effects/drive.md). Show two equal strips labeled Drive and Color, with Volume/Gain/Tone and Shape/Strength/Frequency respectively. Include four color shapes and a 250 Hz–2 kHz Color frequency range with 750 Hz default. Color and Tone run before soft clipping. Volume follows clipping. Color Off leaves saturation active; zero Strength leaves neutral voicing. Header off bypasses the whole unit. Reuse shared controls, effects catalog insertion/removal, saved settings/presentation, validation, callback-safe parameter ramps, and playback/export processing. Keep independent instance and stereo state. Compact mode retains the header and strip labels. Preserve existing EQ behavior and legacy/future manifest handling.
 
 ## Effect unit selection and chain reordering — 2026-10-13
 

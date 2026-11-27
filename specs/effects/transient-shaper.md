@@ -23,7 +23,7 @@ The stereo-linked detector follows the maximum absolute sample of the input pair
 | Fast | 0.8 / 0.06 ms | 25 / 5 ms |
 | Slow | 24 / 5 ms | 150 / 35 ms |
 
-Normalize the fast and slow difference by the larger envelope, with a −120 dBFS reference floor. A positive difference weights Attack. A negative difference weights Pump attenuation. The normalized slow envelope, reduced during onset, weights Sustain. Apply the combined gain to both channels. The wet path then applies the corresponding Saturator transfer at the project rate, applies Level, and blends with the dry input. The four clip modes crossfade during edits. The unit adds zero latency and no audible tail, including in bypass. Retain detector history through compatible updates and bypass. Use the shared 5 ms parameter and bypass ramps, meter hold and clear behavior, and fixed-size callback state.
+Normalize the fast and slow difference by the larger envelope, with a −120 dBFS reference floor. A positive difference weights Attack. A negative difference weights Pump attenuation. The normalized slow envelope, reduced during onset, weights Sustain. Apply the combined gain to both channels. The wet path then applies the corresponding Saturator transfer from `daw-dsp-support` at the project rate, applies Level, and blends with the dry input. The four clip modes crossfade during edits. The unit adds zero latency and no audible tail, including in bypass. Retain detector history through compatible updates and bypass. Use the shared 5 ms parameter and bypass ramps, meter hold and clear behavior, and fixed-size callback state.
 
 ## Shared presentation
 

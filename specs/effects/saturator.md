@@ -68,6 +68,8 @@ Check modulation bounds and source scope, saved-route round trips, Save As/reope
 
 ## Transfer functions and runtime details
 
+The shared transfers and oversampler live in `daw-dsp-support`.
+
 For signed input `x`, the rounded-knee function is linear to magnitude `k`, then `sign(x) × (k + (c−k) × tanh((abs(x)−k)/(c−k)))`.
 
 | Shape | Independent transfer function |

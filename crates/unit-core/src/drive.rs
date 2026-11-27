@@ -50,7 +50,7 @@ pub struct DriveSettings {
     pub volume_db: f32,
     /// Normalized 0–1 drive intensity. Zero is clean.
     pub gain: f32,
-    /// Normalized 0–1 post-clipping brightness. 0.5 is neutral.
+    /// Normalized 0–1 brightness before clipping. 0.5 is neutral.
     pub tone: f32,
     pub color_shape: DriveColorShape,
     pub color_strength: f32,

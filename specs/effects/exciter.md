@@ -38,7 +38,7 @@ Reuse the original OTT fourth-order Linkwitz–Riley splitter, extracted without
 
 Crossover values use logarithmic 5 ms interpolation with one clock for the entire ordered vector. Restart that common clock on any changed boundary; independently restarting boundary ramps can cross neighboring frequencies during rapid edits. Preserve current values and filter history on compatible updates. Crossover topology is prepared on workers.
 
-Reuse Saturator's 129-tap 4× polyphase interpolation/decimation and static Analog Clip/Hard Curve functions through their portable APIs. Each band oversamples the nonlinear residual `shape(driven) / drive - original`. This retains unity small-signal gain instead of carrying the input drive gain to the output. Keep the band's linear dry path delayed by the same 32 project frames. Mode weights crossfade over 5 ms and are normalized during rapid retargeting. Evaluate active/crossfading curves; keep oversampling histories and band clocks running while bypassed.
+Reuse the 129-tap 4× polyphase interpolation/decimation and the Analog Clip and Hard Curve transfers from `daw-dsp-support`. Tube uses the shared biased tanh operation with Exciter’s bias and slope compensation. Each band oversamples the nonlinear residual `shape(driven) / drive - original`. This retains unity small-signal gain instead of carrying the input drive gain to the output. Keep the band's linear dry path delayed by the same 32 project frames. Mode weights crossfade over 5 ms and are normalized during rapid retargeting. Evaluate active/crossfading curves; keep oversampling histories and band clocks running while bypassed.
 
 | Mode | Transfer/character |
 | --- | --- |

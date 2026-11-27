@@ -51,7 +51,7 @@ selector in both editors.
 Plate Drive adds an unmodulated top-row Mode selector: Soft/Hard/Tube, default
 Soft. Retain the original rational soft transfer function, add a symmetric ±1
 hard ceiling and biased asymmetric tanh Tube curve with exact silence and unity
-small-signal slope. Retain shared input gain, partial gain compensation, power
+small-signal slope. Use the rational Soft, fixed Hard and fixed Tube curves from `daw-dsp-support`. Retain shared input gain, partial gain compensation, power
 ramps and processing of only the wet branch before the dry/wet blend.
 At 0% wet, Drive amount, mode and power must not alter the dry signal. Level
 continues to apply after the blend. Crossfade modes over

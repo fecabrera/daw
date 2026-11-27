@@ -1,5 +1,8 @@
 //! Portable stereo waveshaping with shared modulation and fixed-latency 4× anti-aliasing.
-pub mod oversampling;
+pub use daw_dsp_support::{
+    oversampling,
+    waveshaping::{clip, shape},
+};
 use daw_unit_core::{
     EffectUnit, LevelMonitor, ModulationContext, ModulationDestination,
     ModulationDestinationSettings, ModulationInputs, ModulationParameter, ModulationRamp,
@@ -12,52 +15,6 @@ fn gain(db: f32) -> f32 {
         0.0
     } else {
         10.0_f32.powf(db / 20.0)
-    }
-}
-fn knee(input: f64, start: f64, ceiling: f64) -> f64 {
-    let x = input.abs();
-    if x <= start {
-        input
-    } else {
-        (start + (ceiling - start) * ((x - start) / (ceiling - start)).tanh()).copysign(input)
-    }
-}
-/// Shared static saturation transfer, with unity small-signal gain.
-pub fn shape(shape: SaturatorShape, x: f64) -> f64 {
-    match shape {
-        SaturatorShape::AnalogClip => knee(x, 0.75, 1.5),
-        SaturatorShape::SoftSine => {
-            // Wide sine arc: gentle compression, separated from the firmer cubic mode.
-            3.0 * (x / 3.0)
-                .clamp(-std::f64::consts::FRAC_PI_2, std::f64::consts::FRAC_PI_2)
-                .sin()
-        }
-        // Broad rational knee with unity small-signal gain and no frequency-dependent gain boost.
-        SaturatorShape::BassShaper => x / (1.0 + (x / 1.8).powi(2)).sqrt(),
-        SaturatorShape::MediumCurve => {
-            // Zero slope at the plateau joins the cubic continuously to its ceiling.
-            const THRESHOLD: f64 = 1.65;
-            let y = x.clamp(-THRESHOLD, THRESHOLD);
-            y - y.powi(3) / (3.0 * THRESHOLD * THRESHOLD)
-        }
-        // A real hard knee adds upper odd harmonics. Its 1.2 ceiling remains
-        // distinct from the optional final Hard Clip stage at unity.
-        SaturatorShape::HardCurve => x.clamp(-1.2, 1.2),
-    }
-}
-/// Apply the Saturator clip transfer to one sample.
-pub fn clip(mode: SaturatorClipMode, x: f64) -> f64 {
-    match mode {
-        SaturatorClipMode::NoClip => x,
-        SaturatorClipMode::SoftClip => knee(x, 0.5, 1.0),
-        SaturatorClipMode::HardClip => x.clamp(-1.0, 1.0),
-        SaturatorClipMode::TubeClip => {
-            // Biased tanh adds even harmonics. Remove the static bias so silence
-            // stays exact; retain unity slope at zero and a maximum excursion of one.
-            let bias = 0.3_f64.tanh();
-            let scale = 1.0 / (1.0 - bias);
-            ((x * scale + 0.3).tanh() - bias) / (1.0 + bias)
-        }
     }
 }
 // Rapid retargets can leave independent ramps with different remaining lengths.

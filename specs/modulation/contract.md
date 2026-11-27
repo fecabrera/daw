@@ -230,7 +230,7 @@ Oscillator Level reuses the typed Level slot and PerNote scope after summing sou
 
 ## Drive v2 destination
 
-[Drive v2](../effects/drive-v2.md) declares seven Shared inputs through the common settings/runtime contract. DriveInput appends additive slot 75; six other inputs reuse existing typed identities. Input/output offsets use the shared Gain amount profile, final +12 dB bound, and exact base silence. The processor composes the original Color/clipping/Tone kernel with input gain, dry/wet, output level and unit bypass. Reuse cached publication, source scope checks, typed resolution, one-millisecond offset smoothing, route-history matching and prepared seven-value snapshots. Discrete Color power, Shape and Clip have no routes.
+[Drive v2](../effects/drive-v2.md) declares seven Shared inputs through the common settings/runtime contract. DriveInput appends additive slot 75; six other inputs reuse existing typed identities. Input/output offsets use the shared Gain amount profile, final +12 dB bound, and exact base silence. The processor uses the shared Color/Tone/clipping kernel with input gain, dry/wet, output level and unit bypass. Reuse cached publication, source scope checks, typed resolution, one-millisecond offset smoothing, route-history matching and prepared seven-value snapshots. Discrete Color power, Shape and Clip have no routes.
 
 ## Auto-filter LFO destinations
 

@@ -14,7 +14,7 @@ Drive has two 90-point strips with bottom labels **Drive** and **Color**. Drive 
 | --- | --- | --- | --- |
 | Volume | Exact silence to +12 dB | 0 dB | Output level; reuses the standard gain scale and finite silence value. |
 | Gain | 0–100% | 20% | Soft-clipping intensity. Zero is clean; full gain provides approximately 36 dB of drive. |
-| Tone | 0–100% | 50% | Post-clipping high shelf at 2.5 kHz; −12 to +12 dB, neutral at center. |
+| Tone | 0–100% | 50% | High shelf before clipping at 2.5 kHz. The range is −12 to +12 dB, neutral at center. |
 | Color shape | Off, Mid scoop, Mid hump, Mid hump + bass cut | Off | Pre-clipping voicing. Off leaves saturation active. |
 | Color strength | 0–100% | 50% | Depth of the selected curve. Zero leaves a flat color response. |
 | Color frequency | 250 Hz–2 kHz, logarithmic | 750 Hz | Mid center and linked bass-cut position. |
@@ -23,7 +23,7 @@ Mid scoop and Mid hump use a broad bell (Q 0.65) with up to −12/+12 dB depth. 
 
 ## Processing and state
 
-Processing order is clip/instrument output → each serial effect → track gain/pan and audibility → Master. Within Drive: Color → symmetric normalized tanh soft clipping → Tone → Volume. Low-level input receives increasing gain as Gain rises, while the clipper approaches a smooth bounded output. Gain zero passes the colored signal directly to Tone. Tone and Volume remain active with Color Off.
+Processing order is clip/instrument output → each serial effect → track gain/pan and audibility → Master. Drive uses Color → Tone → normalized tanh soft clipping → Volume. The clipper comes from `daw-dsp-support`. Gain zero passes the filtered signal through the clip stage. Tone and Volume remain active with Color Off. Existing saved Tone settings affect the input to clipping and can change the sound.
 
 `daw-unit-core` owns version-1 `daw.drive` settings. The independent `daw-drive` crate implements the portable stereo `EffectUnit`, with private FunDSP filters and independent channel/shape history. Engine state is prepared off the callback and retained by compatible track/effect identity. Every numeric control, shape selection, and header bypass ramps over 5 ms at the project rate. Frequency ramps logarithmically and Volume ramps in amplitude, including exact silence. Inactive color branches and bypassed units keep processing. Display-only edits do not restart ramps, and unrelated controls retain their in-flight ramps. Processing, retarget, and reset do not allocate, block, or perform I/O.
 

@@ -165,7 +165,7 @@ impl TransientShaper {
                 .iter()
                 .zip(modes)
                 .filter(|(weight, _)| **weight != 0.0)
-                .map(|(weight, mode)| weight * daw_saturator::clip(mode, shaped))
+                .map(|(weight, mode)| weight * daw_dsp_support::waveshaping::clip(mode, shaped))
                 .sum::<f64>()
                 / weight_sum;
             let wet = clipped * output_gain;

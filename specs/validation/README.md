@@ -16521,3 +16521,23 @@ glide estimator. See the [revision-8 specification](../audio/timestretch.md#long
   `CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16`. The KDE checks used the desktop
   executable built with the repository's default release profile.
 - GTK 4.8 runtime behavior and manual window gestures were outside these checks.
+
+## Shared DSP support and Drive signal order — 2026-11-27
+
+- All 63 focused macOS arm64 tests passed. They cover shared waveshaping and
+  oversampling, effect latency and bypass, mode transitions, modulation, and
+  Plate wet drive.
+- The Drive v2 regression compares each clip mode against a separately
+  Tone-filtered signal at all six project rates. The existing Soft parity
+  test checks Drive and Drive v2 sample for sample with matching settings.
+- Tone now precedes clipping in both effects. This supersedes the processing
+  order used for the earlier Drive and Drive v2 checks. Existing Tone settings
+  away from neutral can change the sound.
+- `cargo fmt --all --check`, strict workspace Clippy, the CLI build and
+  `python3 tools/check_cli.py` passed.
+- `cargo test --workspace --locked --offline --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`
+  passed in the debug profile.
+- `cargo test --workspace --release --locked --offline --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`
+  passed with the default release profile.
+- Both runs excluded native macOS Audio Unit registration. Native host and
+  device listening checks and Windows and Linux runs remain open.

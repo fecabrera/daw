@@ -24,6 +24,11 @@ Read the instruction files that apply to your task before starting work.
 
 ## Project context and reference documents
 
+Put DSP implementations for built-in units in `crates/dsp-support`. Compose
+those building blocks in unit processors. Follow the
+[shared unit DSP decision](specs/architecture/modular-audio-units.md#shared-unit-dsp)
+when adding DSP or changing an existing algorithm.
+
 For independent implementation planning of a feature, bugfix, or improvement,
 use the [DAW explorer skill](.agents/skills/daw-explorer/SKILL.md). Use the caller's
 explorer count and optional per-agent models/focus; ask for the count if absent.

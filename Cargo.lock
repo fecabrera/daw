@@ -1750,6 +1750,7 @@ dependencies = [
 name = "daw-drive"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
  "fundsp",
 ]
@@ -1885,6 +1886,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-dsp-support"
+version = "0.1.0"
+dependencies = [
+ "daw-unit-core",
+]
+
+[[package]]
 name = "daw-engine"
 version = "0.1.0"
 dependencies = [
@@ -2013,8 +2021,8 @@ dependencies = [
 name = "daw-exciter"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-filter",
- "daw-saturator",
  "daw-unit-core",
  "serde_json",
 ]
@@ -2839,6 +2847,7 @@ dependencies = [
 name = "daw-reverb-core"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-filter",
  "daw-unit-core",
 ]
@@ -2855,6 +2864,7 @@ dependencies = [
 name = "daw-saturator"
 version = "0.1.0"
 dependencies = [
+ "daw-dsp-support",
  "daw-unit-core",
 ]
 
@@ -3094,7 +3104,7 @@ dependencies = [
 name = "daw-transient-shaper"
 version = "0.1.0"
 dependencies = [
- "daw-saturator",
+ "daw-dsp-support",
  "daw-unit-core",
 ]
 

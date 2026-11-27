@@ -14,6 +14,32 @@ Status: design baseline with implemented track/Master effects, MIDI sources and 
 
 Users build MIDI instruments and beat subtrack instruments in Instrument. Track and Master effect chains are available in Timeline and Mixer, with MIDI track effects also available in Instrument. These replace the earlier combined Units view. Audio tracks accept effects; MIDI tracks accept sources and effects. Editor provides waveform, MIDI pattern and beat pattern editors. Beat steps trigger independent subtrack instruments, each with source layers, modulators and effects. Units share a reusable core and support independent distribution. The Units MVP scope below is accepted; detailed graph API and layout choices remain proposals or implementation details.
 
+## Shared unit DSP
+
+Accepted on 2026-11-27. `daw-dsp-support` owns DSP algorithms for built-in
+sources, effects and modulators. Put sample calculations, coefficient
+generation and stateful DSP building blocks in that crate, including algorithms
+with one caller. Reuse an existing building block when its behavior matches the
+unit. Keep backend types private to the DSP implementation.
+
+Each unit composes building blocks in its signal path. It maps settings and
+modulation to DSP parameters, owns an independent instance of each building
+block, and handles the unit's lifecycle, signal order, bypass, monitoring and
+latency reporting. The shared crate provides each building block's state and
+processing API. Keep its dependency graph independent of concrete unit crates,
+the host, UI and device APIs.
+
+Migrate existing unit DSP as its algorithms change. Preserve existing sound,
+latency and state behavior during extraction unless the change calls for
+different behavior. Earlier crate-specific decisions describe the implementation
+at the time of each decision.
+
+The first extraction moves waveshaping and fixed 4× oversampling out of
+Saturator. Saturator and Transient Shaper share the clip transfer. Drive and
+Drive v2 use the gain-normalized clipper after Tone. Plate Reverb shares Hard
+and Tube with Saturator and uses the rational Soft curve. Exciter shares the
+oversampler, Analog Clip, Hard Curve and the biased tanh operation.
+
 ## Terms
 
 | Term | Meaning |
@@ -388,7 +414,7 @@ The [3-band EQ](../effects/equalizer.md) implements the first serial track effec
 
 ## Drive effect — D36, 2026-10-13
 
-[Drive](../effects/drive.md) adds two strips labeled Drive and Color. Drive has Volume, Gain, Tone; Color has Shape, Strength, Frequency. Shapes are Off, Mid scoop, Mid hump, and Mid hump + bass cut. Frequency moves the broad mid center and linked bass shelf; Strength sets the depth. The unit uses pre-clipping color, symmetric soft clipping, post-clipping Tone, and output Volume. Defaults are 0 dB Volume, 20% Gain, neutral Tone, Color Off, 50% saved Strength, and 750 Hz Color frequency (250 Hz–2 kHz range). Compact mode retains the two labels. Reuse the catalog, unit shell, shared knob, saved presentation, bypass, engine order, 5 ms smoothing, and missing-unit handling. The linked specification describes implementation limits and validation. This expands D35's serial track effect set without adding graph or lane/Master routing.
+[Drive](../effects/drive.md) adds two strips labeled Drive and Color. Drive has Volume, Gain, Tone; Color has Shape, Strength, Frequency. Shapes are Off, Mid scoop, Mid hump, and Mid hump + bass cut. Frequency moves the broad mid center and linked bass shelf; Strength sets the depth. The unit processes Color, then Tone, then symmetric soft clipping and output Volume. Defaults are 0 dB Volume, 20% Gain, neutral Tone, Color Off, 50% saved Strength, and 750 Hz Color frequency (250 Hz–2 kHz range). Compact mode retains the two labels. Reuse the catalog, unit shell, shared knob, saved presentation, bypass, engine order, 5 ms smoothing, and missing-unit handling. The linked specification describes implementation limits and validation. This expands D35's serial track effect set without adding graph or lane/Master routing.
 
 D36 (2026-10-13) adds the reusable [Auto-filter](../effects/auto-filter.md) to the serial track chain. Use one LFO strip with two columns, equal inner/outer horizontal gaps, no internal divider, and one centered Power/LFO footer. Use signed −180° to +180° sync/stereo phase. The portable processor accepts transport frame/tempo, uses FunDSP SVF coefficients with independent stereo state, and shares versioned settings, callback-safe transitions, presentation, selection, and ordering with other effects.
 

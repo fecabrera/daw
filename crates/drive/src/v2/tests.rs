@@ -40,6 +40,49 @@ fn soft_matches_original_drive_with_color_tone_gain_and_output_level_at_every_ra
 }
 
 #[test]
+fn clipping_receives_the_tone_filtered_signal_in_every_mode() {
+    use daw_dsp_support::waveshaping::NormalizedClipper;
+
+    for rate in RATES {
+        for mode in DriveV2Clip::ALL {
+            let settings = DriveV2Settings {
+                gain: 0.7,
+                tone: 1.0,
+                clip: mode,
+                ..Default::default()
+            };
+            let mut drive = DriveV2::new(context(rate), &settings);
+            let mut clean_tone = DriveV2::new(
+                context(rate),
+                &DriveV2Settings {
+                    gain: 0.0,
+                    ..settings.clone()
+                },
+            );
+            let clipper = NormalizedClipper::new(10_f32.powf(1.8 * settings.gain) - 1.0);
+            let hard = f32::from(mode == DriveV2Clip::Hard);
+            let tube = f32::from(mode == DriveV2Clip::Tube);
+            let mut tone_peak = 0.0_f32;
+            for frame in 0..512 {
+                let x = (frame as f32 * std::f32::consts::TAU * 8000.0 / rate as f32).sin();
+                let input = [0.6 * x, -0.2 * x];
+                let filtered = clean_tone.process_sample(input);
+                tone_peak = tone_peak.max(filtered[0].abs());
+                let expected = filtered.map(|sample| clipper.process(sample, hard, tube));
+                let actual = drive.process_sample(input);
+                for (actual, expected) in actual.into_iter().zip(expected) {
+                    assert!(
+                        (actual - expected).abs() < 1e-5,
+                        "{rate} Hz, {mode:?}: {actual} != {expected}"
+                    );
+                }
+            }
+            assert!(tone_peak > 1.5, "{rate} Hz, {mode:?}: {tone_peak}");
+        }
+    }
+}
+
+#[test]
 fn dry_retains_input_gain_output_level_follows_mix_and_bypass_is_original_audio() {
     for rate in RATES {
         for clip in [DriveV2Clip::Soft, DriveV2Clip::Hard] {

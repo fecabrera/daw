@@ -1,5 +1,6 @@
-//! Stereo soft-clipping drive with pre-clipping color and post-clipping tone.
+//! Stereo drive with color and tone filters before clipping.
 //! FunDSP filter types stay private; callback operations do not allocate or block.
+use daw_dsp_support::waveshaping::NormalizedClipper;
 use daw_unit_core::ramps::ExactRamp32 as Ramp;
 use daw_unit_core::{
     DRIVE_TYPE_ID, DriveSettings, EffectUnit, LevelMonitor, PortKind, ProcessingContext,
@@ -30,8 +31,7 @@ pub struct Drive {
     mix: Ramp,
     fade_frames: u32,
     configured: [f32; 4],
-    clipping: f32,
-    normalization: f32,
+    clipper: NormalizedClipper,
     external: daw_unit_core::ModulationSmoother<5>,
     effective: [f32; 5],
     monitor: LevelMonitor<3>,
@@ -66,8 +66,7 @@ impl Drive {
             fade_frames: (context.sample_rate_hz / 200).max(1),
             configured: [f32::NAN; 4],
             monitor: LevelMonitor::new(context.sample_rate_hz, settings.enabled),
-            clipping: 0.0,
-            normalization: 1.0,
+            clipper: NormalizedClipper::new(0.0),
             external: daw_unit_core::ModulationSmoother::new(context),
             effective: [
                 amplitude(settings.volume_db),
@@ -118,13 +117,8 @@ impl Drive {
         }
         self.effective[1..].copy_from_slice(&[values[0], values[1], values[2], values[3].exp()]);
         if values[0] != self.configured[0] {
-            // Zero is clean. Full gain supplies 36 dB of drive into a symmetric soft clipper.
-            self.clipping = 10_f32.powf(1.8 * values[0]) - 1.0;
-            self.normalization = if self.clipping < 1e-4 {
-                1.0
-            } else {
-                self.clipping.tanh().recip()
-            };
+            // Zero is clean. Full gain supplies approximately 36 dB of drive.
+            self.clipper = NormalizedClipper::new(10_f32.powf(1.8 * values[0]) - 1.0);
         }
         if values[1] != self.configured[1] {
             let gain = f64::from(amplitude((values[1] - 0.5) * 24.0));
@@ -213,8 +207,8 @@ impl Drive {
         self.monitor.sample_output(output);
         output
     }
-    /// Color/clipping/Tone output before the legacy Volume and power blend.
-    pub(crate) fn process_tone(
+    /// Color/Tone/clipping output before the legacy Volume and power blend.
+    pub(crate) fn process_wet(
         &mut self,
         input: [f32; 2],
         offsets: [f32; 5],
@@ -264,43 +258,12 @@ impl Drive {
                 .zip(&self.colors)
                 .map(|(sample, weight)| sample * weight.value())
                 .sum::<f32>();
-            let clipped = if self.clipping < 1e-4 {
-                color
-            } else {
-                let soft = (color * self.clipping).tanh() * self.normalization;
-                let blended = if hard <= 0.0 {
-                    soft
-                } else {
-                    let hard_sample =
-                        (color * self.clipping).clamp(-1.0, 1.0) / self.clipping.min(1.0);
-                    soft + (hard_sample - soft) * hard
-                };
-                if tube <= 0.0 {
-                    blended
-                } else {
-                    // Bias asymmetry adds even harmonics. Subtract the bias so
-                    // silence stays exact; normalize against the larger full-scale excursion.
-                    let bias = 0.3_f32;
-                    let baseline = bias.tanh();
-                    let positive = (self.clipping + bias).tanh() - baseline;
-                    let negative = baseline - (bias - self.clipping).tanh();
-                    // A folded tanh(bias) and the platform runtime tanh can differ
-                    // by an ULP. Preserve exact silence before subtracting them.
-                    let tube_sample = if color == 0.0 {
-                        0.0
-                    } else {
-                        ((color * self.clipping + bias).tanh() - baseline) / positive.max(negative)
-                    };
-                    // Crossfade all modes with independent weights; the soft
-                    // contribution is already reduced by the hard weight.
-                    blended + (tube_sample - soft) * tube
-                }
-            };
-            let tone = self.tone_filter[channel].filter_mono(clipped);
+            let tone = self.tone_filter[channel].filter_mono(color);
+            let clipped = self.clipper.process(tone, hard, tube);
             if pre_level {
-                tone
+                clipped
             } else {
-                let wet = tone * volume;
+                let wet = clipped * volume;
                 dry + (wet - dry) * self.mix.value()
             }
         })
