@@ -158,6 +158,32 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn noise_waveforms_round_trip_in_existing_oscillator_settings() {
+        for (waveform, saved) in [
+            (Waveform::WhiteNoise, "white_noise"),
+            (Waveform::PinkNoise, "pink_noise"),
+            (Waveform::BrownNoise, "brown_noise"),
+        ] {
+            let settings = OscillatorSettings {
+                waveform,
+                ..Default::default()
+            };
+            let value = serde_json::to_value(&settings).unwrap();
+            assert_eq!(value["waveform"], saved);
+            assert_eq!(value["version"], UNIT_STATE_VERSION);
+            let layer = crate::InstrumentLayerSettings {
+                oscillators: vec![settings],
+                ..Default::default()
+            };
+            let encoded = serde_json::to_vec(&layer).unwrap();
+            let restored: crate::InstrumentLayerSettings =
+                serde_json::from_slice(&encoded).unwrap();
+            assert!(restored.valid());
+            assert_eq!(restored, layer);
+        }
+    }
+
+    #[test]
     fn oscillator_cents_width_routes_validate_roundtrip_duplicate_and_remove_by_id() {
         let mut layer = crate::InstrumentLayerSettings {
             oscillators: vec![OscillatorSettings::default()],

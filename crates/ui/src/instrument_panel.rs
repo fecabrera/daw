@@ -1472,11 +1472,12 @@ impl DawUi {
                         let target_routes: Vec<_> = routes.iter().filter(|r| r.target == Some(oscillator.id)).copied().collect();
                         let live = self.output.as_ref().and_then(|o| o.modulation_snapshot(daw_engine::ModulationTarget::Oscillator { track, layer: layer_id, oscillator: oscillator.id }))
                             .map_or([None; 8], |v| std::array::from_fn(|i| v[i].is_finite().then_some(v[i])));
+                        let tonal = oscillator.waveform.noise_type().is_none();
                         let marker = crate::modulation_panel::marker(&target_routes, sources, daw_core::ModulationParameter::Pitch,
-                            f32::from(oscillator.transpose) + oscillator.cents / 100.0, unit_enabled && !oscillator.muted, None, [live[0], live[1]]);
+                            f32::from(oscillator.transpose) + oscillator.cents / 100.0, tonal && unit_enabled && !oscillator.muted, None, [live[0], live[1]]);
                         let gain_marker = crate::modulation_panel::marker(&target_routes, sources, daw_core::ModulationParameter::OscillatorGain, oscillator.gain_db, unit_enabled && !oscillator.muted, None, [live[2], live[3]]);
-                        let cents_marker = crate::modulation_panel::marker(&target_routes, sources, daw_core::ModulationParameter::OscillatorCents, oscillator.cents, unit_enabled && !oscillator.muted, None, [live[4], live[5]]);
-                        let width_marker = crate::modulation_panel::marker(&target_routes, sources, daw_core::ModulationParameter::OscillatorWidth, oscillator.width, unit_enabled && !oscillator.muted && oscillator.unison != daw_core::OscillatorUnison::Off, None, [live[6], live[7]]);
+                        let cents_marker = crate::modulation_panel::marker(&target_routes, sources, daw_core::ModulationParameter::OscillatorCents, oscillator.cents, tonal && unit_enabled && !oscillator.muted, None, [live[4], live[5]]);
+                        let width_marker = crate::modulation_panel::marker(&target_routes, sources, daw_core::ModulationParameter::OscillatorWidth, oscillator.width, unit_enabled && !oscillator.muted && (!tonal || oscillator.unison != daw_core::OscillatorUnison::Off), None, [live[6], live[7]]);
                         let strip = ui.scope_builder(
                             egui::UiBuilder::new()
                                 .id_salt(("oscillator-strip", track, oscillator.id))
@@ -1492,17 +1493,18 @@ impl DawUi {
                                                     daw_unit_ui::layout::unit_columns(ui, 2, |ui, column| {
                                                         for row in 0..3 {
                                                             responses.push(knobs::row(ui, oscillator, knobs::CHOICE_SIZE, |ui, oscillator| {
+                                                                let tonal = oscillator.waveform.noise_type().is_none();
                                                                 match (column, row) {
                                                                     (0, 0) => crate::oscillator_preview::show(ui, &mut oscillator.waveform, unit_enabled && !oscillator.muted),
                                                                     (0, 1) => {
                                                                         let mut scalar = f32::from(oscillator.transpose);
-                                                                        let r = ui.add(knobs::Knob::new(&mut scalar, knobs::pitch_spec()).modulated(marker.as_ref(), modulation_open));
+                                                                        let r = ui.add_enabled(tonal, knobs::Knob::new(&mut scalar, knobs::pitch_spec()).modulated(marker.as_ref(), modulation_open));
                                                                         if r.changed() { oscillator.transpose = scalar as i8; } r
                                                                     }
                                                                     (0, 2) => ui.add(knobs::Knob::new(&mut oscillator.gain_db, knobs::marked_gain_spec()).modulated(gain_marker.as_ref(), modulation_open)),
-                                                                    (1, 0) => crate::oscillator_controls::unison(ui, oscillator),
-                                                                    (1, 1) => ui.add(knobs::Knob::new(&mut oscillator.cents, crate::parameter_knobs::destination(daw_core::ModulationParameter::OscillatorCents)).modulated(cents_marker.as_ref(), modulation_open)),
-                                                                    _ => ui.add_enabled(oscillator.unison != daw_core::OscillatorUnison::Off,
+                                                                    (1, 0) => ui.add_enabled_ui(tonal, |ui| crate::oscillator_controls::unison(ui, oscillator)).inner,
+                                                                    (1, 1) => ui.add_enabled(tonal, knobs::Knob::new(&mut oscillator.cents, crate::parameter_knobs::destination(daw_core::ModulationParameter::OscillatorCents)).modulated(cents_marker.as_ref(), modulation_open)),
+                                                                    _ => ui.add_enabled(!tonal || oscillator.unison != daw_core::OscillatorUnison::Off,
                                                                         knobs::Knob::new(&mut oscillator.width, crate::parameter_knobs::destination(daw_core::ModulationParameter::OscillatorWidth)).modulated(width_marker.as_ref(), modulation_open)),
                                                                 }
                                                             }));

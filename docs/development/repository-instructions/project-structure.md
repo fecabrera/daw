@@ -24,7 +24,7 @@ The table includes existing unit implementations at their current locations.
 | `crates/granulizer` | Portable bounded stereo grain synthesis, deterministic randomness, scan/pitch separation and windowing over host-owned PCM; no project, UI, media, or device dependencies. |
 | `crates/sampler` | Shared sample-source facade plus portable prepared stereo sample playback, local position, gain/power ramps, and boundary fades; no project, UI, media, or device dependencies. |
 | `crates/noise` | Portable deterministic stereo White/Pink/Brown noise, Color/Width/Level smoothing and shared modulation; no project, UI, media or device dependencies. |
-| `crates/oscillator` | FunDSP-backed oscillator sources behind the shared unit API; keep backend types private. |
+| `crates/oscillator` | Tonal oscillator sources using FunDSP and noise waveforms using the shared procedural generator. Keep backend types private. |
 | `crates/equalizer` | Reusable stereo 3-band EQ behind the shared effect API; keep FunDSP types private. |
 | `crates/saturator` | Portable stereo saturation, fixed 4× FIR oversampling, aligned dry/bypass paths, and shared modulation; no DAW, UI, media, or device dependencies. |
 | `crates/harmonic-lift` | Portable six-branch harmonic enhancement, global drive, linked maximization and aligned 2× quality paths; no DAW, UI or device dependencies. |

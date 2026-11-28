@@ -1,7 +1,7 @@
 use super::*;
 use daw_unit_core::{
     Modulation, ModulationBehavior, ModulationRange, ModulationRoute, ModulationSourceId,
-    ModulationValue, process_modulation,
+    ModulationValue, NoiseType, process_modulation,
 };
 fn noise_settings() -> NoiseSettings {
     NoiseSettings {

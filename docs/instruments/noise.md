@@ -2,8 +2,8 @@
 
 Noise generates White, Pink or Brown noise for MIDI layers and beat subtracks.
 Add it from **Sources → Noise** in the Instrument components catalog. Adding it
-replaces the layer's existing source. Use another layer to mix Noise with an
-Oscillator, Sampler or Granulizer.
+replaces the layer's existing source. Choose a waveform from **Noise** in an [Oscillator](oscillator.md) strip to
+mix noise and tones in the same layer. Use the separate Noise source for Color.
 
 ## Controls
 

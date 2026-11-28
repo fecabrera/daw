@@ -455,7 +455,10 @@ fn live_pitch_edits_follow_a_continuous_source_without_restarting_notes() {
     use daw_oscillator::Oscillator;
     use daw_unit_core::{ProcessingContext, SourceUnit};
     for rate in SAMPLE_RATES {
-        for waveform in Waveform::ALL {
+        for waveform in Waveform::ALL
+            .into_iter()
+            .filter(|waveform| waveform.noise_type().is_none())
+        {
             let mut edited = plan(waveform, rate);
             let gain = linear_gain(-12.0);
             let pan = daw_engine::pan_coefficients(0.0, true);

@@ -1,8 +1,9 @@
-//! FunDSP adapter. No backend types appear in the unit API or persisted settings.
+//! Prepared oscillator sources backed by shared tone and noise generators.
+use daw_dsp_support::noise::NoiseGenerator;
 use daw_dsp_support::oscillator::{OscillatorBank, Waveform as DspWaveform};
 use daw_unit_core::{
     ModulationContext, ModulationDestination, ModulationInputs, ModulationParameter,
-    ModulationScope, ModulationSmoother, ModulationTargetId, OSCILLATOR_TYPE_ID,
+    ModulationScope, ModulationSmoother, ModulationTargetId, NoiseType, OSCILLATOR_TYPE_ID,
     OscillatorSettings, PortKind, ProcessingContext, SourceUnit, UnitDescriptor, Waveform,
 };
 
@@ -12,12 +13,25 @@ fn dsp_waveform(waveform: Waveform) -> DspWaveform {
         Waveform::Saw => DspWaveform::Saw,
         Waveform::Square => DspWaveform::Square,
         Waveform::Triangle => DspWaveform::Triangle,
+        Waveform::WhiteNoise | Waveform::PinkNoise | Waveform::BrownNoise => {
+            unreachable!("noise uses its own generator")
+        }
     }
 }
 
 #[derive(Clone)]
+enum Kernel {
+    Tone(OscillatorBank),
+    Noise {
+        generator: Box<NoiseGenerator>,
+        kind: NoiseType,
+        rate: u32,
+    },
+}
+
+#[derive(Clone)]
 pub struct Oscillator {
-    kernel: OscillatorBank,
+    kernel: Kernel,
     frequency: f32,
     target: Option<ModulationTargetId>,
     offsets: ModulationSmoother<4>,
@@ -28,15 +42,52 @@ pub struct Oscillator {
 }
 impl Oscillator {
     pub fn heap_bytes(&self) -> u64 {
-        self.kernel.heap_bytes()
+        match &self.kernel {
+            Kernel::Tone(bank) => bank.heap_bytes(),
+            Kernel::Noise { .. } => std::mem::size_of::<NoiseGenerator>() as u64,
+        }
     }
 
     /// Construct and allocate on a control thread, before entering audio processing.
     pub fn new(waveform: Waveform, context: ProcessingContext) -> Self {
+        Self::prepare(waveform, context, None)
+    }
+
+    fn prepare(
+        waveform: Waveform,
+        context: ProcessingContext,
+        settings: Option<&OscillatorSettings>,
+    ) -> Self {
+        let target = settings.map(|settings| settings.id);
+        let rate = context.sample_rate_hz;
+        let kernel = if let Some(kind) = waveform.noise_type() {
+            let width = settings.map_or(100.0, |s| s.width);
+            let width = if width.is_finite() {
+                f64::from(width.clamp(0.0, 100.0)) / 100.0
+            } else {
+                1.0
+            };
+            Kernel::Noise {
+                generator: Box::new(NoiseGenerator::new(
+                    rate,
+                    target.map_or(0, |id| id.as_u128()),
+                    [0.0, width, 1.0],
+                    kind.spectrum_weights(),
+                )),
+                kind,
+                rate,
+            }
+        } else {
+            let mut bank = OscillatorBank::new(dsp_waveform(waveform), rate);
+            if let Some(s) = settings {
+                bank.prepare_voices(s.unison.voices(), s.cents, s.detune_cents, s.width);
+            }
+            Kernel::Tone(bank)
+        };
         Self {
-            kernel: OscillatorBank::new(dsp_waveform(waveform), context.sample_rate_hz),
+            kernel,
             frequency: 440.0,
-            target: None,
+            target,
             offsets: ModulationSmoother::new(context),
             effective_offset: 0.0,
             output_pitch_ratio: 1.0,
@@ -47,20 +98,12 @@ impl Oscillator {
 
     /// Prepare an identified instance. Hosts keep MIDI pitch and base transpose in the base frequency.
     pub fn from_settings(settings: &OscillatorSettings, context: ProcessingContext) -> Self {
-        let mut source = Self::new(settings.waveform, context);
-        source.target = Some(settings.id);
-        source.kernel.prepare_voices(
-            settings.unison.voices(),
-            settings.cents,
-            settings.detune_cents,
-            settings.width,
-        );
-        source
+        Self::prepare(settings.waveform, context, Some(settings))
     }
 
     /// Processed fine tuning plus modulation, in semitones; excludes MIDI/coarse pitch.
     pub fn pitch_offset(&self) -> f32 {
-        self.effective_offset + self.kernel.cents() / 100.0
+        self.effective_offset + self.effective_cents() / 100.0
     }
     /// Common unit tuning, prepared once per note by OscillatorOutput.
     /// Keep source Pitch modulation independent of this ratio.
@@ -82,21 +125,65 @@ impl Oscillator {
     }
     /// Continuous changes retain every prepared oscillator phase and allocate nothing.
     pub fn compatible(&self, next: &Self) -> bool {
-        self.kernel.compatible(&next.kernel)
+        match (&self.kernel, &next.kernel) {
+            (Kernel::Tone(a), Kernel::Tone(b)) => a.compatible(b),
+            (
+                Kernel::Noise { kind: a, rate, .. },
+                Kernel::Noise {
+                    kind: b,
+                    rate: next_rate,
+                    ..
+                },
+            ) => a == b && rate == next_rate,
+            _ => false,
+        }
     }
 
     pub fn retarget(&mut self, next: &Self) -> bool {
-        self.kernel.retarget(&next.kernel)
+        if !self.compatible(next) {
+            return false;
+        }
+        match (&mut self.kernel, &next.kernel) {
+            (Kernel::Tone(a), Kernel::Tone(b)) => a.retarget(b),
+            (Kernel::Noise { generator: a, .. }, Kernel::Noise { generator: b, .. }) => {
+                a.retarget(b);
+                true
+            }
+            _ => false,
+        }
     }
 
     pub fn effective_cents(&self) -> f32 {
-        self.kernel.cents()
+        match &self.kernel {
+            Kernel::Tone(bank) => bank.cents(),
+            Kernel::Noise { .. } => 0.0,
+        }
     }
     pub fn effective_width(&self) -> f32 {
-        self.kernel.width()
+        match &self.kernel {
+            Kernel::Tone(bank) => bank.width(),
+            Kernel::Noise { generator, .. } => generator.values()[1] * 100.0,
+        }
     }
+
+    /// Start a note with an independent, reproducible noise stream.
+    pub fn trigger(&mut self, note: u128) {
+        match &mut self.kernel {
+            Kernel::Tone(bank) => bank.reset(),
+            Kernel::Noise { generator, .. } => {
+                generator.trigger(self.target.map_or(0, |id| id.as_u128()) ^ note);
+            }
+        }
+        self.offsets.reset();
+        self.effective_gain = self.base_gain;
+        self.effective_offset = 0.0;
+    }
+
     pub fn next_stereo_sample(&mut self) -> [f32; 2] {
-        self.kernel.sample(self.frequency, [0.0; 2])
+        match &mut self.kernel {
+            Kernel::Tone(bank) => bank.sample(self.frequency, [0.0; 2]),
+            Kernel::Noise { generator, .. } => generator.render([0.0; 3]),
+        }
     }
 }
 impl ModulationDestination for Oscillator {
@@ -126,21 +213,25 @@ impl ModulationDestination for Oscillator {
             (self.base_gain * 10_f32.powf(gain_offset.clamp(-96.0, 96.0) as f32 / 20.0))
                 .min(10_f32.powf(12.0 / 20.0))
         };
-        // Bound the summed offset before exponentiation. Invalid/high frequencies remain silent.
-        self.effective_offset = offset.clamp(-96.0, 96.0) as f32;
-        let frequency = if self.effective_offset == 0.0 {
-            self.frequency
-        } else {
-            self.frequency * 2.0_f32.powf(self.effective_offset / 12.0)
+        let frame = match &mut self.kernel {
+            Kernel::Noise { generator, .. } => generator.render([0.0, width_offset / 100.0, 0.0]),
+            Kernel::Tone(bank) => {
+                // Bound the summed offset before exponentiation.
+                self.effective_offset = offset.clamp(-96.0, 96.0) as f32;
+                let frequency = if self.effective_offset == 0.0 {
+                    self.frequency
+                } else {
+                    self.frequency * 2.0_f32.powf(self.effective_offset / 12.0)
+                };
+                let frequency = if self.output_pitch_ratio == 1.0 {
+                    frequency
+                } else {
+                    frequency * self.output_pitch_ratio
+                };
+                bank.sample(frequency, [cents_offset as f32, width_offset as f32])
+            }
         };
-        let frequency = if self.output_pitch_ratio == 1.0 {
-            frequency
-        } else {
-            frequency * self.output_pitch_ratio
-        };
-        self.kernel
-            .sample(frequency, [cents_offset as f32, width_offset as f32])
-            .map(|v| v * self.effective_gain)
+        frame.map(|v| v * self.effective_gain)
     }
 }
 impl SourceUnit for Oscillator {
@@ -154,10 +245,7 @@ impl SourceUnit for Oscillator {
         }
     }
     fn reset(&mut self) {
-        self.kernel.reset();
-        self.offsets.reset();
-        self.effective_gain = self.base_gain;
-        self.effective_offset = 0.0;
+        self.trigger(0);
     }
     fn set_frequency(&mut self, hz: f32) {
         self.frequency = if hz.is_finite() && hz > 0.0 { hz } else { 0.0 };
@@ -196,6 +284,64 @@ mod tests {
         Modulation, ModulationBehavior, ModulationRange, ModulationRoute, ModulationSourceId,
         ModulationValue, prepare_target_routes,
     };
+
+    #[test]
+    fn noise_waveforms_use_the_shared_seeded_generator_without_pitch() {
+        let context = ProcessingContext {
+            sample_rate_hz: 48_000,
+            max_block_frames: 128,
+        };
+        for waveform in [
+            Waveform::WhiteNoise,
+            Waveform::PinkNoise,
+            Waveform::BrownNoise,
+        ] {
+            let settings = OscillatorSettings {
+                waveform,
+                width: 0.0,
+                ..Default::default()
+            };
+            let mut source = Oscillator::from_settings(&settings, context);
+            let kind = waveform.noise_type().unwrap();
+            let seed = settings.id.as_u128();
+            let mut reference = NoiseGenerator::new(
+                context.sample_rate_hz,
+                seed,
+                [0.0, 0.0, 1.0],
+                kind.spectrum_weights(),
+            );
+            let render = |source: &mut Oscillator| {
+                source.process_with_modulation(
+                    [0.0; 2],
+                    &ModulationInputs::neutral(1.0),
+                    ModulationContext::default(),
+                )
+            };
+            for note in [10, 20, 10] {
+                reference.trigger(seed ^ note);
+                source.trigger(note);
+                source.set_frequency(if note == 10 { 220.0 } else { 880.0 });
+                source.set_output_pitch_ratio(2.0);
+                for _ in 0..128 {
+                    assert_eq!(render(&mut source), reference.render([0.0; 3]));
+                    assert_eq!(source.pitch_offset(), 0.0);
+                }
+            }
+            let wider = OscillatorSettings {
+                width: 100.0,
+                ..settings
+            };
+            assert!(source.retarget(&Oscillator::from_settings(&wider, context)));
+            for _ in 0..context.sample_rate_hz / 200 {
+                render(&mut source);
+            }
+            assert_eq!(source.effective_width(), 100.0);
+            let frame = render(&mut source);
+            assert_ne!(frame[0], frame[1]);
+            source.set_base_gain(0.0);
+            assert_eq!(render(&mut source), [0.0; 2]);
+        }
+    }
 
     #[test]
     fn oscillator_cents_and_width_share_targeted_resolution_smoothing_bounds_and_cancellation() {

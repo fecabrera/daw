@@ -127,15 +127,39 @@ pub enum Waveform {
     Saw,
     Square,
     Triangle,
+    WhiteNoise,
+    PinkNoise,
+    BrownNoise,
 }
 impl Waveform {
-    pub const ALL: [Self; 4] = [Self::Sine, Self::Saw, Self::Square, Self::Triangle];
+    pub const ALL: [Self; 7] = [
+        Self::Sine,
+        Self::Saw,
+        Self::Square,
+        Self::Triangle,
+        Self::WhiteNoise,
+        Self::PinkNoise,
+        Self::BrownNoise,
+    ];
+
+    pub fn noise_type(self) -> Option<NoiseType> {
+        match self {
+            Self::WhiteNoise => Some(NoiseType::White),
+            Self::PinkNoise => Some(NoiseType::Pink),
+            Self::BrownNoise => Some(NoiseType::Brown),
+            Self::Sine | Self::Saw | Self::Square | Self::Triangle => None,
+        }
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Sine => "Sine",
             Self::Saw => "Saw",
             Self::Square => "Square",
             Self::Triangle => "Triangle",
+            Self::WhiteNoise => "White noise",
+            Self::PinkNoise => "Pink noise",
+            Self::BrownNoise => "Brown noise",
         }
     }
 }

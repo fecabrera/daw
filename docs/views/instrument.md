@@ -46,7 +46,7 @@ The Instrument components catalog shows Sources and Processors on a layer tab. A
 
 | Folder | Component | Use |
 | --- | --- | --- |
-| Sources | [Oscillator](../instruments/oscillator.md) | Generate Sine, Saw, Square, or Triangle tones. One Oscillator unit can contain several sources. |
+| Sources | [Oscillator](../instruments/oscillator.md) | Combine Basic tones and White, Pink, or Brown noise in one unit. |
 | Sources | [Granulizer](../instruments/granulizer.md) | Build overlapping grain textures from a selected audio region. |
 | Sources | [Sampler](../instruments/sampler.md) | Play a selected audio region when MIDI notes arrive. |
 | Sources | [Noise](../instruments/noise.md) | Generate White, Pink, or Brown noise. |

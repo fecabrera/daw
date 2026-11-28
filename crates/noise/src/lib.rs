@@ -2,7 +2,7 @@
 use daw_dsp_support::noise::NoiseGenerator;
 use daw_unit_core::{
     ModulationContext, ModulationDestination, ModulationDestinationSettings, ModulationInputs,
-    ModulationParameter, ModulationScope, ModulationSmoother, NoiseSettings, NoiseType, PortKind,
+    ModulationParameter, ModulationScope, ModulationSmoother, NoiseSettings, PortKind,
     ProcessingContext, StereoSourceUnit, UnitDescriptor,
 };
 #[derive(Clone)]
@@ -21,7 +21,7 @@ impl Noise {
                 context.sample_rate_hz,
                 id,
                 targets(settings),
-                weights(settings.kind),
+                settings.kind.spectrum_weights(),
             ),
             offsets: ModulationSmoother::new(context),
         }
@@ -63,13 +63,6 @@ fn targets(s: &NoiseSettings) -> [f64; 3] {
             10.0_f64.powf(f64::from(s.level_db.min(12.0)) / 20.0)
         },
     ]
-}
-fn weights(kind: NoiseType) -> [f64; 3] {
-    match kind {
-        NoiseType::White => [1.0, 0.0, 0.0],
-        NoiseType::Pink => [0.0, 1.0, 0.0],
-        NoiseType::Brown => [0.0, 0.0, 1.0],
-    }
 }
 impl ModulationDestination for Noise {
     type Audio = [f32; 2];

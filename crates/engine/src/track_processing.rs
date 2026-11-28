@@ -130,10 +130,10 @@ pub(super) fn instrument_is_mono(
             || {
                 layer.sampler.as_ref().is_none_or(|s| s.input.is_none())
                     && layer.noise.is_none()
-                    && layer
-                        .oscillators
-                        .iter()
-                        .all(|s| s.unison == daw_core::OscillatorUnison::Off)
+                    && layer.oscillators.iter().all(|s| {
+                        s.waveform.noise_type().is_none()
+                            && s.unison == daw_core::OscillatorUnison::Off
+                    })
             },
             |s| s.settings().is_some_and(|s| s.output_channels == 1),
         );

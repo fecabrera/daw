@@ -13,7 +13,7 @@ nil/duplicate source identities, invalid routes and source conflicts atomically.
 Older manifests without Noise deserialize to no Noise source. Save the existing
 instrument version; this is an optional source field, not a reinterpretation.
 
-A layer has Oscillator, Sampler/Granulizer or Noise, never more than one. Catalog
+A layer installs one source unit. The standalone Noise unit owns Type, Color, Width and Level. The [Oscillator noise waveforms](midi-patterns.md#noise-waveforms) use the shared DSP inside an Oscillator strip. Catalog
 registration uses `daw.noise` in Sources, with no Main/provider-lane constructor.
 Adding Noise clears the existing source and its routes. Source copies get fresh
 source/route identities; moves retain identity. Shared layer-copy/reference-remap

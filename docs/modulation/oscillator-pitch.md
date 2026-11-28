@@ -40,13 +40,13 @@ Its marker opens the same connections. Live dots show the lowest and highest act
 
 ## Connect output Pitch modulation
 
-Select **Pitch** as Destination to transpose all oscillator sources together. Open **Osc N** and select **Pitch** for one source. Output Pitch adds to each source's tuning and modulation, preserving their intervals. Set Amount from −48 to +48 semitones. Per note and shared sources are supported, including sources in Output. The knob's live dots show the common transpose, excluding the MIDI note and individual source Pitch.
+Select **Pitch** as Destination to transpose all Basic waveforms together. Open **Osc N** and select **Pitch** for one source. Output Pitch adds to tonal tuning and modulation, preserving intervals. Set Amount from −48 to +48 semitones. Per note and shared sources are supported, including sources in Output. The knob's live dots show the common transpose, excluding the MIDI note and individual source Pitch.
 
 Output Pitch and its connections save with the layer. Moving or copying the complete Oscillator unit into an empty destination carries the connections. A merge retains the destination's output controls and connections; an individual source transfer leaves the output connections in place.
 
 ## Modulate Cents and Width
 
-Open **Osc N** and select **Cents** for fine tuning on one source, or **Cents** for all oscillator sources through Out. Amount spans −100 to +100 cents. There are 100 cents in one semitone. Cents adds to coarse Pitch without changing the saved knobs.
+Open **Osc N** and select **Cents** for fine tuning on one source, or **Cents** for all Basic waveforms through Out. Amount spans −100 to +100 cents. There are 100 cents in one semitone. Cents adds to coarse Pitch without changing the saved knobs. Noise waveforms respond to Gain and Width modulation.
 
 Open **Osc N** and select **Width** to vary a source’s unison spread. Amount spans −100 to +100 percentage points. For example, a base Width of 50% and a full source value with Amount +25% produces 75%. Width affects unison modes 2, 4, and 8; Off retains the connection without a stereo spread.
 

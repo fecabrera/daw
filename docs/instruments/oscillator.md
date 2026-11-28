@@ -1,12 +1,12 @@
 # Oscillator
 
-Oscillator generates tones for MIDI notes. Add it from Sources in the Instrument components catalog to a regular layer. A layer can use Oscillator or Sampler, not both.
+Oscillator generates tones and noise for MIDI notes. Add it from Sources in the Instrument components catalog to a regular layer.
 
 ## Controls
 
 | Control | Range or choices | Default |
 | --- | --- | --- |
-| Waveform dropdown | Sine, Saw, Square, Triangle | Sine |
+| Waveform dropdown | **Basic** (Sine, Saw, Square, Triangle), **Noise** (White noise, Pink noise, Brown noise) | Sine |
 | Pitch | −48 to +48 semitones | 0 |
 | Cents (each source and Out) | −100 to +100 cents | 0 |
 | Unison | Off, 2, 4, 8 voices | Off |
@@ -20,9 +20,11 @@ Oscillator generates tones for MIDI notes. Add it from Sources in the Instrument
 
 Use Plus inside the unit, before Out, to add another oscillator. Each source has independent controls and power. Drag unused strip space to reorder sources. To move a source to the first position, drop it on the left half of the first strip. The insertion line stays within the oscillator unit’s height. Right-click a source or its knob to remove it. Removing the last source leaves the layer silent.
 
-Each source shows one cycle of its selected waveform above the Waveform dropdown. Choose Sine, Saw, Square or Triangle from that dropdown. The graphic stays visible while stopped or playing. Pitch changes the cycle duration, so it does not change the number of cycles shown. The preview shows the source shape at a fixed height; it excludes Gain, modulation, note phases, other sources, Amplitude and effects. A powered-off source keeps its shape in grey.
+Open **Basic** for Sine, Saw, Square, or Triangle. Open **Noise** for White, Pink, or Brown noise. You can mix tones and noise in the same Oscillator unit by choosing a waveform on each strip. The graph above the dropdown shows one cycle for a Basic waveform or a fixed illustration for noise. A powered-off source shows the graph in grey.
 
-Unison and Detune share one input group. Choose the voice count on the left; drag or type Detune on the right. Detune spreads the voices from below to above the source pitch by the selected cents amount. Width spreads them between the stereo channels; zero centers all voices. Detune and Width are disabled when Unison is Off. Unison voices share the source Gain and are averaged before other sources are summed.
+MIDI notes trigger noise, and Gain and Width shape it. Width ranges from mono at 0% to independent stereo at 100%. Pitch, Cents, Unison, and Detune apply to Basic waveforms. A strip retains those settings when you switch to noise. Use the separate [Noise](noise.md) source for a Color control.
+
+Unison and Detune share one input group. Choose the voice count on the left; drag or type Detune on the right. Detune spreads the voices from below to above the source pitch by the selected cents amount. Width spreads them between the stereo channels; zero centers all voices. For Basic waveforms, Detune and Width are disabled when Unison is Off. Unison voices share the source Gain and are averaged before other sources are summed.
 
 Cents adds fine tuning to Pitch. There are 100 cents in one semitone. Out Cents tunes all oscillator sources together.
 
@@ -40,4 +42,4 @@ Use [pitch, Cents, Width, gain, and Level modulation](../modulation/oscillator-p
 
 Select **Level** in the Oscillator connections to modulate the combined output. Amount spans −24 to +24 dB. Envelope, LFO, and Macro sources can control it, including sources in Output. Each note has its own processed Level, limited to +12 dB; a base Level of −∞ stays silent. The knob shows the standard assignment marker, range arc, and live voice extrema. Level modulation does not extend a note; use Amplitude for note release.
 
-Output Pitch transposes every oscillator source together and preserves their tuning intervals. Each source's Pitch remains independent. The output knob sits below Level and saves with the layer. Select **Pitch** in the Oscillator modulation destinations to control all sources; open **Osc N** and select **Pitch** to control one source. Amount spans −48 to +48 semitones. Envelope, LFO, and Macro sources can control output Pitch, including shared sources in Output. The standard marker, range arc, and live dots show its modulation. Pitch changes are smoothed and retain oscillator phase.
+Output Pitch transposes all Basic waveforms together and preserves their tuning intervals. Each source's Pitch remains independent. The output knob sits below Level and saves with the layer. Select **Pitch** in the Oscillator modulation destinations to control all sources; open **Osc N** and select **Pitch** to control one source. Amount spans −48 to +48 semitones. Envelope, LFO, and Macro sources can control output Pitch, including shared sources in Output. The standard marker, range arc, and live dots show its modulation. Pitch changes are smoothed and retain oscillator phase.

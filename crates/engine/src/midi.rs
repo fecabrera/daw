@@ -179,7 +179,7 @@ impl Voice {
         self.velocity = f32::from(velocity) / 127.0;
         self.pitch = pitch;
         for oscillator in self.layers.iter_mut().flat_map(|layer| &mut layer.sources) {
-            oscillator.source.reset();
+            oscillator.source.trigger(id.as_u128());
             for route in &mut oscillator.routes {
                 route.reset();
             }
@@ -871,7 +871,9 @@ impl MidiTrackRuntime {
             for settings in sources {
                 settings.id.hash(&mut hash);
                 format!("{:?}", settings.waveform).hash(&mut hash);
-                settings.unison.hash(&mut hash);
+                if settings.waveform.noise_type().is_none() {
+                    settings.unison.hash(&mut hash);
+                }
             }
         }
         project.tempo_bpm.to_bits().hash(&mut hash);

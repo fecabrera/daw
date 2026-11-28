@@ -2,6 +2,23 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Oscillator waveform submenus and noise, 2026-11-28
+
+Focused tests passed for Waveform selection through Basic and Noise, saved
+waveform values, and sample parity with the shared noise generator. The
+generator test also checked note seeding, pitch independence, Width and
+silence. Formatting, strict workspace Clippy, and the CLI smoke check
+passed. The local macOS debug app rebuilt and passed signature verification.
+Interactive native UI checks remain open.
+
+The debug and release workspace suites each passed 3,872 tests, ignored 25,
+and excluded 22 native Audio Unit registration cases.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
 ## Instrument mix overview and shortcuts, 2026-11-28
 
 UI tests verified that the five lane title panels ignore selection clicks,

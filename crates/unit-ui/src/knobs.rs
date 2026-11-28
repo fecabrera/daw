@@ -526,7 +526,32 @@ pub fn waveform_path(waveform: daw_unit_core::Waveform) -> Vec<Vec2> {
             Vec2::new(0.25, 0.5),
             Vec2::new(0.5, -0.5),
         ],
+        Waveform::WhiteNoise | Waveform::PinkNoise | Waveform::BrownNoise => {
+            noise_waveform_path(waveform.noise_type().unwrap())
+        }
     }
+}
+
+/// A fixed illustration of each noise type, independent of audio and playback.
+pub fn noise_waveform_path(kind: daw_unit_core::NoiseType) -> Vec<Vec2> {
+    let smoothing = match kind {
+        daw_unit_core::NoiseType::White => 0.0,
+        daw_unit_core::NoiseType::Pink => 0.48,
+        daw_unit_core::NoiseType::Brown => 0.78,
+    };
+    let trace = [
+        -0.05, 0.38, -0.43, 0.11, -0.40, -0.27, -0.47, 0.22, 0.43, -0.09, 0.37, 0.45, -0.06, 0.25,
+        -0.34, 0.28, -0.40, -0.22, -0.47, 0.09, 0.41, -0.12, 0.31, -0.02,
+    ];
+    let mut sample = 0.0;
+    trace
+        .into_iter()
+        .enumerate()
+        .map(|(i, value)| {
+            sample = sample * smoothing + value * (1.0 - smoothing);
+            Vec2::new(i as f32 / (trace.len() - 1) as f32 - 0.5, sample)
+        })
+        .collect()
 }
 
 fn time_position(value: f32) -> f32 {
@@ -1924,6 +1949,9 @@ mod tests {
     fn waveform_drag_wraps_for_multiple_turns_in_both_directions() {
         let ctx = egui::Context::default();
         let spec = waveform_spec();
+        let choices = daw_unit_core::Waveform::ALL.len() as i32;
+        let step_distance = 150.0 / choices as f32;
+        let two_turns = 2 * choices;
         let mut value = 0.0;
         let point = spec_frame(&ctx, &mut value, vec![], Default::default(), spec, true).center();
         spec_frame(
@@ -1934,8 +1962,8 @@ mod tests {
             spec,
             true,
         );
-        for index in (1_i32..=16).chain((-8..16).rev()) {
-            let pos = point - Vec2::new(0.0, index as f32 * 37.5);
+        for index in (1..=two_turns).chain((-two_turns..two_turns).rev()) {
+            let pos = point - Vec2::Y * (index as f32 * step_distance);
             spec_frame(
                 &ctx,
                 &mut value,
@@ -1944,12 +1972,12 @@ mod tests {
                 spec,
                 true,
             );
-            assert_eq!(value, index.rem_euclid(4) as f32);
+            assert_eq!(value, index.rem_euclid(choices) as f32);
         }
         let pos = point + Vec2::new(0.0, 300.0);
         spec_frame(&ctx, &mut value, vec![], egui::Modifiers::SHIFT, spec, true);
         assert_eq!(value, 0.0, "changing Shift must not jump to another choice");
-        let end = pos - Vec2::new(0.0, 375.0);
+        let end = pos - Vec2::Y * (10.0 * step_distance);
         spec_frame(
             &ctx,
             &mut value,
@@ -1975,6 +2003,7 @@ mod tests {
     fn waveform_arrow_keys_wrap_and_disabled_input_cannot_change_the_choice() {
         let ctx = egui::Context::default();
         let spec = waveform_spec();
+        let choices = daw_unit_core::Waveform::ALL.len() as i32;
         let mut value = 0.0;
         let point = spec_frame(&ctx, &mut value, vec![], Default::default(), spec, true).center();
         spec_frame(
@@ -2002,7 +2031,7 @@ mod tests {
         };
         for (key_code, direction) in [(egui::Key::ArrowLeft, -1_i32), (egui::Key::ArrowRight, 1)] {
             let initial = value as i32;
-            for index in 1..=9 {
+            for index in 1..=2 * choices + 1 {
                 spec_frame(
                     &ctx,
                     &mut value,
@@ -2011,7 +2040,10 @@ mod tests {
                     spec,
                     true,
                 );
-                assert_eq!(value, (initial + direction * index).rem_euclid(4) as f32);
+                assert_eq!(
+                    value,
+                    (initial + direction * index).rem_euclid(choices) as f32
+                );
                 spec_frame(
                     &ctx,
                     &mut value,
@@ -2033,7 +2065,7 @@ mod tests {
         );
         assert_eq!(value, previous);
         let ctx = egui::Context::default();
-        value = 3.0;
+        value = (choices - 1) as f32;
         let point = spec_frame(&ctx, &mut value, vec![], Default::default(), spec, true).center();
         for _ in 0..2 {
             spec_frame(

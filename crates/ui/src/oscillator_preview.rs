@@ -1,4 +1,4 @@
-//! Phase-domain oscillator shape, independent of note pitch and playback.
+//! Oscillator waveform previews independent of note pitch and playback.
 use daw_core::Waveform;
 use egui::{Response, Sense, Stroke, Ui, Vec2};
 
@@ -14,6 +14,9 @@ fn shape(waveform: Waveform, phase: f32) -> f32 {
             }
         }
         Waveform::Triangle => 1.0 - 4.0 * (phase - 0.5).abs(),
+        Waveform::WhiteNoise | Waveform::PinkNoise | Waveform::BrownNoise => {
+            unreachable!("noise uses a spectrum illustration")
+        }
     }
 }
 
@@ -29,15 +32,22 @@ pub(super) fn show(ui: &mut Ui, waveform: &mut Waveform, enabled: bool) -> Respo
         graph.center().y,
         Stroke::new(1.0, palette.divider),
     );
-    let points = (0..=128)
-        .map(|i| {
-            let phase = i as f32 / 128.0;
-            egui::pos2(
-                graph.left() + phase * graph.width(),
-                graph.center().y - shape(*waveform, phase) * graph.height() * 0.4,
-            )
-        })
-        .collect();
+    let points = if let Some(kind) = waveform.noise_type() {
+        crate::knobs::noise_waveform_path(kind)
+            .into_iter()
+            .map(|p| graph.center() + p * graph.size())
+            .collect()
+    } else {
+        (0..=128)
+            .map(|i| {
+                let phase = i as f32 / 128.0;
+                egui::pos2(
+                    graph.left() + phase * graph.width(),
+                    graph.center().y - shape(*waveform, phase) * graph.height() * 0.4,
+                )
+            })
+            .collect()
+    };
     let color = if enabled {
         crate::theme::accent(ui.ctx())
     } else {
@@ -65,13 +75,20 @@ pub(super) fn show(ui: &mut Ui, waveform: &mut Waveform, enabled: bool) -> Respo
         .width(input.width())
         .truncate()
         .show_ui(&mut selector, |ui| {
-            for choice in Waveform::ALL {
-                if ui
-                    .selectable_value(waveform, choice, choice.label())
-                    .clicked()
-                {
-                    ui.close();
-                }
+            for (group, noise) in [("Basic", false), ("Noise", true)] {
+                crate::menus::small_submenu(ui, group, |ui| {
+                    for choice in Waveform::ALL
+                        .into_iter()
+                        .filter(|choice| choice.noise_type().is_some() == noise)
+                    {
+                        if ui
+                            .selectable_value(waveform, choice, choice.label())
+                            .clicked()
+                        {
+                            ui.close();
+                        }
+                    }
+                });
             }
         })
         .response;

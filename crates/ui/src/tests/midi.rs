@@ -6136,27 +6136,31 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
                 }],
             );
         }
-        let selected = shapes
-            .iter()
-            .find_map(|shape| match &shape.shape {
-                egui::Shape::Text(t) if t.galley.text() == "Sine" => {
-                    Some(t.galley.rect.translate(t.pos.to_vec2()).center())
-                }
-                _ => None,
-            })
-            .expect("waveform dropdown");
-        click_note_or_lane(&mut app, &ctx, selected);
-        let popup = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        let saw = popup
-            .iter()
-            .find_map(|shape| match &shape.shape {
-                egui::Shape::Text(t) if t.galley.text() == "Saw" => {
-                    Some(t.galley.rect.translate(t.pos.to_vec2()).center())
-                }
-                _ => None,
-            })
-            .expect("Saw dropdown option");
-        click_note_or_lane(&mut app, &ctx, saw);
+        let point = |shapes: &[egui::epaint::ClippedShape], label| {
+            shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => {
+                        Some(text.galley.rect.translate(text.pos.to_vec2()).center())
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("missing {label}"))
+        };
+        let selector = point(&shapes, "Sine");
+        let size = Vec2::new(1280.0, 800.0);
+        let choose = |app: &mut DawUi, group, label| {
+            click_note_or_lane(app, &ctx, selector);
+            let popup = frame_shapes(app, &ctx, vec![], size);
+            assert!(point(&popup, "Basic").y < point(&popup, "Noise").y);
+            assert!(!popup.iter().any(|shape| matches!(&shape.shape,
+                egui::Shape::Text(text) if text.galley.text() == label)));
+            let submenu = point(&popup, group);
+            click_note_or_lane(app, &ctx, submenu);
+            let popup = frame_shapes(app, &ctx, vec![egui::Event::PointerMoved(submenu)], size);
+            click_note_or_lane(app, &ctx, point(&popup, label));
+        };
+        choose(&mut app, "Basic", "Saw");
         let instrument = app.session.project.tracks[0].instrument.as_ref().unwrap();
         assert_eq!(instrument.layers[0].oscillators[0].waveform, Waveform::Saw);
         assert_eq!(instrument.layers[0].oscillators[0].transpose, 1);
@@ -6168,6 +6172,23 @@ fn oscillator_rows_share_knob_layout_and_edit_the_selected_instrument() {
                     .iter()
                     .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == label))
             );
+        }
+        for waveform in [
+            Waveform::WhiteNoise,
+            Waveform::PinkNoise,
+            Waveform::BrownNoise,
+        ] {
+            choose(&mut app, "Noise", waveform.label());
+            let oscillator = &app
+                .session
+                .project
+                .instrument_settings(track)
+                .unwrap()
+                .layers[0]
+                .oscillators[0];
+            assert_eq!(oscillator.waveform, waveform);
+            assert_eq!(oscillator.transpose, 1);
+            assert!((oscillator.gain_db + 11.9).abs() < 0.001);
         }
         assert_eq!(format!("{:?}", app.session.project.assets), assets);
         assert_eq!(app.selected_track, Some(track));

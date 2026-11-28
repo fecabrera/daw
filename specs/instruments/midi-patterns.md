@@ -18,14 +18,16 @@ Retain the 52-point first-row allocation: a 26-point graph, a four-point
 gap and a standard 22-point selector. Center the 70-point selector over the
 52-point graph. Keep the shared 161-point source strip, Pitch/Gain row
 positions, footer, Plus and Out geometry. The dropdown uses the shared popup,
-Small text and all four full-name choices. Retain accessible selector naming,
+Small text and two submenus. Basic lists Sine, Saw, Square, and Triangle.
+Noise lists White noise, Pink noise, and Brown noise. Retain accessible selector naming,
 source context menus, drag exclusions and release-only project edits. The preview
 is read-only; selecting a shape updates that source through the existing instrument
 edit. Hide the preview and selector with other controls in compact/collapsed views.
 
-Draw bounded analytic periodic shapes in the UI without creating or clocking an
-audio processor. No callback capture, background worker, dependency or saved-state
-change is required.
+Use a fixed illustrated trace for each noise choice. Its bandwidth varies
+with the type, and its appearance follows the shared preview colors.
+
+Draw bounded analytic periodic shapes in the UI. Draw the preview without creating or clocking an audio processor.
 
 ## Selected-note velocity control
 
@@ -515,6 +517,28 @@ explicit operation that writes only visible occurrences into a fresh source.
 
 Each source saves Cents (−100 to +100, default 0), Unison (Off/2/4/8, default Off), Detune (0–100 cents, default 10), and Width (0–100%, default 100). Width uses the shared knob with a percentage readout above its face, matching Plate Reverb Width. Out adds a third-row Cents knob with the same bounds/default. Missing fields preserve legacy sound. Core validates finite bounds; serialization, duplication, transfer, and history retain all settings.
 
-The portable oscillator prepares one backend per internal voice on the control thread. Voices use deterministic distinct initial phases, symmetric detuning from −Detune to +Detune, and symmetric stereo panning scaled by Width. Average the internal voices, then sum independent source strips without normalization. Width zero produces identical channels. Off retains the original single-voice samples. Suppress each voice at invalid/nonpositive/Nyquist frequencies. The engine carries stereo through the shared render path.
+For Basic waveforms, the portable oscillator prepares one backend per internal voice on the control thread. Voices use deterministic distinct initial phases, symmetric detuning from −Detune to +Detune, and symmetric stereo panning scaled by Width. Average the internal voices, then sum independent source strips without normalization. Width zero produces identical channels. Off retains the original single-voice samples. Suppress each voice at invalid/nonpositive/Nyquist frequencies. The engine carries stereo through the shared render path.
 
 Source and Out Cents compose with coarse Pitch and shared Pitch modulation. Pitch routes remain addressed by source UUID and apply equally to all internal voices. Cents and Width are typed modulation destinations through the [shared oscillator contract](../modulation/oscillator-pitch.md#cents-and-width-modulation--2026-11-09); Detune remains a base control. Continuous edits use 5 ms ramps and compatible phase/history transfer without callback allocation. Unison voice-count changes use prepared renderer replacement and the existing output transition. Reset and seek retain deterministic phases. The legacy mono source adapter averages the stereo output; the stereo source API and modulation destination expose stereo.
+
+
+### Noise waveforms
+
+Save White noise, Pink noise, and Brown noise as `white_noise`, `pink_noise`,
+and `brown_noise` in the existing oscillator Waveform field. Keep the source
+ID, oscillator state version, and other strip settings. A layer's Oscillator
+can contain both Basic and noise strips.
+
+Prepare the shared [Noise generator](noise.md#portable-generation) for each
+noise strip and seed it from the oscillator and note IDs. Use neutral Color
+and unity generator gain. Apply the existing oscillator Gain, Power,
+modulation, and output Level path. Width uses the generator's stereo blend
+and accepts oscillator Width modulation. Pitch and Cents, including the Out
+controls, apply to Basic waveforms. Noise ignores the stored Unison and
+Detune values. The strip dims pitch, cents, and the joined unison controls
+for noise and enables Width for all noise types.
+
+Carry noise as stereo through mixing. Compatible Width and Gain edits retain
+the generator history. Switching waveform uses the existing prepared renderer
+replacement. Note start, render, seek, and compatible updates use the
+normal voice lifecycle with no callback allocation.

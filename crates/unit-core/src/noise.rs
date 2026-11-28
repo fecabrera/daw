@@ -12,6 +12,16 @@ pub enum NoiseType {
 }
 impl NoiseType {
     pub const ALL: [Self; 3] = [Self::White, Self::Pink, Self::Brown];
+
+    /// Endpoint mix in White, Pink, Brown order for the shared generator.
+    pub fn spectrum_weights(self) -> [f64; 3] {
+        match self {
+            Self::White => [1.0, 0.0, 0.0],
+            Self::Pink => [0.0, 1.0, 0.0],
+            Self::Brown => [0.0, 0.0, 1.0],
+        }
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::White => "White",
