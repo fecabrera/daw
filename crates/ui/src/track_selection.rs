@@ -110,18 +110,13 @@ impl DawUi {
     }
 
     pub fn track_action_enabled(&self, action: TrackAction, ctx: &egui::Context) -> bool {
-        if action == TrackAction::Delete && self.view_mode == ViewMode::Instrument {
-            return self.layer_delete_enabled(ctx);
-        }
         // Non-text controls can retain keyboard focus outside the Tracks pane.
         let input_available = match action {
-            TrackAction::Rename if self.selected_rename_layer().is_some() => {
-                !ctx.text_edit_focused()
-                    && ctx.dragged_id().is_none()
-                    && !self.instrument_ui.has_layer_gesture()
-            }
             TrackAction::Rename | TrackAction::Group | TrackAction::Ungroup
-                if matches!(self.view_mode, ViewMode::Timeline | ViewMode::Mixer) =>
+                if matches!(
+                    self.view_mode,
+                    ViewMode::Timeline | ViewMode::Mixer | ViewMode::Instrument
+                ) =>
             {
                 !ctx.text_edit_focused() && ctx.dragged_id().is_none()
             }
@@ -146,7 +141,12 @@ impl DawUi {
         };
         let mixer_subtrack = self.selected_mixer_beat_row().is_some();
         let subtrack_action = match action {
-            TrackAction::Rename => mixer_subtrack,
+            TrackAction::Rename => {
+                mixer_subtrack
+                    || (self.view_mode == ViewMode::Instrument
+                        && self.selected_beat_subtrack_count() == 1
+                        && self.selected_beat_subtrack().is_some())
+            }
             TrackAction::Delete => {
                 self.beat_subtrack_delete_parent().is_some() && !self.beat_subtrack_rename_active()
             }
@@ -174,13 +174,14 @@ impl DawUi {
                 || self.view_mode.has_clip_lanes())
             && (action != TrackAction::Duplicate
                 || self.view_mode.has_clip_lanes()
+                || self.view_mode == ViewMode::Instrument
                 || !self.session.project.tracks.iter().any(|track| {
                     self.track_selected(track.id) && track.kind == daw_core::TrackKind::Midi
                 }))
             && input_available
             && self.selection_shortcut_environment_available(ctx)
+            && !self.instrument_ui.has_layer_gesture()
             && (action != TrackAction::Rename
-                || self.selected_rename_layer().is_some()
                 || subtrack_action
                 || self
                     .session
@@ -199,7 +200,6 @@ impl DawUi {
                     | TrackAction::AddReturn
                     | TrackAction::AddSubtrack
             ) || subtrack_action
-                || self.selected_rename_layer().is_some() && action == TrackAction::Rename
                 || self
                     .session
                     .project
@@ -239,16 +239,10 @@ impl DawUi {
         if self.mixer_beat_action(action) {
             return;
         }
-        if self.view_mode == ViewMode::Timeline
+        if matches!(self.view_mode, ViewMode::Timeline | ViewMode::Instrument)
             && matches!(action, TrackAction::Mute | TrackAction::Solo)
             && self.timeline_beat_mix_action(action)
         {
-            return;
-        }
-        if self.view_mode == ViewMode::Instrument
-            && matches!(action, TrackAction::Mute | TrackAction::Solo)
-        {
-            self.instrument_mix_action(action);
             return;
         }
         if matches!(action, TrackAction::Group | TrackAction::Ungroup) {
@@ -256,7 +250,10 @@ impl DawUi {
             return;
         }
         if action == TrackAction::Rename {
-            if self.rename_selected_layer() {
+            if self.view_mode == ViewMode::Instrument
+                && let Some((_, row)) = self.selected_beat_subtrack()
+            {
+                self.begin_beat_rename(row.id, row.name.clone());
                 return;
             }
             if let Some(track) = self
@@ -275,11 +272,7 @@ impl DawUi {
             return;
         }
         if action == TrackAction::Delete {
-            if self.view_mode == ViewMode::Instrument {
-                self.delete_selected_layers();
-            } else {
-                self.delete_selected_tracks(ctx);
-            }
+            self.delete_selected_tracks();
             return;
         }
         if action == TrackAction::Duplicate {
@@ -361,23 +354,10 @@ impl DawUi {
     }
 
     pub(super) fn track_shortcuts(&mut self, ctx: &egui::Context) {
-        let duplicate_layer = self
-            .selected_rename_layer()
-            .filter(|layer| layer.can_duplicate_hosted())
-            .map(|layer| layer.id)
-            .filter(|_| {
-                self.selection_shortcut_environment_available(ctx)
-                    && !self.instrument_ui.has_layer_gesture()
-                    && !ctx.text_edit_focused()
-                    && ctx.dragged_id().is_none()
-            });
         let enabled = TrackAction::ALL.map(|action| self.track_action_enabled(action, ctx));
-        if (duplicate_layer.is_none() && !enabled.iter().any(|enabled| *enabled))
-            || ctx.input(|input| input.pointer.any_down())
-        {
+        if !enabled.iter().any(|enabled| *enabled) || ctx.input(|input| input.pointer.any_down()) {
             return;
         }
-        let mut duplicate = None;
         let pressed = ctx.input_mut(|input| {
             let mut pressed = [false; TrackAction::ALL.len()];
             input.events.retain(|event| {
@@ -389,14 +369,6 @@ impl DawUi {
                     ..
                 } = event
                 {
-                    let shortcut = crate::instrument_workspace::DUPLICATE_LAYER_SHORTCUT;
-                    if let Some(layer) = duplicate_layer
-                        && *key == shortcut.logical_key
-                        && modifiers.matches_exact(shortcut.modifiers)
-                    {
-                        duplicate = Some(layer);
-                        return false;
-                    }
                     for (index, action) in TrackAction::ALL.iter().enumerate() {
                         if enabled[index] && action.matches_shortcut(*key, *modifiers) {
                             pressed[index] = true;
@@ -408,9 +380,6 @@ impl DawUi {
             });
             pressed
         });
-        if let Some(layer) = duplicate {
-            self.perform_layer_tab_action(layer, TrackAction::Duplicate);
-        }
         for (index, action) in TrackAction::ALL.into_iter().enumerate() {
             if pressed[index] {
                 self.perform_track_action(action, ctx);
@@ -418,10 +387,7 @@ impl DawUi {
         }
     }
 
-    pub(super) fn delete_selected_tracks(&mut self, ctx: &egui::Context) {
-        if !self.track_action_enabled(TrackAction::Delete, ctx) {
-            return;
-        }
+    fn delete_selected_tracks(&mut self) {
         let edits = self
             .selected_track_roots()
             .into_iter()
@@ -465,22 +431,12 @@ impl DawUi {
     }
 
     pub fn track_action_label(&self, action: TrackAction) -> &'static str {
-        if action == TrackAction::Delete && self.view_mode == ViewMode::Instrument {
-            return if self.selected_layer_delete_count() > 1 {
-                "Delete selected layers"
-            } else {
-                "Delete layer"
-            };
-        }
         if action == TrackAction::Delete && self.beat_subtrack_delete_parent().is_some() {
             return if self.selected_beat_subtrack_count() > 1 {
                 "Delete selected subtracks"
             } else {
                 "Delete subtrack"
             };
-        }
-        if action == TrackAction::Rename && self.selected_rename_layer().is_some() {
-            return "Rename layer";
         }
         if matches!(action, TrackAction::Delete | TrackAction::Duplicate)
             && self

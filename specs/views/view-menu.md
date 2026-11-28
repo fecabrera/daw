@@ -129,14 +129,18 @@ the modulation group or leave too little room to scroll the layer tabs.
 Place the groups beside the shared Timeline track headers. Disable the
 modulation buttons for audio tracks, groups, and beat parents.
 
-- All shows an empty instrument workspace. Keep the shared track controls and
-  bottom Effects Lane available.
-- The first layer opens by default. Show the selected layer’s source row, then
-  its Effects row, then a gap and its mix controls. The bottom Effects Lane
-  continues to show the track or beat-subtrack chain.
+- All shows one compact mix row for every layer in instrument order. Reuse
+  the existing layer header controls, meter, selection, and context menu.
+- The first layer opens by default. Show its source and Effects rows.
+  The bottom Effects Lane shows the track or beat-subtrack chain.
 - LFOs and Envelopes each open their fixed provider lane. Macros opens the
-  instrument Output controls and any groups of layer-owned Macros. Show only
-  the matching type in the Instrument components catalog.
+  shared instrument Macros and rows for layers with Macros. Drop a Macro on
+  a numbered layer tab to target an empty layer. Preview the drop on the tab
+  and display the layer row after installation. Show only the matching type
+  in the Instrument components catalog.
+- Layer, Effects, LFO, Envelope, and Macros use the shared 64-point title panel.
+  Paint the titles as passive labels with the neutral panel fill. Continue
+  the Tracks toolbar divider under the subview tabs at the same height.
 
 Instrument uses the Timeline track header controls, including a pinned Master,
 with shared vertical scroll. Both views use the same track height in the
@@ -147,11 +151,10 @@ Tab switches change presentation state. Use layer tabs for group selection
 and reordering and as cross-layer drop targets.
 
 The layer tab context menu targets the clicked layer. Show Duplicate, a
-divider, Mute and Solo, another divider, and Delete. Use the platform shortcut
-hints for Command/Ctrl+D, M, S, and Command/Ctrl+Delete. Opening the menu
-preserves selection. Disable deletion on the final layer. The duplicate
-shortcut targets the primary selected layer and uses the normal layer copy
-transaction.
+divider, Mute and Solo, another divider, and Delete. Opening the menu
+preserves selection. Disable deletion on the final layer. Use pointer
+controls for layer actions. Dispatch keyboard actions through the shared
+Track handlers. Clip actions and shortcuts are disabled in Instrument.
 
 Only geometry in the active tab participates in selection and drops. Reuse the
 existing lane editors, collapse state, owner IDs and edit transactions. Keep

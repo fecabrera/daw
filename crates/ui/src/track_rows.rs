@@ -134,7 +134,38 @@ pub(super) const REGULAR_HEIGHT: f32 = 2.0 * knobs::SIZE + 14.0;
 pub(super) const LARGE_HEIGHT: f32 = 3.0 * knobs::SIZE + 14.0;
 
 impl DawUi {
-    pub(super) fn track_scroll_area(&mut self, ui: &egui::Ui, bottom: f32) -> egui::ScrollArea {
+    pub(super) fn scrolling_track_rows(
+        &mut self,
+        ui: &mut egui::Ui,
+        bottom: f32,
+        arrangement: bool,
+    ) -> egui::scroll_area::ScrollAreaOutput<Vec<(Id, Rect)>> {
+        self.lane_bounds.clear();
+        let tracks = self.track_scroll_area(ui, bottom).show(ui, |ui| {
+            let rows = self.tracks_kind(ui, false);
+            self.empty_tracks_context_menu(ui);
+            self.scroll_track_drag(ui);
+            if arrangement
+                && self
+                    .effects_drag
+                    .as_ref()
+                    .is_some_and(|drag| drag.active && !drag.is_library())
+            {
+                drag::scroll_drag(
+                    ui,
+                    drag::Axis::Vertical,
+                    360.0,
+                    self.edit_environment_available(),
+                    ui.clip_rect(),
+                );
+            }
+            rows
+        });
+        self.track_scroll_offset = tracks.state.offset.y;
+        tracks
+    }
+
+    fn track_scroll_area(&mut self, ui: &egui::Ui, bottom: f32) -> egui::ScrollArea {
         const SCROLL_ID: &str = "track-rows-scroll";
         let scroll_area = egui::ScrollArea::vertical()
             .id_salt(SCROLL_ID)

@@ -19,7 +19,7 @@ Use **M**, **S**, gain, and pan to adjust each track. Use the header Plus menu, 
 
 The Add buttons in Tracks, Layers and Beat subtracks share the rounded, borderless style of M/S buttons.
 
-Right-click a group to add an audio, MIDI or beat track or a nested empty group inside it.
+Track rows offer the same context menu in Timeline and Instrument. Right-click a group to add an audio, MIDI or beat track or a nested empty group inside it.
 
 Double-click a track or group name, or right-click its row and choose **Rename**. The whole name starts selected. Press Enter to save; Escape or moving focus elsewhere cancels.
 
@@ -36,9 +36,9 @@ horizontal slider and Fit All Clips are available in Timeline.
 
 ## Instrument tabs
 
-**All** is the first tab in the layer group. Its workspace is empty. Click a layer tab to show its sources and processors, its Effects row, and its mix controls in that order. Layer tabs show numbers for default names such as Layer 1 and show custom names in full. The first layer opens by default. Scroll the layer group horizontally when its tabs do not fit. The Add layer button stays visible at the right edge.
+**All** is the first tab in the layer group. It shows the mix rows for every layer in order. Click a numbered layer tab to edit that layer’s sources, processors, and effects. Layer tabs show numbers for default names such as Layer 1 and show custom names in full. The first layer opens by default. Scroll the layer group horizontally when its tabs do not fit. The Add layer button stays visible at the right edge.
 
-**LFOs**, **Envelopes**, and **Macros** stay visible beside the layer tabs. Each opens its own controls. The Macros tab shows shared Output Macros and any layer-owned Macros. All layers continue to process audio and modulation as you switch tabs.
+**LFOs**, **Envelopes**, and **Macros** stay visible beside the layer tabs. Each opens its own controls. The Macros tab shows the instrument’s Output row and layers that contain Macros. Drop a Macro on a numbered layer tab to add it to that layer. All layers continue to process audio and modulation as you switch tabs.
 
 ## Instrument components
 
@@ -63,17 +63,13 @@ With an audio track, group, Master, or no track selected, the instrument workspa
 
 A new MIDI track starts with a sine-wave Oscillator in Layer 1. Play MIDI notes or add them to a pattern to hear it. A layer can contain one of Oscillator, Sampler, Granulizer, or Noise. Add components from the Instrument catalog by double-clicking an entry, selecting it and pressing Enter, or dragging it onto a compatible lane.
 
-Layer names use the same semibold text as track headers. Layers show a waveform icon before their names. Output uses a merge icon with its arrow pointing right. Click a layer tab to select it. Shift-click layer tabs to change the selection. The [LFO and Envelope lanes](../instruments/modulation-lanes.md) have their own tabs. Each modulation lane accepts only its own provider type and has no audio mix controls. Click Output to select its controls.
+Layer names use the same semibold text as track headers. Click a layer tab to select it. Shift-click layer tabs to change the selection. The [LFO and Envelope lanes](../instruments/modulation-lanes.md) have their own tabs. Each modulation lane accepts only its own provider type and has no audio mix controls. Click a Macro unit to select it.
 
-Right-click a layer tab for **Duplicate**, **Mute**, **Solo**, or **Delete**. These actions apply to the clicked layer. Press **Cmd+D** on macOS or **Ctrl+D** on Windows and Linux to duplicate the selected layer.
+Right-click a layer tab for **Duplicate**, **Mute**, **Solo**, or **Delete**. These actions apply to the clicked layer.
 
-Right-click a regular layer header for **Rename layer**, **Duplicate layer**, and **Delete layer**. Duplicate inserts a copy immediately after that layer and selects it when ready. Delete is disabled for the last layer. Rename shows its Command+R/Ctrl+R shortcut and opens the name editor; press Enter to apply or Escape to cancel. With a regular layer selected in Instrument, Command+R on macOS or Ctrl+R on Windows/Linux opens that layer’s name editor. With several layers selected, it renames the primary layer. Track, subtrack and layer names use the same text input, with the whole name selected when editing starts. Moving focus away cancels the rename.
+In **All**, right-click a layer mix row for **Rename layer**, **Duplicate layer**, and **Delete layer**. Duplicate inserts a copy immediately after that layer. Delete is disabled for the last layer. Press Enter to apply a rename or Escape to cancel it.
 
-Press **Cmd+Delete** on macOS or **Ctrl+Delete** on Windows and Linux to delete
-the selected regular layers in one undoable edit. Keep at least one regular
-layer unselected. Output and the modulation lanes cannot be deleted.
-
-Press M to toggle Mute and S to toggle Solo on each selected regular layer. With Output or a modulation lane selected, or with no layer selected, these keys target only the displayed track. Press Escape to clear layer selection. While editing text, Escape first leaves the editor; press it again to clear layer selection. These shortcuts work from any focused pane or non-text control in Instrument. Text entry and active gestures take precedence; dialogs and blocking jobs disable the shortcuts. Release a dragged control before using M/S. Holding a key does not toggle repeatedly.
+Track shortcuts apply to the selected tracks. M toggles track mute and S toggles track solo. Use the layer mix buttons or context menus for layer actions. Use Timeline for clip shortcuts. Escape clears layer selection after text editing or an active gesture ends.
 
 Drag a selected layer tab to move the selected layers together. They keep their existing order, even if you selected them in a different order. Dragging an unselected layer moves only that layer. Hold Option on macOS or Ctrl on Windows/Linux to duplicate the group at the insertion line. The modifier held at release chooses move or copy. Escape or dropping outside the layer area cancels the drag and keeps the layer selection. Output and the two modulation lanes cannot be moved or duplicated.
 
@@ -81,11 +77,7 @@ Copies keep their names, controls, components, effects, and modulation settings.
 
 Moved layers remain selected after release. If copies need sample preparation, the original layers stay selected until preparation succeeds. The copies then become selected. Failure or cancellation keeps the original layers selected. Undo restores the previous arrangement.
 
-Selected layers use the same header and lane shades as selected Timeline tracks
-in Dark, Light and Mist. This also applies to Output, LFO and Envelope. Each
-selected regular layer is highlighted when several layers are selected.
-
-The selected layer’s mix controls sit in the left column below its Effects row. Use the Plus button at the end of the layer tab group to add another layer.
+Selected mix rows in **All** use the track selection colors. Lane title panels label the editing lanes. Use the Plus button at the end of the layer tab group to add another layer.
 
 ### Add or replace a source
 
@@ -96,11 +88,11 @@ Sampler with that file; this also replaces Oscillator or Granulizer. These rules
 apply to MIDI instruments and beat subtracks. Output and modulation lanes do not
 accept source or file drops. Failed or cancelled preparation retains the layer.
 
-### Layer and Output levels
+### Layer levels
 
-Each layer has gain, pan, mute, and solo controls. Mute and Solo share the same joined M / S button group as tracks, with independent toggles. Layer gain/pan and Output gain use compact knobs without text-entry fields. Output has no pan knob. On the second row, layer Mute and Solo sit at the left; Pan then Gain sit at the right. Output’s single gain knob also sits at the right. Regular layers and Output have the same stereo level meters as tracks, beside the gain knob. Each layer meter shows its signal after effects, gain, pan and layer mute/solo. Output shows their combined signal after its gain and pan, before the bottom Effects Lane. Either channel exceeding 0 dBFS lights both clipping indicators; click either rail to clear them. Meters do not change sound or project data. Each layer, including Output, has an expand/collapse button at the top of its own right toolbar. The toolbar stays at the right edge while components scroll horizontally. Hover or drag a knob to see its value in the tooltip. Solo applies among the layers of that instrument. [Output](../instruments/main.md) controls their combined output and can hold Macro controls.
+Each layer has gain, pan, mute, and solo controls. The second row puts Mute and Solo at the left and Pan and Gain at the right. Layer gain and pan use compact knobs. Hover or drag a knob to see its value. Solo applies among the layers of that instrument. The stereo meter beside Gain shows the layer signal after effects, gain, pan, mute, and solo. Either channel exceeding 0 dBFS lights both clipping indicators. Each layer has an expand/collapse button on its right toolbar. The toolbar stays at the right while components scroll horizontally.
 
-Layer and Output meters show the shared held-peak marker for each stereo
+Layer meters show the shared held-peak marker for each stereo
 channel. Peaks remain visible when the signal becomes silent. Click either
 rail or the gap between them to reset both held peaks and the clipping warning.
 This changes monitoring only.
@@ -129,7 +121,7 @@ Select the destination track, beat subtrack, or Master before adding an effect. 
 
 Open a layer tab, then add effects from the Effects catalog or the Effects row’s context menu. Drag effects to set their order. Drop effects on another layer tab to append them to that layer, or drop them in the bottom Effects Lane to move them to the whole instrument. Hold Option on macOS or Ctrl on Windows/Linux to duplicate them. Selected effects transfer together. Click the bottom Effects lane to target track effects.
 
-Layer effects process that layer’s notes before its gain and pan. This lets you distort one layer while keeping another layer clean. The bottom Effects Lane processes the combined instrument after its Output controls. For a beat subtrack, select the subtrack to open its own Effects Lane. Find the instrument’s Output gain and meter in **Macros**.
+Layer effects process that layer’s notes before its gain and pan. This lets you distort one layer while keeping another layer clean. The bottom Effects Lane processes the combined instrument after the [instrument Output bus](../instruments/main.md). For a beat subtrack, select the subtrack to open its own Effects Lane.
 
 When you open an older project, its Output effects move to the start of the corresponding track or subtrack Effects Lane, in their original order.
 

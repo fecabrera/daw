@@ -2,6 +2,65 @@
 
 Dated records that name the standalone Editor describe the layout tested at the time. Current clip editing opens in the [Timeline editor pane](../instruments/midi-patterns.md#editor-options-panel).
 
+## Instrument mix overview and shortcuts, 2026-11-28
+
+UI tests verified that the five lane title panels ignore selection clicks,
+All shows one compact mix row per layer, and numbered layer tabs show the
+source and Effects rows. They checked that Instrument dispatches track
+shortcuts to tracks, including native Rename and Delete actions, and blocks
+clip shortcuts and native clip actions.
+
+Formatting and strict workspace Clippy passed. The local macOS debug app
+rebuilt and passed signature verification. Interactive native UI checks
+remain open.
+
+Debug and release each passed 3,870 tests, ignored 25 and excluded 22 native
+Audio Unit registration cases.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+## Macros lane without audio controls, 2026-11-28
+
+UI tests checked the compact and expanded Macros title panel in both themes.
+They verified that Macro units remain available, the project retains saved
+Output gain and pan, and regular layer and beat subtrack meters still use
+the shared geometry.
+
+Formatting and strict workspace Clippy passed. The local macOS debug app
+rebuilt and passed signature verification. Interactive native UI checks
+remain open.
+
+The debug and release workspace suites each passed 3,870 tests. Each ignored
+25 tests and excluded 22 native Audio Unit registration cases.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
+## Instrument lane titles and Tracks menus, 2026-11-27
+
+The UI tests checked the shared title panel, toolbar divider alignment, and
+Macro drag previews and drops. They exercised Rename, Duplicate, and Delete
+on MIDI track rows in Timeline and Instrument with a layer selected. The
+Macro drag test also checked that the layer rename command opens its tab
+and starts the name editor.
+
+The debug UI suite passed 1,128 tests and ignored 3. Formatting and strict
+workspace Clippy passed. The local macOS debug app rebuilt and passed
+signature verification. Interactive native UI checks remain open.
+
+The debug and release workspace suites each passed 3,870 tests. Each ignored
+25 tests and excluded 22 native Audio Unit registration cases.
+
+```sh
+cargo test --offline --locked --workspace --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+cargo test --offline --locked --workspace --release --no-fail-fast -- --skip native_audio_component_registration_and_host_calls
+```
+
 ## All instrument tab and layer labels, 2026-11-27
 
 The Instrument UI checks cover tab order and spacing, numeric labels for

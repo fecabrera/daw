@@ -1,9 +1,6 @@
 use super::*;
 use daw_core::InstrumentComponent;
 
-pub(super) const DUPLICATE_LAYER_SHORTCUT: egui::KeyboardShortcut =
-    egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::D);
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(super) enum InstrumentSubview {
     All,
@@ -132,7 +129,7 @@ impl DawUi {
                 }
             }
         });
-        if !has_instrument && self.instrument_subview.uses_track_column() {
+        if self.instrument_subview.uses_track_column() {
             panels::ControlPanel::row_dividers(ui, bounds, false, true);
         }
     }
@@ -356,6 +353,11 @@ impl DawUi {
         viewport.min.x = viewport.min.x.max(all.rect.right());
         if self.instrument_subview == InstrumentSubview::Layer {
             self.reorder_layer_tabs(ui, &rows, viewport);
+        }
+        if self.instrument_subview == InstrumentSubview::Layer
+            || (self.instrument_subview == InstrumentSubview::Macros
+                && self.component_drag.is_some())
+        {
             self.finish_layer_tab_drops(ui, &rows, viewport);
         }
     }
@@ -377,32 +379,18 @@ impl DawUi {
         }
         menus::ContextMenu::new(response)
             .show(|ui| {
-                for (action, label, shortcut, available, selected) in [
+                for (action, label, available, selected) in [
                     (
                         TrackAction::Duplicate,
                         "Duplicate",
-                        DUPLICATE_LAYER_SHORTCUT,
                         layer.can_duplicate_hosted(),
                         false,
                     ),
-                    (
-                        TrackAction::Mute,
-                        "Mute",
-                        TrackAction::Mute.shortcut().unwrap(),
-                        true,
-                        layer.muted,
-                    ),
-                    (
-                        TrackAction::Solo,
-                        "Solo",
-                        TrackAction::Solo.shortcut().unwrap(),
-                        true,
-                        layer.soloed,
-                    ),
+                    (TrackAction::Mute, "Mute", true, layer.muted),
+                    (TrackAction::Solo, "Solo", true, layer.soloed),
                     (
                         TrackAction::Delete,
                         "Delete",
-                        TrackAction::Delete.shortcut().unwrap(),
                         settings.layers.len() > 1,
                         false,
                     ),
@@ -410,9 +398,7 @@ impl DawUi {
                     if matches!(action, TrackAction::Mute | TrackAction::Delete) {
                         menus::separator(ui);
                     }
-                    let button = menus::action_button(label)
-                        .selected(selected)
-                        .shortcut_text(toolbars::menu_shortcut_text(ui.ctx(), &shortcut));
+                    let button = menus::action_button(label).selected(selected);
                     if ui.add_enabled(available, button).clicked() {
                         ui.close();
                         return Some(action);
@@ -438,8 +424,10 @@ impl DawUi {
         };
         let target = daw_core::EffectChainTarget::Layer { track, layer };
         let allowed = self.effects_editing_enabled(ui) && self.component_drag.is_none();
-        if let Some(transfer) =
-            self.finish_cross_effect_drag(ui, target, &[], tab.intersect(viewport), allowed)
+        let layer_page = self.instrument_subview == InstrumentSubview::Layer;
+        if layer_page
+            && let Some(transfer) =
+                self.finish_cross_effect_drag(ui, target, &[], tab.intersect(viewport), allowed)
         {
             self.edit(transfer.edit);
             if self.error.is_none() {
@@ -451,13 +439,15 @@ impl DawUi {
             }
             return;
         }
-        if self.component_drag.is_none() || self.instrument_ui.layer_page == Some(layer) {
+        if self.component_drag.is_none()
+            || (layer_page && self.instrument_ui.layer_page == Some(layer))
+        {
             return;
         }
         let Some(mut settings) = self.session.project.instrument_snapshot(track) else {
             return;
         };
-        if self.visible_instrument_layer(&settings) == Some(layer) {
+        if layer_page && self.visible_instrument_layer(&settings) == Some(layer) {
             return;
         }
         self.activate_component_drag(ui);
@@ -481,7 +471,9 @@ impl DawUi {
             return;
         }
         if self.error.is_none() {
-            self.instrument_ui.layer_page = Some(layer);
+            if layer_page {
+                self.instrument_ui.layer_page = Some(layer);
+            }
             self.instrument_ui.track_effects_target = false;
         }
     }
@@ -560,14 +552,7 @@ impl DawUi {
             ),
             bounds.max,
         );
-        let tracks = self.track_scroll_area(ui, master.top()).show(ui, |ui| {
-            self.lane_bounds.clear();
-            let rows = self.tracks_kind(ui, false);
-            self.empty_tracks_context_menu(ui);
-            self.scroll_track_drag(ui);
-            rows
-        });
-        self.track_scroll_offset = tracks.state.offset.y;
+        let tracks = self.scrolling_track_rows(ui, master.top(), false);
         self.track_reorder(ui, tracks.inner_rect);
         let group_panels = self.track_panel_containers(&tracks.inner);
         self.paint_track_group_edges(ui, &group_panels, tracks.inner_rect);

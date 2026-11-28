@@ -222,15 +222,19 @@ pub(super) fn add_component(app: &mut DawUi, ctx: &egui::Context, layer: Id, ind
     }
     if app.instrument_ui.selected_layer != Some(layer) {
         let point = if let Some(bounds) = app.instrument_ui.modulation_lane_bounds.get(&layer) {
-            bounds.name.center()
+            bounds.label.right_top() + Vec2::new(14.0, 16.0)
         } else if app.session.project.tracks[0]
             .instrument
             .as_ref()
             .is_some_and(|i| i.main.id == layer)
         {
-            app.instrument_ui.macro_bounds.name.center()
+            app.instrument_ui.macro_bounds.label.right_top() + Vec2::new(14.0, 16.0)
         } else if let Some(bounds) = app.midi_editor.layer_bounds.get(&layer) {
-            bounds.name.center()
+            if bounds.name.is_positive() {
+                bounds.name.center()
+            } else {
+                bounds.label.right_top() + Vec2::new(14.0, 16.0)
+            }
         } else {
             app.instrument_ui.select_layer(layer);
             return add_component(app, ctx, layer, index);

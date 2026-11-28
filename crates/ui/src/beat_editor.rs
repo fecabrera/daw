@@ -336,9 +336,10 @@ impl DawUi {
 
     pub(super) fn beat_subtrack_delete_parent(&self) -> Option<Id> {
         match self.view_mode {
-            ViewMode::Timeline => self.selected_beat_subtrack(),
+            ViewMode::Timeline | ViewMode::Instrument => self.selected_beat_subtrack(),
             ViewMode::Mixer => self.selected_mixer_beat_row(),
-            _ => None,
+            #[cfg(test)]
+            ViewMode::Edit => None,
         }
         .map(|(parent, _)| parent)
     }
@@ -1372,54 +1373,6 @@ impl DawUi {
         if let Some(row) = direct_audition {
             self.audition_beat_subtrack(track.id, row);
         }
-    }
-    pub(super) fn beat_output_mix(
-        &mut self,
-        ui: &mut egui::Ui,
-        owner: Id,
-        bus: &mut daw_core::InstrumentBusSettings,
-    ) -> mix_controls::GainPanResponse {
-        let Some((parent, row)) = self
-            .session
-            .project
-            .beat_subtrack(owner)
-            .map(|(p, r)| (p, r.clone()))
-        else {
-            return mix_controls::GainPanResponse {
-                bounds: [Rect::NOTHING; 2],
-            };
-        };
-        let (mut muted, mut soloed) = (row.muted, row.soloed);
-        let (knobs, toggles) = mix_controls::header_row(
-            ui,
-            &mut bus.gain_db,
-            &mut bus.pan,
-            &mut muted,
-            &mut soloed,
-            ["Mute subtrack", "Solo within this beat instrument"],
-        );
-        #[cfg(test)]
-        {
-            self.beat_ui.mix_bounds.insert(
-                owner,
-                [
-                    toggles[0].rect,
-                    toggles[1].rect,
-                    knobs.bounds[1],
-                    knobs.bounds[0],
-                ],
-            );
-        }
-        #[cfg(not(test))]
-        let _ = toggles;
-        if muted != row.muted || soloed != row.soloed {
-            self.edit(Edit::Beat {
-                track_id: parent,
-                edit: crate::mix_controls::MixValues::new(bus.gain_db, bus.pan, muted, soloed)
-                    .beat_edit(owner),
-            });
-        }
-        knobs
     }
     pub(super) fn beat_instrument_view(&mut self, ui: &mut egui::Ui) {
         let Some(track) = self.track_context() else {

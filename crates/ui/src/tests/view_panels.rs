@@ -66,13 +66,7 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
     let bounds = &app.midi_editor.layer_bounds[&layer];
     let effect = app.instrument_ui.effect_slots[0].2;
     assert!(bounds.oscillator_panel.bottom() < effect.top());
-    assert!(effect.bottom() + 8.0 < bounds.label.top());
-    assert!(
-        bounds
-            .mix_controls
-            .iter()
-            .all(|r| bounds.label.contains_rect(*r))
-    );
+    assert_eq!(bounds.mix_controls, [Rect::NOTHING; 4]);
     assert!(!app.midi_editor.layer_bounds.contains_key(&other));
     assert_eq!(
         app.effects_target(),
@@ -146,7 +140,17 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
     let all = app.instrument_catalog_bounds.all_tab;
     click(&mut app, all);
     assert_eq!(app.instrument_subview, InstrumentSubview::All);
-    assert!(app.midi_editor.layer_bounds.is_empty());
+    let [first_mix, second_mix] = [layer, other].map(|id| &app.midi_editor.layer_bounds[&id]);
+    assert!(first_mix.row.top() < second_mix.row.top());
+    for bounds in [first_mix, second_mix] {
+        assert_eq!(bounds.row.height(), ROW_HEIGHT);
+        assert!(
+            bounds
+                .mix_controls
+                .iter()
+                .all(|rect| rect.is_positive() && bounds.label.contains_rect(*rect))
+        );
+    }
     assert!(app.instrument_ui.component_slots.is_empty());
     assert!(app.instrument_ui.effect_slots.is_empty());
     assert!(app.instrument_ui.source_drop_rows.is_empty());
@@ -167,6 +171,65 @@ fn instrument_tabs_partition_units_and_keep_the_mixer_independent() {
     assert!(app.view_panel_selected(ViewPanel::TrackMixer));
     assert_eq!(app.session.project, before);
     assert!(!app.dirty);
+}
+
+#[test]
+fn instrument_lane_titles_do_not_select_layers_or_buses() {
+    use crate::instrument_workspace::InstrumentSubview;
+    let mut app = DawUi::default();
+    let track = app.session.project.add_midi_track().unwrap();
+    let instrument = app.session.project.instrument_settings_mut(track).unwrap();
+    instrument.layers[0]
+        .effects
+        .push(daw_core::EffectInstance::drive());
+    let [layer, lfo, envelope] = [
+        instrument.layers[0].id,
+        instrument.lfo_lane.id,
+        instrument.envelope_lane.id,
+    ];
+    let ctx = context();
+    app.select_track(track, false);
+    app.set_view_mode(ViewMode::Instrument, &ctx);
+    app.set_effects_lane_visible(false);
+    for subview in [
+        InstrumentSubview::Layer,
+        InstrumentSubview::Lfos,
+        InstrumentSubview::Envelopes,
+        InstrumentSubview::Macros,
+    ] {
+        app.set_instrument_subview(subview, &ctx);
+        frame(&mut app, &ctx, vec![]);
+        let points = match subview {
+            InstrumentSubview::Layer => {
+                let title = app.midi_editor.layer_bounds[&layer].label;
+                vec![
+                    title.center(),
+                    Pos2::new(
+                        title.center().x,
+                        app.instrument_ui.effect_slots[0].2.center().y,
+                    ),
+                ]
+            }
+            InstrumentSubview::Lfos => vec![
+                app.instrument_ui.modulation_lane_bounds[&lfo]
+                    .label
+                    .center(),
+            ],
+            InstrumentSubview::Envelopes => vec![
+                app.instrument_ui.modulation_lane_bounds[&envelope]
+                    .label
+                    .center(),
+            ],
+            InstrumentSubview::Macros => vec![app.instrument_ui.macro_bounds.label.center()],
+            _ => unreachable!(),
+        };
+        for point in points {
+            app.instrument_ui.clear_layer_selection();
+            super::instrument_catalog::click(&mut app, &ctx, point, false);
+            assert!(app.instrument_ui.selected_layers.is_empty(), "{subview:?}");
+            assert!(app.instrument_ui.selected_layer.is_none(), "{subview:?}");
+        }
+    }
 }
 
 #[test]
@@ -598,7 +661,7 @@ fn layer_tabs_reorder_and_receive_effects_on_release() {
 }
 
 #[test]
-fn layer_tab_context_menu_edits_the_clicked_layer_and_duplicate_shortcut_selects_its_copy() {
+fn layer_tab_context_menu_edits_the_clicked_layer_and_ignores_duplicate_shortcut() {
     let mut app = DawUi::default();
     let track = app.session.project.add_midi_track().unwrap();
     let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
@@ -648,7 +711,6 @@ fn layer_tab_context_menu_edits_the_clicked_layer_and_duplicate_shortcut_selects
         assert_eq!(app.session.project, before);
         let positions = ["Duplicate", "Mute", "Solo", "Delete"].map(label);
         assert!(positions.windows(2).all(|pair| pair[0].y < pair[1].y));
-        assert!(label("⌘D").x > positions[0].x);
         super::instrument_catalog::click(&mut app, &ctx, label(action), false);
         let layers = &app
             .session
@@ -702,8 +764,8 @@ fn layer_tab_context_menu_edits_the_clicked_layer_and_duplicate_shortcut_selects
             .instrument_settings(track)
             .unwrap()
             .layers;
-        assert_eq!(layers.len(), 3);
-        assert_eq!(app.instrument_ui.layer_page, Some(layers[1].id));
+        assert_eq!(layers.len(), 2);
+        assert_eq!(app.instrument_ui.layer_page, Some(first));
     }
 }
 

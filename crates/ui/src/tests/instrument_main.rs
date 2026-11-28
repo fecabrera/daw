@@ -23,178 +23,172 @@ fn setup(theme: settings::ColorTheme) -> (DawUi, egui::Context, Id) {
     (app, ctx, track)
 }
 #[test]
-fn output_header_uses_merge_icon_and_keeps_layer_spacing_and_fixed_bus_identity() {
+fn modulation_lanes_use_the_same_title_panel_as_layer_and_effects() {
+    use crate::instrument_workspace::InstrumentSubview;
+
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        for compact in [false, true] {
-            let (mut app, ctx, _) = setup(theme);
-            app.set_instrument_subview(
-                crate::instrument_workspace::InstrumentSubview::Modulation,
-                &ctx,
-            );
-            frame(&mut app, &ctx, vec![]);
-            let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
-            instrument.main.collapsed = compact;
-            instrument.main.pan = 0.35;
-            let id = instrument.main.id;
-            let before = instrument.clone();
-            let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-            let bounds = &app.instrument_ui.macro_bounds;
-            let former_pan = bounds.label.min + Vec2::new(53.0, 47.0);
-            assert!(!shapes.iter().any(|shape| matches!(&shape.shape,
-                egui::Shape::Circle(circle) if circle.center.distance(former_pan) < 1.0)));
-            assert_eq!(
-                bounds.icon.size(),
-                Vec2::new(icons::HEADER_ICON_WIDTH, toolbars::CONTROL_HEIGHT)
-            );
-            assert_eq!(bounds.icon.left(), bounds.label.left() + 7.0);
-            assert!((bounds.name.left() - bounds.icon.right() - 6.0).abs() < 0.1);
-            let uri = icons::Lucide::Merge
-                .size(icons::TOOLBAR_ICON_SIZE)
-                .color(theme::palette(&ctx).secondary)
-                .uri();
-            let egui::load::TexturePoll::Ready { texture } = ctx
-                .try_load_texture(
-                    &uri,
-                    egui::TextureOptions::LINEAR,
-                    egui::load::SizeHint::Size {
-                        width: 16,
-                        height: 16,
-                        maintain_aspect_ratio: false,
-                    },
-                )
-                .unwrap()
-            else {
-                panic!("Output merge icon must be ready")
-            };
-            assert!(shapes.iter().any(|shape| matches!(&shape.shape,
-                egui::Shape::Mesh(mesh)
-                    if mesh.texture_id == texture.id
-                        && mesh.vertices.len() == 4
-                        && mesh.vertices.iter().all(|vertex| {
-                            let local = (vertex.uv.to_vec2() - Vec2::splat(0.5)) * icons::TOOLBAR_ICON_SIZE;
-                            let expected = bounds.icon.center() + Vec2::new(-local.y, local.x);
-                            vertex.pos.distance(expected) < 0.1
-                        })
-            )), "Output must render Merge rotated clockwise with its arrow pointing right");
-            assert!(
-                shapes.iter().any(
-                    |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Macros")
-                )
-            );
-            assert!(
-                !shapes
-                    .iter()
-                    .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.text() == "Main"))
-            );
-            let icon = bounds.icon.center();
-            click(&mut app, &ctx, former_pan, false);
-            click(&mut app, &ctx, icon, false);
-            assert_eq!(app.instrument_ui.selected_layer, Some(id));
-            assert!(!app.instrument_ui.dragging());
-            assert!(!app.dirty);
-            assert_eq!(
-                app.session.project.tracks[0].instrument.as_ref().unwrap(),
-                &before
-            );
+        let (mut app, ctx, track) = setup(theme);
+        let size = Vec2::new(1280.0, 950.0);
+        app.set_instrument_subview(InstrumentSubview::Layer, &ctx);
+        let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+        let title_position = |shapes: &[egui::epaint::ClippedShape], title: &str, row: Rect| {
+            shapes
+                .iter()
+                .find_map(|item| match &item.shape {
+                    egui::Shape::Text(text)
+                        if text.galley.text() == title && row.contains(text.pos) =>
+                    {
+                        Some(text.pos - row.min)
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("missing title {title}"))
+        };
+        let (layer, lfo, envelope) = {
+            let settings = app.session.project.instrument_settings(track).unwrap();
+            (
+                settings.layers[0].id,
+                settings.lfo_lane.id,
+                settings.envelope_lane.id,
+            )
+        };
+        let expected = title_position(&shapes, "Layer", app.midi_editor.layer_bounds[&layer].row);
+        for (subview, owner, title) in [
+            (InstrumentSubview::Lfos, Some(lfo), "LFO"),
+            (InstrumentSubview::Envelopes, Some(envelope), "Envelope"),
+            (InstrumentSubview::Macros, None, "Macros"),
+        ] {
+            app.set_instrument_subview(subview, &ctx);
+            let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+            let bounds = owner.map_or(&app.instrument_ui.macro_bounds, |owner| {
+                &app.instrument_ui.modulation_lane_bounds[&owner]
+            });
+            let label = bounds.label;
+            assert_eq!(label.width(), instrument_panel::LANE_TITLE_WIDTH);
+            let header_bottom = app.instrument_catalog_bounds.track_column.top() + toolbars::HEIGHT;
+            assert_eq!(bounds.row.top(), header_bottom);
+            assert!(shapes.iter().any(|item| matches!(&item.shape,
+                egui::Shape::LineSegment { points, stroke }
+                if stroke.color == theme::palette(&ctx).border
+                    && points[0] == Pos2::new(bounds.row.left(), header_bottom - 0.5)
+                    && points[1] == Pos2::new(bounds.row.right(), header_bottom - 0.5))));
+            let title = title_position(&shapes, title, bounds.row);
+            assert_eq!(title.x, expected.x);
+            assert_eq!(title.y, expected.y);
+            assert!(!shapes.iter().any(|item| match &item.shape {
+                egui::Shape::Mesh(mesh) => mesh.vertices.iter().any(|vertex| {
+                    label.contains(vertex.pos) && vertex.pos.y < label.top() + 28.0
+                }),
+                _ => false,
+            }));
         }
+        assert!(!app.dirty);
     }
 }
+
 #[test]
-fn output_mix_controls_remain_editable_in_modulation_in_both_themes() {
-    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
-        let (mut app, ctx, _) = setup(theme);
-        app.set_instrument_subview(
-            crate::instrument_workspace::InstrumentSubview::Modulation,
-            &ctx,
-        );
+fn macro_drags_keep_empty_layers_hidden_and_allow_drops_on_numbered_tabs() {
+    use crate::instrument_workspace::InstrumentSubview;
+
+    for drop_on_tab in [false, true] {
+        let (mut app, ctx, track) = setup(settings::ColorTheme::Dark);
+        app.set_instrument_subview(InstrumentSubview::Macros, &ctx);
+        app.set_effects_lane_visible(false);
         frame(&mut app, &ctx, vec![]);
-        let main = app.instrument_ui.macro_bounds.row;
-        let label = app.instrument_ui.macro_bounds.label;
-        assert_eq!(main.height(), ROW_HEIGHT);
-        assert_eq!(label.width(), TRACK_WIDTH);
-        let [gain] = app.instrument_ui.macro_bounds.mix;
-        assert_eq!(gain.size(), Vec2::splat(knobs::HEADER_SIZE));
+        let before = app.session.project.instrument_snapshot(track).unwrap();
+        let layer = before.layers[0].id;
+        let source = app.instrument_catalog_bounds.entries[4].center();
+        let output = app.instrument_ui.macro_bounds.label.center();
+        let target = if drop_on_tab {
+            app.instrument_catalog_bounds.layer_tabs[&layer].center()
+        } else {
+            output
+        };
+        frame(
+            &mut app,
+            &ctx,
+            vec![egui::Event::PointerMoved(source), button(source, true)],
+        );
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(output)]);
+        assert!(app.component_drag.as_ref().is_some_and(|drag| drag.active));
+        assert!(app.midi_editor.layer_bounds.is_empty());
         assert_eq!(
-            gain.center(),
-            Pos2::new(label.right() - 47.0, label.top() + 47.0)
+            app.instrument_catalog_bounds.drop_target,
+            Some(before.main.id)
         );
-        let bounds = &app.instrument_ui.macro_bounds;
-        super::instrument_lane_toolbar::assert_toolbar(
-            bounds.row,
-            bounds.label,
-            bounds.toolbar,
-            bounds.collapse,
+        assert_eq!(
+            app.session.project.instrument_settings(track),
+            Some(&before)
         );
-        assert!(
-            app.instrument_ui
-                .macro_bounds
-                .mix
-                .iter()
-                .all(|r| label.contains_rect(*r)),
-            "Main mix controls must stay inside its layer panel"
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(target)]);
+        frame(&mut app, &ctx, vec![button(target, false)]);
+        frame(&mut app, &ctx, vec![]);
+        let after = app.session.project.instrument_settings(track).unwrap();
+        assert_eq!(
+            after.layers[0].macro_module.controls.len(),
+            usize::from(drop_on_tab)
         );
-        assert!(
-            app.instrument_ui
-                .macro_bounds
-                .mix
-                .iter()
-                .all(|r| r.top() >= app.instrument_ui.macro_bounds.collapse.bottom() + 4.0)
+        assert_eq!(
+            after.main.macro_module.controls.len(),
+            usize::from(!drop_on_tab)
         );
-        let gain = app.instrument_ui.macro_bounds.mix[0].center();
-        click(&mut app, &ctx, gain, false);
-        key(&mut app, &ctx, egui::Key::ArrowUp, false, false);
-        assert!(
-            app.session.project.tracks[0]
-                .instrument
-                .as_ref()
-                .unwrap()
-                .main
-                .gain_db
-                > 0.0
+        assert_eq!(
+            app.midi_editor.layer_bounds.contains_key(&layer),
+            drop_on_tab
         );
-        assert!(app.dirty);
-        let ids: Vec<_> = app.session.project.tracks[0]
-            .instrument
-            .as_ref()
+        assert_eq!(app.instrument_subview, InstrumentSubview::Macros);
+        assert!(app.component_drag.is_none());
+    }
+}
+
+#[test]
+fn macros_title_panel_has_no_audio_controls_in_either_row_size() {
+    use crate::instrument_workspace::InstrumentSubview;
+
+    for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
+        let (mut app, ctx, track) = setup(theme);
+        let output = &mut app
+            .session
+            .project
+            .instrument_settings_mut(track)
             .unwrap()
-            .layers
-            .iter()
-            .map(|l| l.id)
-            .collect();
-        let collapse = app.instrument_ui.macro_bounds.collapse.center();
-        click(&mut app, &ctx, collapse, false);
-        assert!(
-            !app.session.project.tracks[0]
-                .instrument
-                .as_ref()
-                .unwrap()
-                .main
-                .collapsed
-        );
-        assert_eq!(app.instrument_ui.macro_bounds.row.top(), main.top());
-        assert_eq!(
-            app.instrument_ui.macro_bounds.row.height(),
-            panels::unit_height(false)
-        );
-        let bounds = &app.instrument_ui.macro_bounds;
-        assert!(bounds.mix.iter().all(|r| bounds.label.contains_rect(*r)));
-        assert!(
-            bounds
-                .mix
-                .iter()
-                .all(|r| r.top() >= bounds.collapse.bottom() + 4.0)
-        );
-        assert_eq!(
-            app.session.project.tracks[0]
-                .instrument
-                .as_ref()
-                .unwrap()
-                .layers
-                .iter()
-                .map(|l| l.id)
-                .collect::<Vec<_>>(),
-            ids
-        );
+            .main;
+        output.gain_db = -6.0;
+        output.pan = 0.25;
+        output.macro_module.add();
+        app.set_instrument_subview(InstrumentSubview::Macros, &ctx);
+        let size = Vec2::new(1280.0, 800.0);
+        for compact in [true, false] {
+            let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+            let bounds = &app.instrument_ui.macro_bounds;
+            assert_eq!(bounds.row.height(), panels::unit_height(compact));
+            super::instrument_lane_toolbar::assert_toolbar(
+                bounds.row,
+                bounds.label,
+                bounds.toolbar,
+                bounds.collapse,
+            );
+            let below_title =
+                Rect::from_min_max(bounds.label.min + Vec2::new(0.0, 29.0), bounds.label.max);
+            assert!(!shapes.iter().any(|item| match &item.shape {
+                egui::Shape::Rect(shape) => below_title.contains_rect(shape.rect),
+                egui::Shape::Circle(shape) => below_title.contains(shape.center),
+                _ => false,
+            }));
+            assert!(
+                app.instrument_ui
+                    .component_slots
+                    .iter()
+                    .any(|(_, unit, _)| { *unit == daw_core::InstrumentComponent::Macros })
+            );
+            let output = &app.session.project.instrument_settings(track).unwrap().main;
+            assert_eq!(output.gain_db, -6.0);
+            assert_eq!(output.pan, 0.25);
+            if compact {
+                let collapse = bounds.collapse.center();
+                click(&mut app, &ctx, collapse, false);
+            }
+        }
     }
 }
 #[test]
@@ -306,7 +300,7 @@ fn empty_main_accepts_catalog_drops_across_its_label_and_body() {
 }
 
 #[test]
-fn layer_and_main_selection_uses_backgrounds_without_outlines() {
+fn selected_mix_headers_use_highlight_and_passive_titles_use_panel_fill() {
     for theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         for compact in [false, true] {
             for main in [false, true] {
@@ -330,7 +324,7 @@ fn layer_and_main_selection_uses_backgrounds_without_outlines() {
                     app.midi_editor.layer_bounds[&layer].label
                 };
                 assert!(!shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == label && r.stroke == theme::selection_outline(&ctx))));
-                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == label && r.fill == theme::selected_track_header_background(&ctx))));
+                assert!(shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.rect == label && r.fill == if main { theme::palette(&ctx).panel } else { theme::selected_track_header_background(&ctx) })));
                 assert!(!app.dirty);
             }
         }

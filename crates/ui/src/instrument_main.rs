@@ -1,10 +1,11 @@
-//! Shared instrument-wide rows. Output also provides audio mix controls.
+//! Shared instrument-wide modulation rows.
 use super::*;
 use daw_core::InstrumentBusSettings;
 
 pub(super) struct LaneRow<'a> {
     pub rect: Rect,
     pub kind: Option<daw_core::ModulationLaneKind>,
+    pub top_divider: bool,
     pub shared_sources: &'a [daw_core::ModulationSourceId],
 }
 
@@ -12,9 +13,6 @@ pub(super) struct LaneRow<'a> {
 pub(super) struct MainBounds {
     pub row: Rect,
     pub label: Rect,
-    pub icon: Rect,
-    pub name: Rect,
-    pub mix: [Rect; 1],
     pub collapse: Rect,
     pub toolbar: Rect,
     pub envelopes: Vec<Rect>,
@@ -28,9 +26,6 @@ impl Default for MainBounds {
         Self {
             row: Rect::NOTHING,
             label: Rect::NOTHING,
-            icon: Rect::NOTHING,
-            name: Rect::NOTHING,
-            mix: [Rect::NOTHING; 1],
             collapse: Rect::NOTHING,
             toolbar: Rect::NOTHING,
             envelopes: Vec::new(),
@@ -56,6 +51,7 @@ impl DawUi {
         let LaneRow {
             rect,
             kind,
+            top_divider,
             shared_sources,
         } = row;
         let subview = self.instrument_subview;
@@ -94,20 +90,15 @@ impl DawUi {
             && ui.input(|i| {
                 i.focused
                     && i.pointer.button_pressed(egui::PointerButton::Primary)
-                    && i.pointer
-                        .press_origin()
-                        .is_some_and(|p| rect.intersect(ui.clip_rect()).contains(p))
+                    && i.pointer.press_origin().is_some_and(|p| {
+                        rect.intersect(ui.clip_rect()).contains(p)
+                            && p.x >= rect.left() + instrument_panel::LANE_TITLE_WIDTH
+                    })
             })
         {
             self.instrument_ui.select_layer(bus.id);
             self.instrument_ui.track_effects_target = false;
             ui.ctx().request_repaint();
-        }
-        let selected = self.instrument_ui.selected_layers.contains(&bus.id);
-        if selected {
-            child
-                .painter()
-                .rect_filled(rect, 0.0, theme::selected_track_background(ui.ctx()));
         }
         #[cfg(test)]
         let mut bounds = MainBounds {
@@ -126,56 +117,7 @@ impl DawUi {
                     ["Expand modulation lane", "Collapse modulation lane"],
                 );
                 if collapse.clicked() { ui.ctx().request_repaint(); }
-                let (label, response) =
-                    ui.allocate_exact_size(Vec2::new(TRACK_WIDTH, height), Sense::click());
-                ui.painter()
-                    .rect_filled(label, 0.0, if selected { theme::selected_track_header_background(ui.ctx()) } else { theme::palette(ui.ctx()).panel });
-                let header_rect = label.shrink(7.0);
-                let mut header = ui.new_child(
-                    egui::UiBuilder::new()
-                        .max_rect(header_rect)
-                        .layout(egui::Layout::top_down(egui::Align::Min)),
-                );
-                header.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
-                if kind.is_none() {
-                let (levels, held) = self.output.as_ref().and_then(|o| o.layer_meter(track, bus.id)).map_or(([(0.0, false); 2], [0.0; 2]), |m| (m.levels(), m.held_peaks()));
-                let cleared = meters::stereo_panel_held(&mut header, ROW_HEIGHT - 14.0, levels, held, |header| {
-                rows::centered(header, toolbars::CONTROL_HEIGHT, |ui| {
-                    let icon = icons::header_icon_with_rotation(ui, icons::Lucide::Merge, Sense::hover(), std::f32::consts::FRAC_PI_2).on_hover_text("Instrument output");
-                    icon.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Image, ui.is_enabled(), "Instrument output"));
-                    let name = ui.label(egui::RichText::new(title).font(crate::fonts::semibold(rows::NAME_FONT_SIZE)));
-                    #[cfg(test)] { bounds.icon = icon.rect; bounds.name = name.rect; }
-                    #[cfg(not(test))] let _ = (icon, name);
-                });
-                if self.session.project.beat_subtrack(track).is_some() {
-                    let knobs = self.beat_output_mix(header, track, bus);
-                    #[cfg(test)] { bounds.mix = [knobs.bounds[0]]; }
-                    #[cfg(not(test))] let _ = knobs;
-                } else {
-                let gain = rows::centered(header, knobs::SIZE, |ui| {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| knobs::header_gain(ui, &mut bus.gain_db)).inner
-                }).inner;
-                #[cfg(test)] { bounds.mix = [gain.rect]; }
-                #[cfg(not(test))] let _ = gain;
-                }
-                });
-                meters::reset_on_click(ui, self.output.as_ref().and_then(|o| o.layer_meter(track, bus.id)), cleared);
-                } else {
-                    rows::centered(&mut header, toolbars::CONTROL_HEIGHT, |ui| {
-                        let icon=icons::header_icon(ui, icons::Lucide::Activity, Sense::hover());
-                        let name=ui.label(egui::RichText::new(title).font(crate::fonts::semibold(rows::NAME_FONT_SIZE)));
-                        #[cfg(test)] { bounds.icon=icon.rect; bounds.name=name.rect; }
-                        #[cfg(not(test))] let _=(icon,name);
-                    });
-                }
-                response.widget_info(|| {
-                    egui::WidgetInfo::selected(
-                        egui::WidgetType::Button,
-                        ui.is_enabled(),
-                        self.instrument_ui.selected_layer == Some(bus.id),
-                        format!("Select {title} instrument lane"),
-                    )
-                });
+                let label = instrument_panel::lane_title_panel(ui, height, title);
                 #[cfg(test)]
                 {
                     bounds.label = label;
@@ -257,7 +199,7 @@ impl DawUi {
                 ui.advance_cursor_after_rect(toolbar);
             });
         });
-        panels::ControlPanel::row_dividers(ui, rect, true, false);
+        panels::ControlPanel::row_dividers(ui, rect, top_divider, false);
         ui.advance_cursor_after_rect(rect);
         #[cfg(test)]
         {

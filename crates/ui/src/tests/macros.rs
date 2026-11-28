@@ -76,7 +76,7 @@ fn macro_catalog_adds_multiple_named_powered_strips_to_layers_and_main() {
             .layers[0]
             .macro_module;
         assert!(m.controls[0].enabled && !m.controls[1].enabled);
-        let main_label = app.instrument_ui.macro_bounds.label.left_top() + Vec2::new(20.0, 15.0);
+        let main_label = app.instrument_ui.macro_bounds.label.right_top() + Vec2::new(14.0, 16.0);
         click(&mut app, &ctx, main_label, false);
         add_component(&mut app, &ctx, main, 4);
         let i = app.session.project.tracks[0].instrument.as_ref().unwrap();

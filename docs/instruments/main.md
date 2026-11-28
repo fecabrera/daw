@@ -4,11 +4,11 @@ Output combines the audio from all layers of one MIDI instrument. It is separate
 
 Layer sources pass through Amplitude, layer effects, and layer mix controls. Output applies its gain and pan to the combined layers. The signal then passes through the track Effects Lane and the track mix controls.
 
-## Use Output
+## Edit shared Macros
 
-Open **Macros** to find the instrument’s Output gain, meters, and Macro controls. The expand/collapse button at the top of its right toolbar shows or hides its controls. The toolbar stays at the right edge while components scroll horizontally. Output cannot be removed, renamed, or reordered.
+Open **Macros** to edit Macro controls shared across the instrument. The expand/collapse button at the top of its right toolbar shows or hides its controls. The toolbar stays at the right edge while components scroll horizontally. Output cannot be removed, renamed, or reordered.
 
-Use the gain knob at the right of the Output header’s second row to change the combined instrument level. Its default is 0 dB. The stereo meters beside Gain show the combined instrument signal after Output gain and pan, before track effects. They work like track meters: either channel above 0 dBFS lights both clipping indicators, and clicking either rail clears them. For a beat subtrack this row also shows its Pan, Mute, and Solo controls. Gain does not accept modulation.
+Use the track header for track levels and metering. Saved Output gain and pan apply during playback.
 
 ## Add shared controls
 

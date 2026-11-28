@@ -28,7 +28,9 @@ the existing project display field.
 
 ## Reordering and group membership
 
-Reuse track header selection, rename, and drag actions. Tracks move on
+Timeline and Instrument share the scrolling track rows, row menus, and track
+action dispatch. Row menus target the track selection. Layer tabs target
+instrument layers. Reuse track header selection, rename, and drag actions. Tracks move on
 release with one shared transaction. Drop on the middle of a group to
 change membership. Group and beat hierarchy use the same track identities
 in Timeline and Instrument.
@@ -63,5 +65,4 @@ All framed dropdowns and send-row destination groups follow the shared
 
 Regular layer names and the instrument-wide LFO, Envelope and Output header
 labels use `fonts::semibold(rows::NAME_FONT_SIZE)`, matching track-header
-names at 13 points. Preserve existing text colors, truncation, header placement,
-rename interactions, selection and drag behavior.
+names at 13 points. The instrument subviews use the shared title panel.

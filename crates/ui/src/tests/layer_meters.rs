@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn layers_and_output_reuse_track_meter_geometry_in_every_presentation() {
+fn layers_reuse_track_meter_geometry_in_every_presentation() {
     for theme in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
@@ -13,7 +13,6 @@ fn layers_and_output_reuse_track_meter_geometry_in_every_presentation() {
                 let track = app.session.project.add_midi_track().unwrap();
                 let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
                 instrument.layers[0].collapsed = compact;
-                instrument.main.collapsed = compact;
                 let layer = instrument.layers[0].id;
                 app.select_track(track, false);
                 let ctx = context();
@@ -36,50 +35,35 @@ fn layers_and_output_reuse_track_meter_geometry_in_every_presentation() {
                 }
                 let before = app.session.project.clone();
                 let label = app.midi_editor.layer_bounds[&layer].label;
-                for subview in [
-                    crate::instrument_workspace::InstrumentSubview::Effects,
-                    crate::instrument_workspace::InstrumentSubview::Modulation,
-                ] {
-                    app.set_instrument_subview(subview, &ctx);
-                    let shapes = frame_shapes(&mut app, &ctx, vec![], size);
-                    let label =
-                        if subview == crate::instrument_workspace::InstrumentSubview::Effects {
-                            let controls = app.midi_editor.layer_bounds[&layer].mix_controls;
-                            assert!(controls[3].right() < controls[2].left());
-                            assert!((controls[2].center().x - (label.right() - 47.0)).abs() < 0.75);
-                            label
-                        } else {
-                            app.instrument_ui.macro_bounds.label
-                        };
-                    let header = Rect::from_min_size(label.min, Vec2::new(TRACK_WIDTH, ROW_HEIGHT));
-                    super::track_header::assert_header_meter_insets(&shapes, header, &ctx);
-                    let point = Pos2::new(header.right() - 23.0, header.top() + 20.0);
-                    frame_shapes(
-                        &mut app,
-                        &ctx,
-                        vec![egui::Event::PointerMoved(point), button(point, true)],
-                        size,
-                    );
-                    frame_shapes(
-                        &mut app,
-                        &ctx,
-                        vec![egui::Event::PointerMoved(point - Vec2::new(0.0, 14.0))],
-                        size,
-                    );
-                    assert!(
-                        !app.instrument_ui.has_layer_gesture(),
-                        "meters must not arm layer reordering"
-                    );
-                    frame_shapes(&mut app, &ctx, vec![button(point, false)], size);
-                    assert_eq!(app.session.project, before);
-                    assert!(!app.dirty);
-                }
-                assert!(
-                    (app.instrument_ui.macro_bounds.mix[0].center().x
-                        - (app.instrument_ui.macro_bounds.label.right() - 47.0))
-                        .abs()
-                        < 0.75
+                let shapes = frame_shapes(&mut app, &ctx, vec![], size);
+                let controls = app.midi_editor.layer_bounds[&layer].mix_controls;
+                assert!(controls[3].right() < controls[2].left());
+                assert!((controls[2].center().x - (label.right() - 47.0)).abs() < 0.75);
+                let header = Rect::from_min_size(
+                    label.min,
+                    Vec2::new(label.width(), label.height().min(ROW_HEIGHT)),
                 );
+                super::track_header::assert_header_meter_insets(&shapes, header, &ctx);
+                let point = header.right_center() - Vec2::new(23.0, 0.0);
+                frame_shapes(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(point), button(point, true)],
+                    size,
+                );
+                frame_shapes(
+                    &mut app,
+                    &ctx,
+                    vec![egui::Event::PointerMoved(point - Vec2::new(0.0, 14.0))],
+                    size,
+                );
+                assert!(
+                    !app.instrument_ui.has_layer_gesture(),
+                    "meters must not arm layer reordering"
+                );
+                frame_shapes(&mut app, &ctx, vec![button(point, false)], size);
+                assert_eq!(app.session.project, before);
+                assert!(!app.dirty);
             }
         }
     }

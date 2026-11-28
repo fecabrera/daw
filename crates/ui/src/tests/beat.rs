@@ -860,7 +860,7 @@ fn compact_beat_controls_follow_track_spacing_and_requested_order() {
 }
 
 #[test]
-fn subtrack_meters_share_track_rails_and_keep_editor_rows_and_instrument_controls_intact() {
+fn subtrack_meters_share_track_rails_in_the_editor_and_instrument_tracks() {
     for color_theme in [
         settings::ColorTheme::Dark,
         settings::ColorTheme::Light,
@@ -868,6 +868,7 @@ fn subtrack_meters_share_track_rails_and_keep_editor_rows_and_instrument_control
     ] {
         for scale in [1.0, 1.5] {
             let (mut app, ctx, _, row, _) = setup();
+            app.session.project.tracks[0].group_collapsed = false;
             app.set_settings(
                 &ctx,
                 settings::AppSettings {
@@ -918,7 +919,7 @@ fn subtrack_meters_share_track_rails_and_keep_editor_rows_and_instrument_control
             app.navigate_beat_owner(app.track_context().unwrap(), app.beat_ui.primary, false);
             app.view_mode = ViewMode::Instrument;
             app.set_instrument_subview(
-                crate::instrument_workspace::InstrumentSubview::Modulation,
+                crate::instrument_workspace::InstrumentSubview::Macros,
                 &ctx,
             );
             frame_shapes(&mut app, &ctx, vec![], size);
@@ -926,10 +927,7 @@ fn subtrack_meters_share_track_rails_and_keep_editor_rows_and_instrument_control
             let shapes = frame_shapes(&mut app, &ctx, vec![], size);
             super::track_header::assert_header_meter_insets(
                 &shapes,
-                Rect::from_min_size(
-                    app.instrument_ui.macro_bounds.label.min,
-                    Vec2::new(TRACK_WIDTH, ROW_HEIGHT),
-                ),
+                app.timeline_beats.rows[&row].1,
                 &ctx,
             );
             assert_eq!(app.session.project, before);
@@ -1179,6 +1177,7 @@ fn instrument_escape_deselects_from_child_controls_and_shares_catalog_handling()
     let (mut app, ctx, _, row, _) = setup();
     app.navigate_beat_owner(app.track_context().unwrap(), app.beat_ui.primary, false);
     app.view_mode = ViewMode::Instrument;
+    app.set_instrument_subview(crate::instrument_workspace::InstrumentSubview::All, &ctx);
     app.instrument_catalog_visible = true;
     app.instrument_catalog.expand_folders();
     frame(&mut app, &ctx, vec![]);
@@ -1195,6 +1194,8 @@ fn instrument_escape_deselects_from_child_controls_and_shares_catalog_handling()
     assert!(!app.dirty);
 
     app.navigate_beat_owner(app.track_context().unwrap(), Some(row), false);
+    app.set_instrument_subview(crate::instrument_workspace::InstrumentSubview::Layer, &ctx);
+    frame(&mut app, &ctx, vec![]);
     let entry = app.instrument_catalog_bounds.entries[0].center();
     click(&mut app, &ctx, entry);
     assert!(app.beat_subtrack_selected(row));
@@ -1334,6 +1335,7 @@ fn changing_subtracks_replaces_hidden_layer_selection_without_editing_the_projec
         .unwrap();
     let original = app.session.project.clone();
     app.view_mode = ViewMode::Instrument;
+    app.set_instrument_subview(crate::instrument_workspace::InstrumentSubview::All, &ctx);
     app.navigate_beat_owner(track, Some(first), false);
     frame(&mut app, &ctx, vec![]);
     let first_layer = app

@@ -268,7 +268,6 @@ fn provider_lanes_share_unit_bodies_toolbar_power_and_saved_presentation() {
                     .all(|y| (*y - top).abs() < 0.1 || *y < b.row.top()),
                 "neighboring lanes must share one separator pixel: {separators:?}"
             );
-            assert_eq!(b.mix, [Rect::NOTHING]);
             assert!(b.powers[0].is_positive());
         }
         let point = app.instrument_ui.modulation_lane_bounds[&owners[1]].powers[0].center();

@@ -38,12 +38,9 @@ Delete and Duplicate use subtree roots to avoid editing selected descendants twi
 
 Command+Delete on macOS and Ctrl+Delete or Ctrl+Backspace on Windows/Linux run
 the guarded Track menu Delete action. A beat subtrack selection in the Timeline,
-Beat Editor, or Mixer targets those subtracks in one beat edit. In Instrument,
-it targets selected regular layers on the displayed instrument, including a beat
-subtrack.
-Require at least one surviving regular layer. Apply one validated edit and
-disconnect surviving modulation routes whose source belonged to a deleted
-layer. Accept both backspace and forward delete keys on macOS. Leave the
+Beat Editor, Instrument or Mixer targets those subtracks in one beat edit.
+Use layer context menus to delete layers. Require at least one surviving
+layer and disconnect surviving routes from removed layers. Accept both backspace and forward delete keys on macOS. Leave the
 shortcut available when another editing pane has non-text keyboard focus.
 Keep text editing, active gestures and blocking dialogs protected. Ignore
 key repeats.

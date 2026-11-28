@@ -1088,6 +1088,61 @@ fn menu_point(shapes: &[egui::epaint::ClippedShape], label: &str) -> Pos2 {
 }
 
 #[test]
+fn timeline_and_instrument_track_rows_share_actions_with_a_layer_selected() {
+    for view in [ViewMode::Timeline, ViewMode::Instrument] {
+        for action in [
+            TrackAction::Rename,
+            TrackAction::Duplicate,
+            TrackAction::Delete,
+        ] {
+            let mut app = DawUi::default();
+            let ctx = crate::tests::context();
+            let track = app.session.project.add_midi_track().unwrap();
+            let layer = app
+                .session
+                .project
+                .instrument_settings(track)
+                .unwrap()
+                .layers[0]
+                .id;
+            app.select_track(track, false);
+            app.set_view_mode(view, &ctx);
+            frame(&mut app, &ctx, vec![]);
+            app.instrument_ui.select_layer(layer);
+            let x = if view == ViewMode::Timeline {
+                app.timeline_bounds.left() - TIMELINE_HEADER_SPAN
+            } else {
+                app.lane_bounds[&track].left()
+            };
+            let point = Pos2::new(x + 90.0, app.lane_bounds[&track].top() + 17.0);
+            let shapes = secondary(&mut app, &ctx, point);
+            for item in [
+                TrackAction::Rename,
+                TrackAction::Duplicate,
+                TrackAction::Bounce,
+                TrackAction::Group,
+                TrackAction::Ungroup,
+                TrackAction::Delete,
+            ] {
+                menu_point(&shapes, item.label());
+            }
+            click(&mut app, &ctx, menu_point(&shapes, action.label()));
+            assert!(!app.instrument_ui.editing_name());
+            match action {
+                TrackAction::Rename => assert_eq!(
+                    app.track_name_edit.as_ref().map(|edit| edit.track),
+                    Some(track),
+                ),
+                TrackAction::Duplicate => assert_eq!(app.session.project.tracks.len(), 2),
+                TrackAction::Delete => assert!(app.session.project.tracks.is_empty()),
+                _ => unreachable!(),
+            }
+            assert_eq!(app.view_mode, view);
+        }
+    }
+}
+
+#[test]
 fn plus_and_blank_panel_menus_share_all_creation_actions_and_commit_on_release() {
     for view in [ViewMode::Instrument, ViewMode::Edit] {
         for context in [false, true] {

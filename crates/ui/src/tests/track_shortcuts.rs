@@ -263,7 +263,7 @@ fn timeline_mute_and_solo_ignore_control_focus_but_preserve_text_input_and_other
 }
 
 #[test]
-fn instrument_mix_shortcuts_target_selected_layers_or_only_the_displayed_track() {
+fn instrument_mix_shortcuts_target_selected_tracks_regardless_of_layer_selection() {
     for target in ["single", "group", "output", "none"] {
         let (mut app, ctx, layers) = super::midi::layer_header_fixture();
         app.use_native_menu();
@@ -299,15 +299,13 @@ fn instrument_mix_shortcuts_target_selected_layers_or_only_the_displayed_track()
         press(&mut app, &ctx, egui::Key::S);
         let after = &app.session.project;
         let instrument = after.tracks[0].instrument.as_ref().unwrap();
-        for (index, layer) in instrument.layers.iter().enumerate() {
-            let toggled = index == 0 && matches!(target, "single" | "group")
-                || index == 1 && target == "group";
-            assert_eq!(layer.muted, (index == 1) ^ toggled, "{target} {index}");
-            assert_eq!(layer.soloed, (index == 1) ^ toggled, "{target} {index}");
+        assert_eq!(
+            instrument.layers,
+            before.tracks[0].instrument.as_ref().unwrap().layers
+        );
+        for track in &after.tracks[..2] {
+            assert!(track.muted && track.soloed);
         }
-        assert_eq!(after.tracks[0].muted, matches!(target, "output" | "none"));
-        assert_eq!(after.tracks[0].soloed, matches!(target, "output" | "none"));
-        assert_eq!(after.tracks[1], before.tracks[1]);
         assert_eq!(app.instrument_ui.selected_layers, selection);
         assert_eq!(app.selected_track, Some(track));
         assert!(app.dirty);
@@ -363,10 +361,10 @@ fn instrument_mix_shortcuts_and_escape_respect_text_input_with_control_focus() {
         }
         let track = &app.session.project.tracks[0];
         for layer in &track.instrument.as_ref().unwrap().layers[..2] {
-            assert_eq!(layer.muted, !text_input);
-            assert_eq!(layer.soloed, !text_input);
+            assert!(!layer.muted && !layer.soloed);
         }
-        assert!(!track.muted && !track.soloed);
+        assert_eq!(track.muted, !text_input);
+        assert_eq!(track.soloed, !text_input);
         assert_eq!(text, if text_input { "ms" } else { "" });
         assert_eq!(
             app.instrument_ui.selected_layer,
@@ -1821,15 +1819,12 @@ fn native_mix_dispatch_blocks_held_knobs_and_works_after_release() {
             assert!(!ctx.text_edit_focused());
             app.perform_track_action(action, &ctx);
             let track = &app.session.project.tracks[0];
-            let (muted, soloed) = if instrument {
+            if instrument {
                 let layer = &track.instrument.as_ref().unwrap().layers[0];
-                assert!(!track.muted && !track.soloed);
-                (layer.muted, layer.soloed)
-            } else {
-                (track.muted, track.soloed)
-            };
-            assert_eq!(muted, action == TrackAction::Mute);
-            assert_eq!(soloed, action == TrackAction::Solo);
+                assert!(!layer.muted && !layer.soloed);
+            }
+            assert_eq!(track.muted, action == TrackAction::Mute);
+            assert_eq!(track.soloed, action == TrackAction::Solo);
         }
     }
 }
@@ -1887,9 +1882,9 @@ fn fast_layer_drag_escape_retains_group_and_mix_target() {
         assert!(!app.dirty);
         press(&mut app, &ctx, egui::Key::M);
         let track = &app.session.project.tracks[0];
-        assert!(!track.muted);
+        assert!(track.muted);
         for layer in &track.instrument.as_ref().unwrap().layers {
-            assert_eq!(layer.muted, selected.contains(&layer.id));
+            assert!(!layer.muted);
         }
         let before_escape = app.session.project.clone();
         press(&mut app, &ctx, egui::Key::Escape);

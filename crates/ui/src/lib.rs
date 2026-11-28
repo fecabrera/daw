@@ -2351,7 +2351,8 @@ impl DawUi {
         }
     }
     fn clip_actions_available(&self, ctx: &egui::Context) -> bool {
-        self.edit_shortcuts_available(ctx)
+        self.view_mode != ViewMode::Instrument
+            && self.edit_shortcuts_available(ctx)
             && !self.arrangement_has_focus(ctx)
             && !ctx.egui_wants_keyboard_input()
     }
@@ -4027,31 +4028,9 @@ impl DawUi {
             egui::Id::new("clip_selection_box"),
             Sense::click_and_drag(),
         );
-        self.lane_bounds.clear();
         let selected_before_tracks = self.selected_clip;
         let track_before = self.track_context();
-        let tracks = self
-            .track_scroll_area(ui, return_rect.top())
-            .show(ui, |ui| {
-                let rows = self.tracks_kind(ui, false);
-                self.empty_tracks_context_menu(ui);
-                self.scroll_track_drag(ui);
-                if self
-                    .effects_drag
-                    .as_ref()
-                    .is_some_and(|d| d.active && !d.is_library())
-                {
-                    drag::scroll_drag(
-                        ui,
-                        drag::Axis::Vertical,
-                        360.0,
-                        self.edit_environment_available(),
-                        ui.clip_rect(),
-                    );
-                }
-                rows
-            });
-        self.track_scroll_offset = tracks.state.offset.y;
+        let tracks = self.scrolling_track_rows(ui, return_rect.top(), true);
         let return_rows = if has_returns {
             self.return_timeline_bank(ui, return_rect)
         } else {
@@ -10306,6 +10285,46 @@ mod tests {
             },
         }
     }
+    #[test]
+    fn instrument_ignores_clip_keyboard_and_native_actions() {
+        let (mut app, track) = fixture();
+        let ctx = context();
+        let clip = app.session.project.tracks[0].clips[0].id;
+        app.select_clip(clip, track, false);
+        frame(&mut app, &ctx, vec![egui::Event::Copy]);
+        let token = app.clip_clipboard.as_ref().unwrap().token.clone();
+        app.set_view_mode(ViewMode::Instrument, &ctx);
+        let before = app.session.project.clone();
+        for action in ClipAction::ALL {
+            assert!(!app.clip_action_enabled(action, &ctx));
+            app.perform_clip_action(action, &ctx);
+            frame(
+                &mut app,
+                &ctx,
+                vec![clip_key(action.shortcut().logical_key, true)],
+            );
+        }
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::Copy,
+                egui::Event::Paste(token.clone()),
+                egui::Event::Key {
+                    key: egui::Key::Delete,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+        assert_eq!(app.session.project, before);
+        assert_eq!(app.clip_clipboard.as_ref().unwrap().token, token);
+        assert_eq!(app.selected_clip, Some(clip));
+        assert!(!app.dirty);
+    }
+
     #[test]
     fn edit_menu_clicks_copy_and_paste_and_native_actions_share_guards() {
         fn menu_frame(

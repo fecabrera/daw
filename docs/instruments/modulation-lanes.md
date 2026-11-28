@@ -1,6 +1,6 @@
 # Instrument modulation lanes
 
-Open **Modulation** in Instrument to edit the instrument-wide **LFO** and **Envelope** lanes. Macros appear below them.
+Open **LFOs** or **Envelopes** in Instrument to edit the corresponding instrument-wide lane. Open **Macros** to edit Macros.
 
 Select a lane, then add its component from Modulators in the Instrument components catalog. Double-click an entry, select it and press Enter, or drag it onto the lane's label or body. The LFO lane accepts only LFOs. The Envelope lane accepts only envelopes. A mixed catalog selection containing an unsupported type makes no addition to these lanes. Regular layers and Output no longer accept these two component types.
 

@@ -8,7 +8,7 @@ One instrument owns two fixed lanes: LFO and Envelope. Store them separately fro
 
 These are control lanes, not audio buses. The LFO lane permits only LFO settings; Envelope permits only Envelope settings, including Per note mode. Reject effects, Macro controls, non-neutral audio mix fields and duplicate owner/provider IDs. They do not participate in audio summing, layer solo, latency alignment or audio level metering. Regular audio layers and Output retain their existing processing order and mix behavior.
 
-Reuse the Output row implementation for their column labels, horizontally scrolling unit bodies, power actions, component selection and shared right toolbar. Lay out LFO, then Envelope, then Macros in the Modulation subview. Lane headers expose no name editor, layer actions, M/S, pan, gain or meter. Their toolbar uses the regular layer expand and collapse directions. Compact state is saved independently of unit collapse. Use the shared row divider so adjacent rows share one border pixel.
+Reuse the Output row implementation for their column labels, horizontally scrolling unit bodies, power actions, component selection and shared right toolbar. Give LFO, Envelope, and Macros their own subviews and use the shared lane title panel. Lane headers expose no name editor, layer actions, M/S, pan, gain or meter. Their toolbar uses the regular layer expand and collapse directions. Compact state is saved independently of unit collapse. Use the shared row divider so adjacent rows share one border pixel.
 
 ## Catalog and installed gestures
 

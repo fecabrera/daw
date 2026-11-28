@@ -46,7 +46,7 @@ see [beat subtrack strips](mixer.md#beat-subtrack-strips).
 | B29 | The Timeline editor pane and Instrument add, select one/several, delete, rename and reorder subtracks. | Share stable IDs, selection, transactions and release-only reorder behavior. |
 | B30 | The Timeline editor pane and Instrument expose the same subtrack gain and pan. | Bind shared controls to one canonical bus stage. |
 | B31 | Each subtrack instrument owns independent LFO and Envelope lanes. | Restrict additions to the matching child lane and isolate provider ownership/routes between subtracks. |
-| B32 | A subtrack has a row in the full Tracks panel and its own instrument Output controls. | Reuse the shared track headers and normal instrument body. Both presentations bind to the same subtrack settings. |
+| B32 | A subtrack has mix controls in the full Tracks panel and its own instrument workspace. | Reuse the shared track headers and normal instrument body. |
 | B33 | Beat subtracks are instruments, not audio tracks or separate audio/MIDI lane types. | Add one instrument subtrack directly. Choose Sampler/Oscillator/other supported sources inside its layers; preserve the same subtrack identity when sources change. |
 | B34 | Reject beat clip moves, copies and paste between different beat tracks for now. | Preserve stable subtrack bindings; do not match rows by name or position or silently copy instruments. Same-track operations remain allowed. |
 | B35 | Retain steps hidden by a shorter or coarser grid. | Hidden steps are silent and return at their original tick and velocity when the grid includes them again. |

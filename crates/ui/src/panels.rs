@@ -483,17 +483,21 @@ impl ControlPanel {
     }
 
     pub(super) fn finish(self, ui: &Ui) {
-        self.finish_edge(ui, self.rect.right() - 0.5);
+        Self::row_right_divider(ui, self.rect);
     }
 
     pub(super) fn finish_left(self, ui: &Ui) {
-        self.finish_edge(ui, self.rect.left() + 0.5);
+        Self::finish_edge(ui, self.rect, self.rect.left() + 0.5);
     }
 
-    fn finish_edge(&self, ui: &Ui, x: f32) {
+    pub(super) fn row_right_divider(ui: &Ui, row: Rect) {
+        Self::finish_edge(ui, row, row.right() - 0.5);
+    }
+
+    fn finish_edge(ui: &Ui, row: Rect, x: f32) {
         ui.painter().vline(
             x,
-            self.rect.y_range(),
+            row.y_range(),
             Stroke::new(1.0, crate::theme::palette(ui.ctx()).border),
         );
     }

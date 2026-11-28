@@ -12,20 +12,6 @@ pub(super) struct ComponentDrag {
     pub active: bool,
 }
 
-impl ComponentDrag {
-    pub(super) fn moves_macros(&self) -> bool {
-        use daw_core::InstrumentComponent::Macros;
-
-        self.active
-            && match &self.source {
-                ComponentDragSource::Catalog { types, .. } => {
-                    types.contains(&crate::instrument_catalog::MACRO_TYPE)
-                }
-                ComponentDragSource::Installed { components, .. } => components.contains(&Macros),
-            }
-    }
-}
-
 pub(super) enum ComponentDragSource {
     Catalog {
         types: Vec<&'static str>,
@@ -177,7 +163,12 @@ impl DawUi {
             }
             let pointer = ui.input(|i| i.pointer.latest_pos()).unwrap();
             let same_move = from == owner && !duplicate;
-            if same_move && pointer.x < row.left() + TRACK_WIDTH {
+            let over_content = self
+                .instrument_ui
+                .component_viewports
+                .iter()
+                .any(|(id, rect)| id == owner && rect.intersects(*row) && pointer.x >= rect.left());
+            if same_move && !over_content {
                 return false;
             }
             let slots: Vec<_> = self
@@ -192,7 +183,7 @@ impl DawUi {
             let only_sources = components.iter().all(|c| c.is_source());
             let slot = if only_sources {
                 0
-            } else if pointer.x < row.left() + TRACK_WIDTH {
+            } else if !over_content {
                 slots.len()
             } else {
                 drag::insertion_slot(pointer, slots.iter().map(|(_, r)| *r)).max(first)

@@ -725,7 +725,7 @@ fn saved_unit_collapse_restores_in_a_fresh_ui_and_project_replacement_uses_its_o
 fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
     for color_theme in [settings::ColorTheme::Dark, settings::ColorTheme::Light] {
         let (mut app, ctx, layers) = layer_header_fixture();
-        app.instrument_subview = crate::instrument_workspace::InstrumentSubview::Sources;
+        app.instrument_subview = crate::instrument_workspace::InstrumentSubview::All;
         app.set_settings(
             &ctx,
             settings::AppSettings {
@@ -748,12 +748,7 @@ fn layer_mix_controls_share_track_layout_and_edit_only_their_layer() {
         assert_eq!(solo.size(), mute.size());
         assert_eq!(mute.center().y, gain.center().y);
         assert_eq!(solo.center().y, pan.center().y);
-        super::instrument_lane_toolbar::assert_toolbar(
-            bounds.row,
-            bounds.label,
-            bounds.toolbar,
-            bounds.collapse,
-        );
+        assert_eq!(bounds.collapse, Rect::NOTHING);
         assert_eq!(solo.left() - mute.right(), 1.0);
         for peer in &layers[1..] {
             let controls = app.midi_editor.layer_bounds[&peer.id].mix_controls;
@@ -1106,7 +1101,7 @@ fn layer_shift_selection_toggles_backgrounds_and_keeps_output_exclusive() {
             &ctx,
         );
         frame_sized(&mut app, &ctx, vec![], Vec2::new(1280.0, 1400.0));
-        let output = app.instrument_ui.macro_bounds.icon.center();
+        let output = app.instrument_ui.macro_bounds.label.right_top() + Vec2::new(12.0, 16.0);
         super::instrument_catalog::click(&mut app, &ctx, output, true);
         let bus = app.session.project.tracks[0]
             .instrument
@@ -1644,7 +1639,7 @@ fn instrument_rows_stay_blank_until_components_are_added_from_the_catalog() {
         );
         app.set_view_mode(ViewMode::Instrument, &ctx);
         let shapes = frame_shapes(&mut app, &ctx, vec![], Vec2::new(1280.0, 800.0));
-        for text in ["Layer", "Layer 1"] {
+        for text in ["Layer", "1"] {
             assert!(shapes.iter().any(|s| matches!(&s.shape,
                 egui::Shape::Text(t) if t.galley.text() == text)));
         }
@@ -1829,19 +1824,6 @@ fn layer_context_menu_orders_actions_and_renames_or_duplicates_on_release() {
                 })
                 .collect();
             assert!(items[0].y < items[1].y && items[1].y < items[2].y);
-            let shortcut =
-                toolbars::menu_shortcut_text(&ctx, &TrackAction::Rename.shortcut().unwrap());
-            let hint = shapes
-                .iter()
-                .find_map(|shape| match &shape.shape {
-                    egui::Shape::Text(t) if t.galley.text() == shortcut.text() => {
-                        Some(t.pos + t.galley.size() * 0.5)
-                    }
-                    _ => None,
-                })
-                .expect("rename shortcut hint");
-            assert!(hint.x > items[0].x);
-            assert!((hint.y - items[0].y).abs() < 1.0);
             assert!(shapes.iter().any(|shape| matches!(&shape.shape,
                 egui::Shape::LineSegment { points, .. } if points[0].y == points[1].y
                     && points[0].y > items[1].y && points[0].y < items[2].y)));
@@ -1904,100 +1886,20 @@ fn layer_context_menu_orders_actions_and_renames_or_duplicates_on_release() {
 }
 
 #[test]
-fn selected_layer_rename_shortcut_uses_inline_editor_and_shared_native_dispatch() {
+fn instrument_track_rename_shortcut_uses_native_and_keyboard_dispatch() {
     for native in [false, true] {
-        for cancel in [false, true] {
-            let (mut app, ctx, layers) = layer_header_fixture();
-            app.instrument_ui.select_layer(layers[1].id);
-            let original = app.session.project.clone();
-            assert_eq!(app.track_action_label(TrackAction::Rename), "Rename layer");
-            if native {
-                app.perform_track_action(TrackAction::Rename, &ctx);
-            } else {
-                frame(
-                    &mut app,
-                    &ctx,
-                    vec![egui::Event::Key {
-                        key: egui::Key::R,
-                        physical_key: None,
-                        pressed: true,
-                        repeat: false,
-                        modifiers: egui::Modifiers::COMMAND,
-                    }],
-                );
-            }
-            assert!(app.instrument_ui.editing_name());
-            assert!(app.track_name_edit.is_none());
-            assert_eq!(app.session.project, original);
-            assert!(!app.dirty);
-            frame(&mut app, &ctx, vec![]);
-            frame(
-                &mut app,
-                &ctx,
-                vec![
-                    egui::Event::Text("Renamed".into()),
-                    layer_key(if cancel {
-                        egui::Key::Escape
-                    } else {
-                        egui::Key::Enter
-                    }),
-                ],
-            );
-            if cancel {
-                assert_eq!(app.session.project, original);
-                assert!(!app.dirty);
-            } else {
-                assert_eq!(
-                    app.session.project.tracks[0]
-                        .instrument
-                        .as_ref()
-                        .unwrap()
-                        .layers[1]
-                        .name,
-                    "Renamed"
-                );
-                assert_eq!(app.instrument_ui.selected_layer, Some(layers[1].id));
-                assert!(app.dirty);
-            }
-        }
-    }
-}
-
-#[test]
-fn command_delete_removes_selected_layers_and_disconnects_removed_providers() {
-    for (key, native) in [(egui::Key::Delete, false), (egui::Key::Backspace, true)] {
         let (mut app, ctx, layers) = layer_header_fixture();
-        let instrument = app.session.project.tracks[0].instrument.as_mut().unwrap();
-        instrument.layers[0].macro_module.add();
-        let source = daw_core::ModulationSourceId {
-            layer: layers[0].id,
-            unit: instrument.layers[0].macro_module.controls[0].id,
-        };
-        let mut effect = daw_core::EffectInstance::auto_filter();
-        let daw_core::EffectSettings::AutoFilter(settings) = &mut effect.unit else {
-            unreachable!()
-        };
-        let mut route = daw_core::Modulation::new(daw_core::ModulationParameter::Level);
-        route.source = Some(source);
-        settings.modulations.push(route);
-        instrument.layers[1].effects.push(effect);
-        app.session.project.validate().unwrap();
-        app.history = None;
-        app.instrument_ui.select_layer(layers[0].id);
-        app.instrument_ui.selected_layers.insert(layers[2].id);
-        let before = app.session.project.clone();
-        assert_eq!(
-            app.track_action_label(TrackAction::Delete),
-            "Delete selected layers"
-        );
+        app.instrument_ui.select_layer(layers[1].id);
+        let original = app.session.project.clone();
+        assert_eq!(app.track_action_label(TrackAction::Rename), "Rename track");
         if native {
-            app.perform_track_action(TrackAction::Delete, &ctx);
+            app.perform_track_action(TrackAction::Rename, &ctx);
         } else {
             frame(
                 &mut app,
                 &ctx,
                 vec![egui::Event::Key {
-                    key,
+                    key: egui::Key::R,
                     physical_key: None,
                     pressed: true,
                     repeat: false,
@@ -2005,101 +1907,39 @@ fn command_delete_removes_selected_layers_and_disconnects_removed_providers() {
                 }],
             );
         }
-        frame(&mut app, &ctx, vec![]);
-        let track = &app.session.project.tracks[0];
-        assert_eq!(track.id, before.tracks[0].id);
-        assert_eq!(track.clips, before.tracks[0].clips);
-        let mut expected = before.tracks[0].instrument.as_ref().unwrap().clone();
-        expected.layers.remove(2);
-        expected.layers.remove(0);
-        expected.layers[0].effects[0].unit.modulations_mut()[0].source = None;
-        assert_eq!(track.instrument.as_ref(), Some(&expected));
-        assert_eq!(app.instrument_ui.selected_layer, Some(layers[1].id));
-        assert!(!app.track_action_enabled(TrackAction::Delete, &ctx));
-        app.perform_history_action(HistoryAction::Undo, &ctx);
-        assert_eq!(app.session.project, before);
+        assert_eq!(
+            app.track_name_edit.as_ref().map(|edit| edit.track),
+            Some(original.tracks[0].id)
+        );
+        assert!(!app.instrument_ui.editing_name());
+        assert_eq!(app.session.project, original);
     }
 }
 
 #[test]
-fn command_delete_targets_the_displayed_beat_subtrack_layers() {
-    let (mut app, ctx, _) = layer_header_fixture();
-    let original_track = app.session.project.tracks[0].clone();
-    let parent = app.session.project.add_beat_track().unwrap();
-    let mut row = daw_core::BeatSubtrack::new("Kick".into());
-    row.instrument.layers.push(Default::default());
-    let owner = row.id;
-    let survivor = row.instrument.layers[1].clone();
-    let removed = row.instrument.layers[0].id;
-    app.session
-        .project
-        .edit(Edit::Beat {
-            track_id: parent,
-            edit: daw_core::BeatEdit::Add {
-                subtrack: Box::new(row),
-                index: 0,
-            },
-        })
-        .unwrap();
-    app.select_track(parent, false);
-    app.navigate_beat_owner(parent, Some(owner), false);
-    frame(&mut app, &ctx, vec![]);
-    app.instrument_ui.select_layer(removed);
-    assert!(app.track_action_enabled(TrackAction::Delete, &ctx));
-    frame(
-        &mut app,
-        &ctx,
-        vec![egui::Event::Key {
-            key: egui::Key::Backspace,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: egui::Modifiers::COMMAND,
-        }],
-    );
-    assert_eq!(app.session.project.tracks[0], original_track);
-    let beat = app.session.project.beat(parent).unwrap();
-    assert_eq!(beat.subtracks.len(), 1);
-    assert_eq!(beat.subtracks[0].id, owner);
-    assert_eq!(beat.subtracks[0].instrument.layers, vec![survivor]);
-}
-
-#[test]
-fn command_delete_in_instrument_protects_fixed_lanes_and_the_last_regular_layer() {
-    let (mut app, ctx, layers) = layer_header_fixture();
-    let before = app.session.project.clone();
-    let instrument = before.tracks[0].instrument.as_ref().unwrap();
-    for selection in [
-        vec![],
-        vec![instrument.main.id],
-        vec![instrument.lfo_lane.id],
-        vec![instrument.envelope_lane.id],
-        layers.iter().map(|layer| layer.id).collect(),
-    ] {
-        app.instrument_ui.selected_layer = selection.first().copied();
-        app.instrument_ui.selected_layers = selection.into_iter().collect();
-        assert!(!app.track_action_enabled(TrackAction::Delete, &ctx));
-        app.perform_track_action(TrackAction::Delete, &ctx);
-        frame(
-            &mut app,
-            &ctx,
-            vec![
-                egui::Event::Key {
+fn instrument_command_delete_targets_track_with_selected_layers() {
+    for native in [false, true] {
+        let (mut app, ctx, layers) = layer_header_fixture();
+        app.instrument_ui.select_layer(layers[1].id);
+        assert_eq!(app.track_action_label(TrackAction::Delete), "Delete track");
+        let before = app.session.project.clone();
+        if native {
+            app.perform_track_action(TrackAction::Delete, &ctx);
+        } else {
+            frame(
+                &mut app,
+                &ctx,
+                vec![egui::Event::Key {
                     key: egui::Key::Backspace,
                     physical_key: None,
                     pressed: true,
                     repeat: false,
                     modifiers: egui::Modifiers::COMMAND,
-                },
-                egui::Event::Key {
-                    key: egui::Key::Backspace,
-                    physical_key: None,
-                    pressed: false,
-                    repeat: false,
-                    modifiers: egui::Modifiers::COMMAND,
-                },
-            ],
-        );
+                }],
+            );
+        }
+        assert!(app.session.project.tracks.is_empty());
+        app.perform_history_action(HistoryAction::Undo, &ctx);
         assert_eq!(app.session.project, before);
     }
 }
@@ -3483,7 +3323,10 @@ fn empty_midi_lane_double_click_creates_one_beat_without_switching_views() {
             app.track_action_enabled(TrackAction::AddMidi, &ctx),
             view == ViewMode::Instrument
         );
-        assert!(!app.track_action_enabled(TrackAction::Duplicate, &ctx));
+        assert_eq!(
+            app.track_action_enabled(TrackAction::Duplicate, &ctx),
+            view == ViewMode::Instrument
+        );
         app.add_midi_pattern(track, 96_000, &ctx);
         assert_eq!(format!("{:?}", app.session.project), before);
         let count = app.session.project.tracks.len();
