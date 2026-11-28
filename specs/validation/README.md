@@ -16590,3 +16590,31 @@ glide estimator. See the [revision-8 specification](../audio/timestretch.md#long
   `CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16`.
 - Both workspace runs skipped 22 native Audio Unit registration checks. Native
   mouse gestures, audio devices, and Windows and Linux remain unverified.
+
+## Shimmer and Drive DSP extraction — 2026-11-27
+
+- Compared float32 WAV files at 44.1, 48, 88.2, 96, 176.4 and 192 kHz.
+  The 168 effect cases covered each of the 23 default built-in effects on
+  Master and five additional settings for colored Drive, Drive v2 Soft,
+  Hard and Tube, and Warm Shimmer with pitch and synced predelay.
+  Every case matched byte for byte across the pre-migration, pre-extraction
+  and post-extraction builds in the same optimized test profile.
+- The same builds produced exact matches for 24 MIDI renders through
+  Oscillator, Noise, Sampler and Granulizer. Each rate used all four sources.
+  The Granulizer fixtures loaded valid saved settings because the CLI source
+  load command rejects its generated Granulizer settings.
+- Direct processor traces matched byte for byte before and after this
+  extraction at all six rates for Shimmer, Drive and Drive v2. The traces
+  include stereo output and effective parameter readings through retargets,
+  mode changes, bypass and reset. Drive and Shimmer also received varying
+  modulation offsets in these traces.
+- All 41 enabled tests in DSP support, Drive and Shimmer passed on macOS
+  arm64. The CLI smoke suite and six corresponding-source fixtures passed.
+- Formatting and strict workspace Clippy passed.
+- `cargo test --workspace --locked --offline --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`
+  passed all 3,868 enabled checks in the debug profile.
+- `cargo test --workspace --release --locked --offline --no-fail-fast -- --skip native_audio_component_registration_and_host_calls`
+  passed all 3,868 enabled checks with `CARGO_PROFILE_RELEASE_LTO=off` and
+  `CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16`.
+- Both workspace runs skipped 22 native Audio Unit registration checks.
+  Native host, audio device, Windows and Linux validation remain open.

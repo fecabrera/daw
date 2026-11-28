@@ -1,7 +1,6 @@
 //! Stereo drive with color and tone filters before clipping.
 //! FunDSP filter types stay private; callback operations do not allocate or block.
-use daw_dsp_support::filters::drive::DriveFilters;
-use daw_dsp_support::waveshaping::NormalizedClipper;
+use daw_dsp_support::drive::{DriveKernel, amplitude, gain_db, modulated_gain, output};
 use daw_unit_core::ramps::ExactRamp32 as Ramp;
 use daw_unit_core::{
     DRIVE_TYPE_ID, DriveSettings, EffectUnit, LevelMonitor, PortKind, ProcessingContext,
@@ -14,7 +13,7 @@ pub use v2::DriveV2;
 
 #[derive(Clone)]
 pub struct Drive {
-    filters: DriveFilters,
+    kernel: DriveKernel,
     gain: Ramp,
     tone: Ramp,
     volume: Ramp,
@@ -23,20 +22,15 @@ pub struct Drive {
     colors: [Ramp; 4],
     mix: Ramp,
     fade_frames: u32,
-    configured: [f32; 4],
-    clipper: NormalizedClipper,
     external: daw_unit_core::ModulationSmoother<5>,
     effective: [f32; 5],
     monitor: LevelMonitor<3>,
-}
-fn amplitude(db: f32) -> f32 {
-    10_f32.powf(db / 20.0)
 }
 impl Drive {
     /// Prepare on a control thread with validated settings and a supported sample rate.
     pub fn new(context: ProcessingContext, settings: &DriveSettings) -> Self {
         let mut drive = Self {
-            filters: DriveFilters::new(context.sample_rate_hz, settings.color_frequency_hz),
+            kernel: DriveKernel::new(context.sample_rate_hz, settings.color_frequency_hz),
             gain: Ramp::new(settings.gain),
             tone: Ramp::new(settings.tone),
             volume: Ramp::new(amplitude(settings.volume_db)),
@@ -47,9 +41,7 @@ impl Drive {
             }),
             mix: Ramp::new(f32::from(settings.enabled)),
             fade_frames: (context.sample_rate_hz / 200).max(1),
-            configured: [f32::NAN; 4],
             monitor: LevelMonitor::new(context.sample_rate_hz, settings.enabled),
-            clipper: NormalizedClipper::new(0.0),
             external: daw_unit_core::ModulationSmoother::new(context),
             effective: [
                 amplitude(settings.volume_db),
@@ -95,16 +87,14 @@ impl Drive {
         ]
     }
     fn configure(&mut self, values: [f32; 4]) {
-        if values == self.configured {
-            return;
+        if self.kernel.configure(values) {
+            self.effective[1..].copy_from_slice(&[
+                values[0],
+                values[1],
+                values[2],
+                values[3].exp(),
+            ]);
         }
-        self.effective[1..].copy_from_slice(&[values[0], values[1], values[2], values[3].exp()]);
-        if values[0] != self.configured[0] {
-            // Zero is clean. Full gain supplies approximately 36 dB of drive.
-            self.clipper = NormalizedClipper::new(10_f32.powf(1.8 * values[0]) - 1.0);
-        }
-        self.filters.configure(values, self.configured);
-        self.configured = values;
     }
     fn ramps(&mut self) -> impl Iterator<Item = &mut Ramp> {
         [
@@ -134,7 +124,7 @@ impl EffectUnit for Drive {
         for ramp in self.ramps() {
             ramp.reset();
         }
-        self.filters.reset();
+        self.kernel.reset();
         self.external.reset();
         self.effective[0] = self.volume.value();
         self.configure(self.base_parameters());
@@ -147,17 +137,14 @@ impl Drive {
     /// Last processed Volume dB, Gain, Tone, Color strength, and Color frequency Hz.
     pub fn effective_parameters(&self) -> [f32; 5] {
         let mut values = self.effective;
-        values[0] = if values[0] > 0.0 {
-            20.0 * values[0].log10()
-        } else {
-            daw_unit_core::SILENT_GAIN_DB
-        };
+        values[0] = gain_db(values[0]);
         values
     }
     /// Offsets in the same order: dB, normalized fractions, and octaves for Frequency.
     /// Sources and route amounts belong to the host; this portable stage smooths offsets by 1 ms.
     pub fn process_modulated(&mut self, input: [f32; 2], offsets: [f32; 5]) -> [f32; 2] {
-        let output = self.process_kernel(input, offsets, 0.0, 0.0, false);
+        let clipped = self.process_wet(input, offsets, 0.0, 0.0);
+        let output = output(input, clipped, self.effective[0], self.mix.value());
         self.monitor.sample_output(output);
         output
     }
@@ -168,16 +155,6 @@ impl Drive {
         offsets: [f32; 5],
         hard: f32,
         tube: f32,
-    ) -> [f32; 2] {
-        self.process_kernel(input, offsets, hard, tube, true)
-    }
-    fn process_kernel(
-        &mut self,
-        input: [f32; 2],
-        offsets: [f32; 5],
-        hard: f32,
-        tube: f32,
-        pre_level: bool,
     ) -> [f32; 2] {
         let offsets = self.external.process(offsets);
         for ramp in self.ramps() {
@@ -192,25 +169,9 @@ impl Drive {
             (frequency_log + offsets[4] * std::f32::consts::LN_2)
                 .clamp(250.0_f32.ln(), 2000.0_f32.ln()),
         ]);
-        let volume = if offsets[0] == 0.0 {
-            self.volume.value()
-        } else {
-            (self.volume.value() * amplitude(offsets[0].clamp(-96.0, 96.0))).min(amplitude(12.0))
-        };
-        self.effective[0] = volume;
-        std::array::from_fn(|channel| {
-            let dry = input[channel];
-            let tone = self
-                .filters
-                .sample(channel, dry, self.colors.each_ref().map(|r| r.value()));
-            let clipped = self.clipper.process(tone, hard, tube);
-            if pre_level {
-                clipped
-            } else {
-                let wet = clipped * volume;
-                dry + (wet - dry) * self.mix.value()
-            }
-        })
+        self.effective[0] = modulated_gain(self.volume.value(), offsets[0]);
+        self.kernel
+            .sample(input, self.colors.each_ref().map(|r| r.value()), hard, tube)
     }
 }
 

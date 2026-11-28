@@ -4,6 +4,7 @@ pub mod analysis;
 pub mod bitcrush;
 pub mod chorus;
 pub mod delay;
+pub mod drive;
 pub mod dynamics;
 pub mod envelope;
 pub mod exciter;

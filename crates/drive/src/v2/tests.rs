@@ -1,7 +1,7 @@
 use super::*;
 use daw_unit_core::{
     DriveV2ColorShape, Modulation, ModulationBehavior, ModulationRange, ModulationRoute,
-    ModulationSourceId, ModulationValue, process_modulation,
+    ModulationSourceId, ModulationValue, SILENT_GAIN_DB, process_modulation,
 };
 const RATES: [u32; 6] = [44100, 48000, 88200, 96000, 176400, 192000];
 fn context(rate: u32) -> ProcessingContext {

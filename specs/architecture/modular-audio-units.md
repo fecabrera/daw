@@ -50,6 +50,11 @@ ownership. The DSP crate keeps the original interpolation, oversampling and
 reconstruction profiles. It shares fixed dry alignment where the read and write
 conventions match.
 
+Drive and Drive v2 share the prepared Color, Tone, and clipping kernel and use
+separate output mix functions in DSP support. Shimmer's prepared kernel owns
+predelay, diffusion, pitch injection, feedback, Warm filtering, and the wet mix.
+The units retain parameter mapping, modulation, lifecycle, and monitoring.
+
 The canonical spectrum and live loudness algorithms use the dependency-free
 BSD-2-Clause package at `crates/dsp-support/analysis-kernels`. Both DSP support
 and standalone audio analysis use this package. The standalone API retains

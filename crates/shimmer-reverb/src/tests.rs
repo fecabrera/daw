@@ -1,4 +1,5 @@
 use super::*;
+use daw_dsp_support::reverb::shimmer::pitch;
 const RATES: [u32; 6] = [44100, 48000, 88200, 96000, 176400, 192000];
 fn unit(rate: u32, s: &Settings) -> ShimmerReverb {
     ShimmerReverb::new(

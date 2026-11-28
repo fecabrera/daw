@@ -2968,7 +2968,6 @@ name = "daw-shimmer-reverb"
 version = "0.1.0"
 dependencies = [
  "daw-dsp-support",
- "daw-reverb-core",
  "daw-unit-core",
 ]
 

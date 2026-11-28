@@ -1,10 +1,11 @@
 //! Redesigned Drive, composed with the original color/tone/clipping kernel.
-use super::{Drive, Ramp, amplitude};
+use super::{Drive, Ramp};
+use daw_dsp_support::drive::{amplitude, gain_db, modulated_gain, output_v2};
 use daw_unit_core::{
     DRIVE_V2_TYPE_ID, DriveColorShape, DriveSettings, DriveV2Clip, DriveV2Settings, EffectUnit,
     LevelMonitor, ModulationContext, ModulationDestination, ModulationDestinationSettings,
     ModulationInputs, ModulationParameter, ModulationScope, ModulationSmoother, PortKind,
-    ProcessingContext, SILENT_GAIN_DB, UnitDescriptor,
+    ProcessingContext, UnitDescriptor,
 };
 use std::sync::{Arc, atomic::AtomicU32};
 #[derive(Clone)]
@@ -33,29 +34,6 @@ fn kernel(s: &DriveV2Settings) -> DriveSettings {
         color_strength: s.color_strength,
         color_frequency_hz: s.color_frequency_hz,
         ..DriveSettings::default()
-    }
-}
-fn gain(base: f32, offset: f32) -> f32 {
-    if offset == 0.0 {
-        base
-    } else {
-        (base * amplitude(offset.clamp(-96.0, 96.0))).min(amplitude(12.0))
-    }
-}
-fn db(value: f32) -> f32 {
-    if value > 0.0 {
-        20.0 * value.log10()
-    } else {
-        SILENT_GAIN_DB
-    }
-}
-fn mix(dry: f32, wet: f32, amount: f32) -> f32 {
-    if amount == 0.0 {
-        dry
-    } else if amount == 1.0 {
-        wet
-    } else {
-        dry + (wet - dry) * amount
     }
 }
 impl DriveV2 {
@@ -139,12 +117,12 @@ impl EffectUnit for DriveV2 {
         }
         let p = self.core.effective_parameters();
         self.effective = [
-            db(self.input.value()),
+            gain_db(self.input.value()),
             p[1],
             p[2],
             p[3],
             p[4],
-            db(self.level.value()),
+            gain_db(self.level.value()),
             self.blend.value(),
         ];
     }
@@ -178,8 +156,8 @@ impl ModulationDestination for DriveV2 {
                 m.offset(ModulationParameter::DryWet),
             ])
             .map(|v| v as f32);
-        let input_gain = gain(self.input.value(), offsets[0]);
-        let level = gain(self.level.value(), offsets[1]);
+        let input_gain = modulated_gain(self.input.value(), offsets[0]);
+        let level = modulated_gain(self.level.value(), offsets[1]);
         let blend = (self.blend.value() + offsets[2]).clamp(0.0, 1.0);
         let dry = input.map(|v| v * input_gain);
         let wet = self.core.process_wet(
@@ -196,23 +174,15 @@ impl ModulationDestination for DriveV2 {
         );
         let processed = self.core.effective_parameters();
         self.effective = [
-            db(input_gain),
+            gain_db(input_gain),
             processed[1],
             processed[2],
             processed[3],
             processed[4],
-            db(level),
+            gain_db(level),
             blend,
         ];
-        let output = std::array::from_fn(|i| {
-            // Full wet retains the original Drive's output-level arithmetic exactly.
-            let mixed = if blend == 1.0 {
-                dry[i] + (wet[i] * level - dry[i])
-            } else {
-                mix(dry[i], wet[i], blend) * level
-            };
-            mix(input[i], mixed, self.bypass.value())
-        });
+        let output = output_v2(input, dry, wet, level, blend, self.bypass.value());
         self.monitor.sample_output(output);
         output
     }
